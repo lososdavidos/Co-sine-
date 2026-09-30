@@ -1,0 +1,181 @@
+/* ---------------------------------------------------------------- TOKENS
+   Graphit v0.7. Dark-first: the bare :root IS the dark palette, because the
+   system is dark-first and light is derived. Only the neutrals invert. */
+:root{
+  --bg-0:#000000; --bg-2:#101014; --surf-2:#17171C; --bg-3:#202027;
+  --glass-1:rgba(10,10,14,.74); --glass-3:rgba(10,10,14,.90);
+  --line-1:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.20);
+  --specular:rgba(255,255,255,.14); --scrim:rgba(0,0,0,.72);
+  --txt-1:#FFFFFF; --txt-2:#B0B0B8; --txt-3:#73737C;
+  --blue:#5C7AD6; --red:#D75547; --green:#51B85F; --yellow:#E1C247;
+  --ink:#000000; --focus:#FFFFFF;
+  --sans:"Archivo","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
+  --r-plane:6px; --r-sm:8px; --r-md:16px; --r-lg:22px;
+  --t-state:100ms; --t-move:160ms; --ease:cubic-bezier(.2,0,0,1);
+  --rail:264px; --col:72ch;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --bg-0:#FFFFFF; --bg-2:#F4F4F6; --surf-2:#EAEAEF; --bg-3:#E2E2E8;
+    --glass-1:rgba(255,255,255,.78); --glass-3:rgba(255,255,255,.92);
+    --line-1:rgba(0,0,0,.10); --line-2:rgba(0,0,0,.18);
+    --specular:rgba(255,255,255,.85); --scrim:rgba(0,0,0,.42);
+    --txt-1:#0A0A0C; --txt-2:#4C4C55; --txt-3:#75757E; --focus:#000000;
+  }
+}
+:root[data-theme="light"]{
+  --bg-0:#FFFFFF; --bg-2:#F4F4F6; --surf-2:#EAEAEF; --bg-3:#E2E2E8;
+  --glass-1:rgba(255,255,255,.78); --glass-3:rgba(255,255,255,.92);
+  --line-1:rgba(0,0,0,.10); --line-2:rgba(0,0,0,.18);
+  --specular:rgba(255,255,255,.85); --scrim:rgba(0,0,0,.42);
+  --txt-1:#0A0A0C; --txt-2:#4C4C55; --txt-3:#75757E; --focus:#000000;
+}
+@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){
+  :root{--glass-1:#0E0E13; --glass-3:#1A1A21}
+  :root[data-theme="light"]{--glass-1:#FAFAFC; --glass-3:#F4F4F6}
+  @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--glass-1:#FAFAFC;--glass-3:#F4F4F6}}
+}
+
+/* ------------------------------------------------------------------ BASE */
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg-0); color:var(--txt-1);
+  font-family:var(--sans); font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; font-synthesis-weight:none;
+}
+:focus-visible{outline:2px solid var(--focus); outline-offset:2px; border-radius:var(--r-sm)}
+@media (prefers-reduced-motion:reduce){*{transition-duration:1ms !important; animation-duration:1ms !important}
+  html{scroll-behavior:auto}}
+html{scroll-behavior:smooth}
+
+/* Reading progress. A plane, per the rule the document itself sets: colour is
+   a filled block, never a line. It grows; it is never a stroke. */
+#prog{position:fixed; top:0; left:0; height:3px; width:0; background:var(--blue);
+      z-index:60; transition:width 90ms linear}
+
+/* ------------------------------------------------------------------ SHELL */
+.wrap{display:grid; grid-template-columns:var(--rail) minmax(0,1fr); gap:var(--s7);
+      max-width:1240px; margin:0 auto; padding:0 var(--s5)}
+@media (max-width:1040px){ .wrap{grid-template-columns:minmax(0,1fr); gap:0; padding:0 var(--s4)} }
+
+/* ------------------------------------------------------------------- RAIL
+   It stays put while content moves underneath, so by rule 1 it is glass. */
+.rail{position:sticky; top:var(--s4); align-self:start; height:calc(100vh - var(--s6));
+      margin-top:var(--s4); padding:var(--s4) var(--s2) var(--s4) var(--s4);
+      background:var(--glass-1);
+      backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%);
+      border:1px solid var(--line-2); border-radius:var(--r-lg);
+      box-shadow:inset 0 1px 0 var(--specular);
+      overflow-y:auto; overscroll-behavior:contain}
+.rail-h{font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.09em;
+        text-transform:uppercase; color:var(--txt-3); padding:0 var(--s2) var(--s3)}
+.ix2,.ix3{display:flex; gap:var(--s2); text-decoration:none; border-radius:var(--r-sm);
+          padding:5px var(--s2); transition:background var(--t-state) var(--ease),color var(--t-state) var(--ease)}
+.ix2{color:var(--txt-1); font-size:13.5px; font-weight:500; margin-top:var(--s2)}
+.ix3{color:var(--txt-3); font-size:12.5px; padding-left:var(--s5)}
+.ix2:hover,.ix3:hover{background:var(--bg-3); color:var(--txt-1)}
+.ix2.on,.ix3.on{background:var(--blue); color:var(--ink)}
+.ixn{font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; opacity:.62;
+     min-width:2.6em; padding-top:2px; font-variant-numeric:tabular-nums}
+.ix2.on .ixn,.ix3.on .ixn{opacity:.7}
+.ixt{flex:1}
+@media (max-width:1040px){ .rail{display:none} }
+
+/* ------------------------------------------------------------------- HEAD */
+header{padding:var(--s8) 0 var(--s6); border-bottom:1px solid var(--line-2); margin-bottom:var(--s6)}
+.eyebrow{font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.09em;
+         text-transform:uppercase; color:var(--txt-3); margin:0 0 var(--s4)}
+h1{font-size:clamp(34px,6vw,52px); line-height:1.04; font-weight:600; letter-spacing:-.028em;
+   margin:0 0 var(--s4); text-wrap:balance}
+.sub{color:var(--txt-2); font-size:16px; max-width:56ch; margin:0 0 var(--s5)}
+.stats{display:flex; flex-wrap:wrap; gap:var(--s2)}
+
+/* ------------------------------------------------------------------ TYPE */
+main{max-width:880px; padding-bottom:var(--s8)}
+main p,main li,main blockquote{max-width:var(--col)}
+main h2{font-size:26px; line-height:1.16; font-weight:600; letter-spacing:-.02em;
+        margin:var(--s8) 0 var(--s4); padding-top:var(--s5); border-top:1px solid var(--line-2);
+        text-wrap:balance; scroll-margin-top:var(--s5)}
+main h3{font-size:19px; line-height:1.28; font-weight:600; letter-spacing:-.015em;
+        margin:var(--s7) 0 var(--s3); scroll-margin-top:var(--s5); text-wrap:balance}
+main h4{font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.09em;
+        text-transform:uppercase; color:var(--txt-3); margin:var(--s6) 0 var(--s3)}
+main p{color:var(--txt-2); font-size:14.5px; margin:0 0 var(--s4)}
+main li{color:var(--txt-2); font-size:14.5px; margin:0 0 var(--s2)}
+main ul,main ol{padding-left:var(--s5); margin:0 0 var(--s4)}
+main strong{color:var(--txt-1); font-weight:600}
+main a{color:var(--txt-1); text-decoration:underline; text-underline-offset:2px;
+       text-decoration-color:var(--line-2)}
+main a:hover{text-decoration-color:var(--txt-1)}
+s{color:var(--txt-3)}
+main hr{display:none}   /* every rule in the source precedes an h2, which draws its own */
+
+code{font-family:var(--mono); font-size:12.5px; background:var(--bg-3);
+     border:1px solid var(--line-1); border-radius:4px; padding:1px 5px; color:var(--txt-1)}
+pre{background:var(--bg-2); border:1px solid var(--line-1); border-radius:var(--r-md);
+    padding:var(--s4); overflow-x:auto; margin:0 0 var(--s4)}
+pre code{background:none; border:0; padding:0; font-size:12.5px; line-height:1.6; color:var(--txt-2)}
+
+blockquote{margin:0 0 var(--s4); padding:var(--s4) var(--s5); background:var(--surf-2);
+           border:1px solid var(--line-1); border-radius:var(--r-md)}
+blockquote p{margin:0; color:var(--txt-1); font-weight:500}
+
+/* ----------------------------------------------------------------- PLANES
+   100% opaque, black ink, 1px edge in their own ink. No exceptions. */
+.plane{display:inline-flex; align-items:center; color:var(--ink);
+       border:1px solid var(--ink); border-radius:var(--r-plane); padding:2px 7px;
+       font-family:var(--mono); font-size:9.5px; font-weight:500;
+       letter-spacing:.08em; text-transform:uppercase; vertical-align:1px}
+.plane-blue{background:var(--blue)} .plane-red{background:var(--red)}
+.plane-green{background:var(--green)} .plane-yellow{background:var(--yellow)}
+
+/* --------------------------------------------------------------- WARNINGS */
+.warn{display:grid; grid-template-columns:auto 1fr; gap:var(--s3); align-items:start;
+      background:var(--bg-2); border:1px solid var(--line-1); border-left:3px solid var(--red);
+      border-radius:var(--r-md); padding:var(--s4); color:var(--txt-2)}
+.warn-i{display:grid; place-items:center; width:20px; height:20px; background:var(--red);
+        color:var(--ink); border:1px solid var(--ink); border-radius:var(--r-plane);
+        font-family:var(--mono); font-size:12px; font-weight:600; line-height:1}
+.warn-li{list-style:none; margin-left:calc(var(--s5) * -1)}
+
+/* ------------------------------------------------------------------ TABLES */
+.tw{overflow-x:auto; margin:0 0 var(--s5); border:1px solid var(--line-1);
+    border-radius:var(--r-md); background:var(--bg-2)}
+table{border-collapse:collapse; width:100%; min-width:440px}
+th{text-align:left; padding:var(--s3) var(--s4); background:var(--surf-2);
+   border-bottom:1px solid var(--line-2); white-space:nowrap;
+   font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:.08em;
+   text-transform:uppercase; color:var(--txt-3)}
+td{padding:9px var(--s4); border-bottom:1px solid var(--line-1); font-size:13px;
+   color:var(--txt-2); vertical-align:top}
+tr:last-child td{border-bottom:0}
+td:first-child{color:var(--txt-1); font-weight:500}
+td.k{font-family:var(--mono); font-size:11.5px; letter-spacing:.02em; white-space:nowrap;
+     color:var(--txt-3); font-variant-numeric:tabular-nums}
+td strong{color:var(--txt-1)}
+
+/* ------------------------------------------------------------------- SHELF
+   Navigation always floats. Narrow screens only, where the rail is gone. */
+.shelf{position:fixed; left:var(--s4); right:var(--s4); bottom:var(--s4); z-index:40;
+       height:52px; display:none; align-items:center; gap:var(--s3); padding:0 var(--s3) 0 var(--s4);
+       background:var(--glass-1);
+       backdrop-filter:blur(24px) saturate(150%); -webkit-backdrop-filter:blur(24px) saturate(150%);
+       border:1px solid var(--line-2); border-radius:var(--r-lg);
+       box-shadow:0 24px 60px -20px var(--scrim), inset 0 1px 0 var(--specular)}
+.shelf-t{font-family:var(--mono); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase;
+         color:var(--txt-3); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.btn{font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.08em;
+     text-transform:uppercase; padding:8px 12px; cursor:pointer; background:var(--blue);
+     color:var(--ink); border:1px solid var(--ink); border-radius:var(--r-plane)}
+@media (max-width:1040px){ .shelf{display:flex} main{padding-bottom:120px} }
+
+/* Sheet. An overlay, so glass-3. It never opens another overlay. */
+.sheet{position:fixed; inset:auto var(--s4) calc(var(--s4) + 60px) var(--s4); z-index:50;
+       max-height:64vh; overflow-y:auto; padding:var(--s4);
+       background:var(--glass-3);
+       backdrop-filter:blur(36px) saturate(150%); -webkit-backdrop-filter:blur(36px) saturate(150%);
+       border:1px solid var(--line-2); border-radius:var(--r-lg);
+       box-shadow:0 24px 64px -16px var(--scrim), inset 0 1px 0 var(--specular)}
+.sheet .ix3{padding-left:var(--s4)}

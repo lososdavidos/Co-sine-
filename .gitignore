@@ -1,0 +1,20 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Generated spec page (rebuild with docs/spec/build.py)
+docs/spec/sine-cosine.html
+
+# OS
+.DS_Store

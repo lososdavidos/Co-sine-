@@ -1,0 +1,46 @@
+# Sine & Cosine
+
+A self-hosted music system in two parts:
+
+- **Sine**: the client. Android first; desktop and iOS later.
+- **Cosine**: the server. Go + SQLite, replacing Navidrome.
+
+The full design is in [`docs/spec/SPEC.md`](docs/spec/SPEC.md), which is the single source of truth.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `sine/core` | Pure Kotlin/JVM: Subsonic client, server probe, accounts, downloads index, play log, search ranking. No Android dependency, so it can move to Kotlin Multiplatform later (§5.2a). |
+| `sine/app` | The Android app: Compose UI, Media3 playback, WorkManager downloads. |
+| `cosine/` | The server. Not started. |
+| `docs/spec/` | The spec and the script that renders it to HTML (`python3 build.py`, needs `pip install markdown`). |
+
+## Status
+
+The first slice is **Sine in compatibility mode**, against a stock Subsonic server (Navidrome):
+
+- Server address → probe → "Subsonic server · compatibility mode" or "Cosine · full features", shown before login
+- Token + salt login; the password is never stored
+- Several accounts, switched explicitly
+- Browse Artists / Albums / Playlists, search, artist and album pages
+- Streaming playback of the original files (`format=raw`, no transcoding), with the media notification, lockscreen, Bluetooth and headset controls from Media3
+- Pinned downloads of a track, album, artist or playlist into a folder you choose (SAF). A `.nomedia` file is written there, the folders follow `Artist/Album/Track`, and downloads wait for an unmetered connection unless you allow mobile data. The download budget is soft: it warns but never refuses.
+- Offline: downloaded music browses, plays and shows artwork with the server gone
+- Plays are recorded locally as timestamped events and scrobbled with their real time when the server is reachable
+
+**Not yet built:** Cosine itself, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, remote control, Jam, and the desktop client.
+
+## Design
+
+The UI is **deliberately unstyled**: Material 3 defaults, with no visual system encoded in components. The design language in the spec (Graphit v0.7) will be replaced, so styling waits until that decision is made.
+
+## Building
+
+```sh
+cd sine
+./gradlew :core:test          # pure JVM, no Android SDK needed
+./gradlew :app:assembleDebug  # needs the Android SDK
+```
+
+CI (`.github/workflows/sine.yml`) runs both on every push and uploads the debug APK as an artifact.
