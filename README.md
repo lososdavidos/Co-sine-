@@ -14,6 +14,7 @@ The full design is in [`docs/spec/SPEC.md`](docs/spec/SPEC.md), which is the sin
 | `sine/core` | Pure Kotlin/JVM: Subsonic client, server probe, accounts, downloads index, play log, search ranking. No Android dependency, so it can move to Kotlin Multiplatform later (§5.2a). |
 | `sine/app` | The Android app: Compose UI, Media3 playback, WorkManager downloads. |
 | `cosine/` | The server: Go + SQLite, one static binary. See [`cosine/README.md`](cosine/README.md). |
+| `deploy/` | `install.sh` for Proxmox LXC containers (privileged or unprivileged) and Debian/Ubuntu machines. See [`deploy/README.md`](deploy/README.md). |
 | `docs/spec/` | The spec and the script that renders it to HTML (`python3 build.py`, needs `pip install markdown`). |
 
 ## Status

@@ -1,0 +1,60 @@
+name: Installer
+
+on:
+  push:
+    paths:
+      - "deploy/**"
+      - "cosine/**"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -s bash deploy/install.sh
+
+  # Runs the installer end to end in clean Debian and Ubuntu images: real
+  # package names, real yt-dlp and Deno downloads with checksums, a rerun as
+  # an upgrade, and uninstall. (No systemd in a container: services are
+  # written and checked, then Cosine is started by hand.)
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:trixie", "debian:bookworm", "ubuntu:24.04"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cosine/go.mod
+          cache-dependency-path: cosine/go.sum
+
+      - name: Build cosine
+        working-directory: cosine
+        env:
+          CGO_ENABLED: "0"
+        run: go build -ldflags "-X main.version=ci" -o ../cosine-linux-amd64 ./cmd/cosine
+
+      - name: Install, upgrade, run and uninstall in ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src ${{ matrix.image }} bash -euxc '
+            apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
+            ./deploy/install.sh --binary ./cosine-linux-amd64 --with-fingerprinting
+            ./deploy/install.sh --binary ./cosine-linux-amd64 | grep -q "Kept your existing settings"
+            command -v yt-dlp deno ffprobe fpcalc sqlite3
+            systemd-analyze verify /etc/systemd/system/cosine.service /etc/systemd/system/*.timer 2>/dev/null || true
+            runuser -u cosine -- env $(grep -v "^#" /etc/cosine/cosine.env | xargs) /opt/cosine/bin/cosine &
+            for i in $(seq 1 20); do curl -fsS localhost:4534/cosine/v1/capabilities && break; sleep 0.5; done
+            curl -fsS localhost:4534/cosine/v1/capabilities | grep -q ingest
+            kill %1
+            ./deploy/install.sh --uninstall --purge
+            test ! -e /opt/cosine && test ! -e /var/lib/cosine && test -d /srv/music/store
+          '

@@ -4,6 +4,10 @@ The server: one Go binary, one SQLite file, one Store. It replaces Navidrome. Se
 
 ## Run
 
+On Proxmox or any Debian/Ubuntu machine, use the installer: it sets up Cosine, yt-dlp, Deno, ffmpeg, the services and nightly backups. See [`deploy/README.md`](../deploy/README.md).
+
+By hand:
+
 ```sh
 cd cosine
 CGO_ENABLED=0 go build -o cosine ./cmd/cosine
