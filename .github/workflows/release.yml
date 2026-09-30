@@ -1,14 +1,23 @@
 name: Release
 
-# Push a tag like v0.2.0 to publish a release: static Cosine binaries, the
-# installer, and an installable Sine APK, with one checksum file for all.
-# The installer downloads from here.
+# Publishes a release: static Cosine binaries, the installer, and an
+# installable Sine APK, with one checksum file for all. The installer
+# downloads from here. Start it by pushing a tag like v0.2.0, or from the
+# Actions tab ("Run workflow") with a version, which creates the tag.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v0.2.0 (tags the chosen branch's head)"
+        required: true
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ inputs.version || github.ref_name }}
 
 jobs:
   cosine:
@@ -20,6 +29,9 @@ jobs:
         with:
           go-version-file: cosine/go.mod
           cache-dependency-path: cosine/go.sum
+
+      - name: Check the version
+        run: echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' || { echo "Not a version: $TAG"; exit 1; }
 
       - name: Test
         working-directory: cosine
@@ -33,7 +45,7 @@ jobs:
           mkdir -p ../dist
           for arch in amd64 arm64; do
             GOOS=linux GOARCH=$arch go build -trimpath \
-              -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -ldflags "-s -w -X main.version=${TAG}" \
               -o ../dist/cosine-linux-$arch ./cmd/cosine
           done
           cp ../deploy/install.sh ../dist/install.sh
@@ -59,9 +71,9 @@ jobs:
         working-directory: sine
         run: |
           ./gradlew :core:test :app:assembleRelease \
-            -PsineVersionName="${GITHUB_REF_NAME#v}" -PsineVersionCode="${GITHUB_RUN_NUMBER}"
+            -PsineVersionName="${TAG#v}" -PsineVersionCode="${GITHUB_RUN_NUMBER}"
           mkdir -p ../dist
-          cp app/build/outputs/apk/release/app-release.apk "../dist/sine-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "../dist/sine-${TAG}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -82,15 +94,17 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           files: dist/*
           generate_release_notes: true
           body: |
             **Server (Proxmox LXC or any Debian/Ubuntu):** inside the container, run
             ```sh
-            bash -c "$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh)"
+            bash -c "$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ env.TAG }}/install.sh)"
             ```
-            then open `http://<container-ip>:4534/` to set it up. Guide: [deploy/README.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/deploy/README.md).
+            then open `http://<container-ip>:4534/` to set it up. Guide: [deploy/README.md](https://github.com/${{ github.repository }}/blob/${{ env.TAG }}/deploy/README.md).
 
-            **Android:** download `sine-${{ github.ref_name }}.apk` on the phone and install it (allow installs from your browser when asked). Later releases install over it.
+            **Android:** download `sine-${{ env.TAG }}.apk` on the phone and install it (allow installs from your browser when asked). Later releases install over it.
 
             This is a testing build: signed with a key committed to the repository, not a store key.
