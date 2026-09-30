@@ -13,7 +13,7 @@ The full design is in [`docs/spec/SPEC.md`](docs/spec/SPEC.md), which is the sin
 |---|---|
 | `sine/core` | Pure Kotlin/JVM: Subsonic client, server probe, accounts, downloads index, play log, search ranking. No Android dependency, so it can move to Kotlin Multiplatform later (§5.2a). |
 | `sine/app` | The Android app: Compose UI, Media3 playback, WorkManager downloads. |
-| `cosine/` | The server. Not started. |
+| `cosine/` | The server: Go + SQLite, one static binary. See [`cosine/README.md`](cosine/README.md). |
 | `docs/spec/` | The spec and the script that renders it to HTML (`python3 build.py`, needs `pip install markdown`). |
 
 ## Status
@@ -29,7 +29,9 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Offline: downloaded music browses, plays and shows artwork with the server gone
 - Plays are recorded locally as timestamped events and scrobbled with their real time when the server is reachable
 
-**Not yet built:** Cosine itself, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, remote control, Jam, and the desktop client.
+**Cosine** now has its core: first-run setup in a dashboard, Inbox ingest into a content-hashed Store, a tags/filename resolver, and the Subsonic API Sine uses. Sine can log in to it in place of Navidrome. Details in [`cosine/README.md`](cosine/README.md).
+
+**Not yet built:** yt-dlp ingest, the review queue UI, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, remote control, Jam, and the desktop client.
 
 ## Design
 
@@ -43,4 +45,9 @@ cd sine
 ./gradlew :app:assembleDebug  # needs the Android SDK
 ```
 
-CI (`.github/workflows/sine.yml`) runs both on every push and uploads the debug APK as an artifact.
+```sh
+cd cosine
+go test ./...                 # needs Go 1.26 (see go.mod)
+```
+
+CI builds and tests both on every push. It uploads the debug APK and static Cosine binaries for linux amd64/arm64 as artifacts.

@@ -1,0 +1,13 @@
+{{define "content"}}
+<h2>Store</h2>
+<form method="post" action="/settings/store">
+<label>Store path<br><input name="path" value="{{.Data.Store}}" size="50" required></label>
+<p>Changing this moves every file to the new location. Nothing else changes: files are addressed relative to the Store.</p>
+<button>Move Store</button>
+</form>
+<h2>Inbox</h2>
+<form method="post" action="/settings/inbox">
+<label>Inbox path<br><input name="path" value="{{.Data.Inbox}}" size="50" required></label>
+<button>Change Inbox</button>
+</form>
+{{end}}

@@ -1,0 +1,18 @@
+{{define "content"}}
+<table>
+<tr><th>Store</th><td>{{.Data.Store}}</td></tr>
+<tr><th>Inbox</th><td>{{.Data.Inbox}}</td></tr>
+<tr><th>Tracks</th><td>{{.Data.Tracks}}</td></tr>
+<tr><th>Files</th><td>{{.Data.Objects}} ({{.Data.Size}})</td></tr>
+<tr><th>Awaiting review</th><td>{{.Data.Review}}</td></tr>
+<tr><th>Missing from the Store</th><td>{{.Data.Missing}}</td></tr>
+<tr><th>Accounts</th><td>{{.Data.Users}}</td></tr>
+</table>
+<h2>Recent ingests</h2>
+{{if .Data.Jobs}}
+<table>
+<tr><th>When</th><th>Source</th><th>Input</th><th>Status</th><th>Detail</th></tr>
+{{range .Data.Jobs}}<tr><td>{{.When}}</td><td>{{.Source}}</td><td>{{.Input}}</td><td>{{.Status}}</td><td>{{.Detail}}</td></tr>
+{{end}}</table>
+{{else}}<p>Nothing ingested yet. Drop audio files into the Inbox.</p>{{end}}
+{{end}}

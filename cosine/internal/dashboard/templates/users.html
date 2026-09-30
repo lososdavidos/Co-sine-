@@ -1,0 +1,15 @@
+{{define "content"}}
+<table>
+<tr><th>Name</th><th>Role</th><th>Tracks</th><th></th></tr>
+{{range .Data.Users}}<tr><td>{{.Name}}</td><td>{{if .IsAdmin}}Admin{{else}}Member{{end}}</td><td>{{.Tracks}}</td>
+<td>{{if not .Self}}<form method="post" action="/users/{{.ID}}/delete"><button>Delete account {{.Name}}</button></form>{{end}}</td></tr>
+{{end}}</table>
+<p>Deleting an account removes its library, playlists and history. Its music stays in the Store.</p>
+<h2>New account</h2>
+<form method="post" action="/users">
+<label>Username<br><input name="username" required autocomplete="off"></label>
+<label>Password<br><input name="password" type="password" required autocomplete="new-password"></label>
+<label><input type="checkbox" name="admin"> Admin</label>
+<button>Create account</button>
+</form>
+{{end}}

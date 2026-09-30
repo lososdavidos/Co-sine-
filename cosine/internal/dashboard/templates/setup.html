@@ -1,0 +1,13 @@
+{{define "content"}}
+<p>Cosine has no accounts yet. Choose where music lives and create the admin account.</p>
+<form method="post" action="/setup">
+<label>Store path — the folder that will hold every audio file. Only Cosine writes here.
+<br><input name="store" value="{{.Form.store}}" size="50" required placeholder="/srv/music/store"></label>
+<label>Inbox path — drop files here and they are filed into the Store.
+<br><input name="inbox" value="{{.Form.inbox}}" size="50" required placeholder="/srv/music/inbox"></label>
+<label>Admin username<br><input name="username" value="{{.Form.username}}" required autocomplete="username"></label>
+<label>Password<br><input name="password" type="password" required autocomplete="new-password"></label>
+<label>Password again<br><input name="password2" type="password" required autocomplete="new-password"></label>
+<button>Set up Cosine</button>
+</form>
+{{end}}

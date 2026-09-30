@@ -18,3 +18,8 @@ docs/spec/sine-cosine.html
 
 # OS
 .DS_Store
+
+# Cosine local runs
+cosine/data/
+cosine/dist/
+cosine/cosine
