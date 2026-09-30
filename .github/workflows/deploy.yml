@@ -58,3 +58,20 @@ jobs:
             ./deploy/install.sh --uninstall --purge
             test ! -e /opt/cosine && test ! -e /var/lib/cosine && test -d /srv/music/store
           '
+
+  # The path people actually take: no local binary, Cosine downloaded from
+  # the latest published release and checked against its SHA256SUMS.
+  from-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install from the latest release in debian:trixie
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src debian:trixie bash -euxc '
+            apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
+            ./deploy/install.sh --no-deno
+            /opt/cosine/bin/cosine -version | grep -q "^v"
+            runuser -u cosine -- env $(grep -v "^#" /etc/cosine/cosine.env | xargs) /opt/cosine/bin/cosine &
+            for i in $(seq 1 20); do curl -fsS localhost:4534/cosine/v1/capabilities && break; sleep 0.5; done
+            curl -fsS -o /dev/null -w "%{http_code}" localhost:4534/ | grep -q 303
+          '

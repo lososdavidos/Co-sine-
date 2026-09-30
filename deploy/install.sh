@@ -111,11 +111,18 @@ done
 
 [[ $EUID -eq 0 ]] || die "Run as root (inside the container: 'pct enter <id>', then run this)."
 
-# shellcheck source=/dev/null
-. /etc/os-release
-case " ${ID:-} ${ID_LIKE:-} " in
+# Read os-release in subshells: sourcing it here would overwrite our own
+# variables (it defines VERSION, among others).
+os_field() { (
+	# shellcheck source=/dev/null
+	. /etc/os-release && eval "printf '%s' \"\${$1:-}\""
+); }
+OS_ID="$(os_field ID)"
+OS_LIKE="$(os_field ID_LIKE)"
+OS_NAME="$(os_field PRETTY_NAME)"
+case " $OS_ID $OS_LIKE " in
 *" debian "* | *" ubuntu "*) ;;
-*) die "Only Debian and Ubuntu are supported (found ${PRETTY_NAME:-unknown})." ;;
+*) die "Only Debian and Ubuntu are supported (found ${OS_NAME:-unknown})." ;;
 esac
 
 case "$(uname -m)" in
@@ -462,7 +469,7 @@ start_services() {
 
 # ---------------------------------------------------------------- run
 
-step "Cosine installer ($PRETTY_NAME, $ARCH, $(
+step "Cosine installer ($OS_NAME, $ARCH, $(
 	case "$CONTAINER" in
 	none) echo "not a container" ;;
 	*) [[ $UNPRIVILEGED -eq 1 ]] && echo "unprivileged $CONTAINER" || echo "privileged $CONTAINER" ;;
