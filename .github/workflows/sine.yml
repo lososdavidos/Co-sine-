@@ -30,14 +30,14 @@ jobs:
       - name: Core tests
         run: ./gradlew :core:test --stacktrace
 
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Build APKs
+        run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: sine-debug-apk
-          path: sine/app/build/outputs/apk/debug/*.apk
+          path: sine/app/build/outputs/apk/*/*.apk
           if-no-files-found: error
 
       - name: Upload test reports

@@ -14,13 +14,31 @@ android {
         applicationId = "app.sine"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // Release builds pass these from the tag (see .github/workflows/release.yml).
+        versionCode = (findProperty("sineVersionCode") as String?)?.toInt() ?: 1
+        versionName = (findProperty("sineVersionName") as String?) ?: "0.0.0-dev"
+    }
+
+    signingConfigs {
+        // A fixed key committed to the repo, so every test build (local or CI)
+        // installs over the previous one instead of demanding an uninstall,
+        // which would lose accounts and the downloads index. It protects
+        // nothing: a store release needs its own key, kept out of the repo.
+        create("testing") {
+            storeFile = file("testing.keystore")
+            storePassword = "android"
+            keyAlias = "sine-testing"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("testing")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("testing")
         }
     }
 

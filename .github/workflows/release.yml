@@ -1,7 +1,8 @@
 name: Release
 
-# Push a tag like v0.2.0 to publish static Cosine binaries, their checksums
-# and the installer as a GitHub release. The installer downloads from here.
+# Push a tag like v0.2.0 to publish a release: static Cosine binaries, the
+# installer, and an installable Sine APK, with one checksum file for all.
+# The installer downloads from here.
 on:
   push:
     tags: ["v*"]
@@ -10,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  cosine:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,9 +37,60 @@ jobs:
               -o ../dist/cosine-linux-$arch ./cmd/cosine
           done
           cp ../deploy/install.sh ../dist/install.sh
-          cd ../dist && sha256sum cosine-linux-* install.sh > SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cosine
+          path: dist/
+
+  sine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test and build the APK
+        working-directory: sine
+        run: |
+          ./gradlew :core:test :app:assembleRelease \
+            -PsineVersionName="${GITHUB_REF_NAME#v}" -PsineVersionCode="${GITHUB_RUN_NUMBER}"
+          mkdir -p ../dist
+          cp app/build/outputs/apk/release/app-release.apk "../dist/sine-${GITHUB_REF_NAME}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sine
+          path: dist/
+
+  publish:
+    needs: [cosine, sine]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
+          body: |
+            **Server (Proxmox LXC or any Debian/Ubuntu):** inside the container, run
+            ```sh
+            bash -c "$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh)"
+            ```
+            then open `http://<container-ip>:4534/` to set it up. Guide: [deploy/README.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/deploy/README.md).
+
+            **Android:** download `sine-${{ github.ref_name }}.apk` on the phone and install it (allow installs from your browser when asked). Later releases install over it.
+
+            This is a testing build: signed with a key committed to the repository, not a store key.
