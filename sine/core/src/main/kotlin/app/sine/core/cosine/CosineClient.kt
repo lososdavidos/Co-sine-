@@ -68,6 +68,8 @@ data class IngestJob(
 @Serializable private data class JobsResponse(val jobs: List<IngestJob>)
 @Serializable private data class JobResponse(val job: IngestJob)
 @Serializable private data class ErrorResponse(val error: String)
+@Serializable private data class CandidatesResponse(val candidates: List<Candidate> = emptyList())
+@Serializable private data class ChooseRequest(val query: ReviewQuery, val key: String)
 @Serializable private data class CapabilitiesResponse(val version: String, val capabilities: Set<String> = emptySet())
 
 /**
@@ -101,6 +103,24 @@ class CosineClient(
 
     suspend fun retry(jobId: Long, force: Boolean = false): IngestJob =
         send(post("ingest/jobs/$jobId/retry", RetryRequest.serializer(), RetryRequest(force)), JobResponse.serializer()).job
+
+    suspend fun reviewQueue(limit: Int = 200, offset: Int = 0): ReviewPage =
+        send(get("review", "limit" to limit.toString(), "offset" to offset.toString()), ReviewPage.serializer())
+
+    suspend fun reviewItem(trackId: String): ReviewItem =
+        send(get("review/$trackId"), ReviewItem.serializer())
+
+    suspend fun candidates(trackId: String, query: ReviewQuery = ReviewQuery()): List<Candidate> =
+        send(post("review/$trackId/candidates", ReviewQuery.serializer(), query), CandidatesResponse.serializer()).candidates
+
+    suspend fun choose(trackId: String, query: ReviewQuery, key: String): ReviewItem =
+        send(post("review/$trackId/choose", ChooseRequest.serializer(), ChooseRequest(query, key)), ReviewItem.serializer())
+
+    suspend fun correct(trackId: String, identity: ManualIdentity): ReviewItem =
+        send(post("review/$trackId/correct", ManualIdentity.serializer(), identity), ReviewItem.serializer())
+
+    suspend fun confirm(trackId: String): ReviewItem =
+        send(Request.Builder().url(url("review/$trackId/confirm")).post(ByteArray(0).toRequestBody(JSON)), ReviewItem.serializer())
 
     private fun url(path: String, vararg query: Pair<String, String>): HttpUrl =
         base.newBuilder().addPathSegments("cosine/v1/$path").apply {

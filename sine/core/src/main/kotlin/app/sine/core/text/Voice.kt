@@ -15,6 +15,7 @@ object Voice {
     const val TRACK_UNAVAILABLE = "Not downloaded. Reconnect to play."
     const val NO_SEARCH_RESULTS = "No matches in your library."
     const val NO_DOWNLOADS = "Nothing downloaded yet."
+    const val NOTHING_TO_REVIEW = "Nothing to review."
     const val CHOOSE_DOWNLOAD_FOLDER = "Choose a folder for downloads first."
 
     fun downloadQueued(count: Int) =

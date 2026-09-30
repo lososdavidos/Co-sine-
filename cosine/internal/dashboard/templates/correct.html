@@ -1,0 +1,47 @@
+{{define "content"}}
+{{with .Data}}
+<h2>Now</h2>
+<table>
+<tr><th>Artist</th><td>{{.Item.Identity.Artist}}</td></tr>
+{{if .Item.Identity.TrackArtist}}<tr><th>Track artist</th><td>{{.Item.Identity.TrackArtist}}</td></tr>{{end}}
+<tr><th>Release</th><td>{{.Item.Identity.Release}}</td></tr>
+<tr><th>Title</th><td>{{.Item.Identity.Title}}</td></tr>
+<tr><th>Source</th><td>{{.Item.Why}}{{if .Item.Identity.Reviewed}} Reviewed.{{end}}</td></tr>
+{{range .Item.Files}}<tr><th>File</th><td>{{.Path}} · {{duration .DurationSec}} · {{.Source}}{{if .SourceURL}} · <a href="{{.SourceURL}}" rel="noreferrer">page</a>{{end}}</td></tr>{{end}}
+</table>
+{{if not .Item.Identity.Reviewed}}<form method="post" action="/review/{{.Item.TrackID}}/confirm"><button>It's right as it is</button></form>{{end}}
+
+<h2>Matches</h2>
+<form method="get" action="/review/{{.Item.TrackID}}">
+<label>Artist <input name="artist" value="{{.Query.Artist}}"></label>
+<label>Title <input name="title" value="{{.Query.Title}}"></label>
+<label>Album <input name="album" value="{{.Query.Album}}"></label>
+<button>Search MusicBrainz</button>
+</form>
+{{if .CandidateError}}<p>{{.CandidateError}}</p>{{end}}
+{{if .Candidates}}
+<table>
+<tr><th>Artist</th><th>Release</th><th>#</th><th>Title</th><th>Year</th><th>Match</th><th>From</th><th></th></tr>
+{{range .Candidates}}<tr>
+<td>{{.Artist}}{{if .TrackArtist}} ({{.TrackArtist}}){{end}}</td><td>{{.Release}}</td><td>{{if .TrackNo}}{{.TrackNo}}{{end}}</td>
+<td>{{.Title}}</td><td>{{if .Year}}{{.Year}}{{end}}</td><td>{{percent .Confidence}}</td>
+<td><a href="https://musicbrainz.org/release/{{.IDs.MBRelease}}" rel="noreferrer">MusicBrainz</a></td>
+<td><form method="post" action="/review/{{$.Data.Item.TrackID}}/choose">
+<input type="hidden" name="key" value="{{key .}}">
+<input type="hidden" name="artist" value="{{$.Data.Query.Artist}}"><input type="hidden" name="title" value="{{$.Data.Query.Title}}"><input type="hidden" name="album" value="{{$.Data.Query.Album}}">
+<button>Use this</button></form></td></tr>
+{{end}}</table>
+{{else if not .CandidateError}}<p>No matches. For unreleased material, type the details below.</p>{{end}}
+
+<h2>Type it yourself</h2>
+<form method="post" action="/review/{{.Item.TrackID}}/correct">
+<label>Artist <input name="artist" value="{{.Item.Identity.Artist}}" required></label>
+<label>Release <input name="release" value="{{.Item.Identity.Release}}" placeholder="Leave empty for a single"></label>
+<label>Title <input name="title" value="{{.Item.Identity.Title}}" required></label>
+<label>Track number <input name="trackNo" value="{{if .Item.Identity.TrackNo}}{{.Item.Identity.TrackNo}}{{end}}" size="4"></label>
+<label>Year <input name="year" value="{{if .Item.Identity.Year}}{{.Item.Identity.Year}}{{end}}" size="6"></label>
+<button>Save</button>
+</form>
+<p>Corrections apply for every account and move the files to match.</p>
+{{end}}
+{{end}}

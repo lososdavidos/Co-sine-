@@ -13,7 +13,7 @@
 
 Downloads are checked against their published SHA-256 checksums before anything is installed.
 
-The metadata sources planned next (MusicBrainz, Discogs, Bandcamp) are web lookups built into Cosine, so they need nothing installed here. Anything that ever does will be added to the installer, and rerunning it picks it up.
+Metadata lookups (MusicBrainz and the Cover Art Archive now, Discogs and Bandcamp later) are web lookups built into Cosine, so they need nothing installed here. The container does need outbound HTTPS to musicbrainz.org and coverartarchive.org. Anything that ever does will be added to the installer, and rerunning it picks it up.
 
 ## 1. Create the container
 

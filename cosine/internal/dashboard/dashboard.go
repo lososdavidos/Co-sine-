@@ -21,6 +21,8 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 )
 
@@ -40,6 +42,7 @@ type Dashboard struct {
 	Fetcher      *fetch.Fetcher
 	Search       *search.Service
 	YtDlpVersion string
+	Review       *review.Service
 
 	pages map[string]*template.Template
 }
@@ -55,13 +58,17 @@ type page struct {
 
 func (d *Dashboard) Handler() http.Handler {
 	d.pages = map[string]*template.Template{}
-	funcs := template.FuncMap{"duration": func(sec int) string {
-		if sec <= 0 {
-			return ""
-		}
-		return fmt.Sprintf("%d:%02d", sec/60, sec%60)
-	}}
-	for _, name := range []string{"setup", "login", "status", "users", "settings", "add"} {
+	funcs := template.FuncMap{
+		"duration": func(sec int) string {
+			if sec <= 0 {
+				return ""
+			}
+			return fmt.Sprintf("%d:%02d", sec/60, sec%60)
+		},
+		"percent": func(f float64) string { return fmt.Sprintf("%d%%", int(f*100+0.5)) },
+		"key":     review.CandidateKey,
+	}
+	for _, name := range []string{"setup", "login", "status", "users", "settings", "add", "review", "correct", "corrections"} {
 		d.pages[name] = template.Must(template.New(name).Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
 	}
 	mux := http.NewServeMux()
@@ -81,6 +88,16 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /add", d.admin(d.addForm))
 	mux.HandleFunc("POST /add", d.admin(d.add))
 	mux.HandleFunc("POST /jobs/{id}/retry", d.admin(d.retry))
+	if d.Review != nil {
+		mux.HandleFunc("GET /review", d.admin(d.reviewList))
+		mux.HandleFunc("POST /review/bulk", d.admin(d.reviewBulk))
+		mux.HandleFunc("GET /review/{track}", d.admin(d.reviewTrack))
+		mux.HandleFunc("POST /review/{track}/choose", d.admin(d.reviewChoose))
+		mux.HandleFunc("POST /review/{track}/correct", d.admin(d.reviewCorrect))
+		mux.HandleFunc("POST /review/{track}/confirm", d.admin(d.reviewConfirm))
+		mux.HandleFunc("GET /corrections", d.admin(d.corrections))
+		mux.HandleFunc("POST /corrections/{id}/revert", d.admin(d.revert))
+	}
 	return d.guard(mux)
 }
 
@@ -565,4 +582,163 @@ func (d *Dashboard) retry(w http.ResponseWriter, r *http.Request, u auth.User) {
 		return
 	}
 	done(w, r, "/", "Requeued.")
+}
+
+// ---------------------------------------------------------------- review
+
+type reviewData struct {
+	Items    []review.Item
+	Total    int
+	Progress review.Progress
+}
+
+func (d *Dashboard) reviewList(w http.ResponseWriter, r *http.Request, u auth.User) {
+	items, total, err := d.Review.Queue(r.Context(), u, 200, 0)
+	if err != nil {
+		http.Error(w, "Database error.", http.StatusInternalServerError)
+		return
+	}
+	d.render(w, "review", page{Title: "Review", User: &u, Done: r.URL.Query().Get("done"),
+		Data: reviewData{Items: items, Total: total, Progress: d.Review.Progress()}})
+}
+
+func (d *Dashboard) reviewBulk(w http.ResponseWriter, r *http.Request, u auth.User) {
+	r.ParseForm()
+	var ids []int64
+	for _, raw := range r.Form["track"] {
+		if id, ok := review.ParseTrack(raw); ok {
+			ids = append(ids, id)
+		}
+	}
+	switch r.FormValue("action") {
+	case "confirm":
+		for _, id := range ids {
+			if _, err := d.Review.Confirm(r.Context(), u, id); err != nil {
+				done(w, r, "/review", err.Error())
+				return
+			}
+		}
+		done(w, r, "/review", fmt.Sprintf("Confirmed %d.", len(ids)))
+	case "reresolve", "reresolve-all":
+		if r.FormValue("action") == "reresolve-all" {
+			ids = nil
+		} else if len(ids) == 0 {
+			done(w, r, "/review", "Nothing selected.")
+			return
+		}
+		if err := d.Review.Reresolve(ids); err != nil {
+			done(w, r, "/review", err.Error())
+			return
+		}
+		done(w, r, "/review", "Re-resolving in the background.")
+	default:
+		done(w, r, "/review", "Nothing to do.")
+	}
+}
+
+type correctData struct {
+	Item           review.Item
+	Query          review.Query
+	Candidates     []resolve.Result
+	CandidateError string
+}
+
+func (d *Dashboard) reviewTrack(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, ok := review.ParseTrack(r.PathValue("track"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	d.renderCorrect(w, r, u, id, "")
+}
+
+func (d *Dashboard) renderCorrect(w http.ResponseWriter, r *http.Request, u auth.User, id int64, errMsg string) {
+	item, err := d.Review.Item(r.Context(), u, id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	qv := r.URL.Query()
+	q := review.Query{Artist: qv.Get("artist"), Title: qv.Get("title"), Album: qv.Get("album")}
+	data := correctData{Item: item, Query: q}
+	if data.Query == (review.Query{}) {
+		data.Query = review.Query{Artist: item.Identity.ArtistOfTrack(), Title: item.Identity.Title}
+		if item.Identity.Release != item.Identity.Title {
+			data.Query.Album = item.Identity.Release
+		}
+	}
+	data.Candidates, err = d.Review.Candidates(r.Context(), u, id, q)
+	if err != nil {
+		data.CandidateError = "MusicBrainz is unavailable (" + err.Error() + "). You can still type the details yourself."
+	}
+	d.render(w, "correct", page{Title: item.Identity.Artist + " / " + item.Identity.Title, User: &u,
+		Error: errMsg, Done: qv.Get("done"), Data: data})
+}
+
+func (d *Dashboard) reviewChoose(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, ok := review.ParseTrack(r.PathValue("track"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := review.Query{Artist: r.FormValue("artist"), Title: r.FormValue("title"), Album: r.FormValue("album")}
+	item, err := d.Review.Choose(r.Context(), u, id, q, r.FormValue("key"))
+	if err != nil {
+		d.renderCorrect(w, r, u, id, err.Error())
+		return
+	}
+	done(w, r, "/review/"+item.TrackID, "Corrected: "+item.Identity.Artist+" / "+item.Identity.Title+".")
+}
+
+func (d *Dashboard) reviewCorrect(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, ok := review.ParseTrack(r.PathValue("track"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	num := func(k string) int { n, _ := strconv.Atoi(strings.TrimSpace(r.FormValue(k))); return n }
+	item, err := d.Review.Correct(r.Context(), u, id, resolve.Result{
+		Artist: strings.TrimSpace(r.FormValue("artist")), Release: strings.TrimSpace(r.FormValue("release")),
+		Title: strings.TrimSpace(r.FormValue("title")), TrackNo: num("trackNo"), Year: num("year"),
+	})
+	if err != nil {
+		d.renderCorrect(w, r, u, id, err.Error())
+		return
+	}
+	done(w, r, "/review/"+item.TrackID, "Saved.")
+}
+
+func (d *Dashboard) reviewConfirm(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, ok := review.ParseTrack(r.PathValue("track"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := d.Review.Confirm(r.Context(), u, id); err != nil {
+		d.renderCorrect(w, r, u, id, err.Error())
+		return
+	}
+	done(w, r, "/review", "Confirmed.")
+}
+
+func (d *Dashboard) corrections(w http.ResponseWriter, r *http.Request, u auth.User) {
+	hist, err := d.Review.History(r.Context(), 200)
+	if err != nil {
+		http.Error(w, "Database error.", http.StatusInternalServerError)
+		return
+	}
+	d.render(w, "corrections", page{Title: "Corrections", User: &u, Done: r.URL.Query().Get("done"), Data: hist})
+}
+
+func (d *Dashboard) revert(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := d.Review.Revert(r.Context(), u, id); err != nil {
+		done(w, r, "/corrections", err.Error())
+		return
+	}
+	done(w, r, "/corrections", "Reverted.")
 }

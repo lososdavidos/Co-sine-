@@ -34,7 +34,9 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Adding music from links:** paste a link or search in Sine's Add screen (the Library's top-right action on a Cosine account), share a link to Sine from any app, or use the dashboard. Cosine fetches it with yt-dlp and files it. Links shared while offline are kept and sent on reconnect.
 
-**Not yet built:** the review queue UI, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, remote control, Jam, and the desktop client.
+**Identifying music:** Cosine looks everything up in MusicBrainz and files it under the canonical artist and release, with the Cover Art Archive's cover. Anything it isn't sure of goes to the review queue (Sine: Library → Review; also in the dashboard). There you pick a match or type the details yourself. Every correction is logged and can be reverted.
+
+**Not yet built:** Discogs and Bandcamp lookups, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, remote control, Jam, and the desktop client.
 
 ## Design
 

@@ -39,7 +39,7 @@ object Capability {
     const val INGEST = "ingest"
     const val DELTA_SYNC = "delta-sync"
     const val CROSS_USER = "cross-user"
-    const val REVIEW_QUEUE = "review-queue"
+    const val REVIEW = "review"
     const val VERSION_PINS = "version-pins"
 }
 

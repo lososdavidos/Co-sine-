@@ -1,0 +1,13 @@
+{{define "content"}}
+<p>Every correction applies to everyone, so every one is recorded here. Revert undoes the most recent change to a track; older ones are undone in order.</p>
+{{if .Data}}
+<table>
+<tr><th>When</th><th>Who</th><th>What</th><th>Before</th><th>After</th><th></th></tr>
+{{range .Data}}<tr>
+<td>{{.At.Format "2006-01-02 15:04"}}</td><td>{{.Who}}</td><td>{{.Kind}}{{if .Merged}} (merged){{end}}{{if .Reverted}} (reverted){{end}}</td>
+<td>{{.Before.Artist}} / {{.Before.Release}} / {{.Before.Title}}</td>
+<td>{{.After.Artist}} / {{.After.Release}} / {{.After.Title}}</td>
+<td>{{if .Revertible}}<form method="post" action="/corrections/{{.ID}}/revert"><button>Revert</button></form>{{end}}</td></tr>
+{{end}}</table>
+{{else}}<p>No corrections yet.</p>{{end}}
+{{end}}

@@ -66,6 +66,8 @@ type Ingester struct {
 	Log             *slog.Logger
 	// Probe returns duration in seconds; nil or failure leaves it 0.
 	Probe func(path string) int
+	// Covers fetches a release's cover from the Cover Art Archive; nil disables it.
+	Covers func(ctx context.Context, releaseMBID, releaseGroupMBID string) ([]byte, string)
 
 	mu sync.Mutex // one ingest at a time: cheap on the P450 (G6), no filing races
 }
@@ -128,13 +130,7 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 		return Outcome{}, err
 	}
 
-	tags := resolve.ReadTags(req.Path)
-	res, err := g.Resolver.Resolve(ctx, resolve.Input{
-		Path: req.Path, OriginalName: req.OriginalName, Tags: tags, Source: req.SourceInfo,
-	})
-	if err != nil {
-		return Outcome{}, err
-	}
+	// Duration first: it is evidence for the online sources.
 	duration := 0
 	if g.Probe != nil {
 		duration = g.Probe(req.Path)
@@ -147,31 +143,30 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 		bitrate = int(size * 8 / int64(duration) / 1000)
 	}
 
+	tags := resolve.ReadTags(req.Path)
+	res, err := g.Resolver.Resolve(ctx, resolve.Input{
+		Path: req.Path, OriginalName: req.OriginalName, Tags: tags, Source: req.SourceInfo, DurationSec: duration,
+	})
+	if err != nil {
+		return Outcome{}, err
+	}
+	reviewed := !resolve.NeedsReview(res, g.ReviewThreshold)
+
 	tx, err := g.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return Outcome{}, err
 	}
 	defer tx.Rollback()
 
-	artistID, err := upsertID(ctx, tx,
-		"INSERT INTO artists(name) VALUES(?) ON CONFLICT(name) DO NOTHING", []any{res.Artist},
-		"SELECT id FROM artists WHERE name = ?", res.Artist)
+	id, err := upsertIdentity(ctx, tx, res, res.Tier == resolve.TierMusicBrainz && reviewed)
 	if err != nil {
 		return Outcome{}, err
 	}
-	releaseID, err := upsertID(ctx, tx,
-		"INSERT INTO releases(artist_id, title, year, created_at) VALUES(?, ?, NULLIF(?, 0), ?) ON CONFLICT(artist_id, title) DO NOTHING",
-		[]any{artistID, res.Release, res.Year, db.Now()},
-		"SELECT id FROM releases WHERE artist_id = ? AND title = ?", artistID, res.Release)
-	if err != nil {
-		return Outcome{}, err
-	}
-	reviewed := !resolve.NeedsReview(res, g.ReviewThreshold)
 	trackID, err := upsertID(ctx, tx,
-		`INSERT INTO tracks(release_id, artist_id, title, track_no, disc_no, resolver, tier, confidence, reviewed, created_at)
-		 VALUES(?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?, ?, ?) ON CONFLICT(release_id, title) DO NOTHING`,
-		[]any{releaseID, artistID, res.Title, res.TrackNo, res.DiscNo, res.Source, res.Tier, res.Confidence, reviewed, db.Now()},
-		"SELECT id FROM tracks WHERE release_id = ? AND title = ?", releaseID, res.Title)
+		`INSERT INTO tracks(release_id, artist_id, title, track_no, disc_no, resolver, tier, confidence, reviewed, mbid, created_at)
+		 VALUES(?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?, ?, NULLIF(?, ''), ?) ON CONFLICT(release_id, title) DO NOTHING`,
+		[]any{id.release, id.trackArtist, res.Title, res.TrackNo, res.DiscNo, res.Source, res.Tier, res.Confidence, reviewed, res.IDs.MBRecording, db.Now()},
+		"SELECT id FROM tracks WHERE release_id = ? AND title = ?", id.release, res.Title)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -207,13 +202,67 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 	if err := g.GrantPointers(ctx, trackID, req.ForUsers); err != nil {
 		return Outcome{}, err
 	}
-	switch {
-	case tags != nil && tags.Picture != nil:
-		g.saveArtwork(ctx, releaseID, tags.Picture.Ext, tags.Picture.Data)
-	case len(req.Artwork) > 0:
-		g.saveArtwork(ctx, releaseID, req.ArtworkExt, req.Artwork)
+	var embedded Art
+	if tags != nil && tags.Picture != nil {
+		embedded = Art{Source: ArtEmbedded, Ext: tags.Picture.Ext, Data: tags.Picture.Data}
 	}
+	g.offerArtwork(ctx, id.release, res.IDs,
+		embedded, Art{Source: ArtSource, Ext: req.ArtworkExt, Data: req.Artwork})
 	return Outcome{TrackID: trackID, Hash: hash, RelPath: rel}, nil
+}
+
+type identityIDs struct {
+	artist, trackArtist, release int64
+}
+
+// upsertIdentity finds or creates the artist(s) and release for an
+// identity, recording catalogue IDs the first time they're known. Names
+// match regardless of case; an authoritative identity (a person's
+// correction, a catalogue match) also fixes the stored spelling.
+func upsertIdentity(ctx context.Context, tx *sql.Tx, res resolve.Result, authoritative bool) (identityIDs, error) {
+	var id identityIDs
+	artist := func(name, mbid string) (int64, error) {
+		n, err := upsertID(ctx, tx,
+			"INSERT INTO artists(name, mbid) VALUES(?, NULLIF(?, '')) ON CONFLICT(name) DO NOTHING", []any{name, mbid},
+			"SELECT id FROM artists WHERE name = ?", name)
+		if err == nil && mbid != "" {
+			_, err = tx.ExecContext(ctx, "UPDATE artists SET mbid = ? WHERE id = ? AND mbid IS NULL", mbid, n)
+		}
+		if err == nil && authoritative {
+			_, err = tx.ExecContext(ctx, "UPDATE artists SET name = ? WHERE id = ? AND name COLLATE BINARY != ?", name, n, name)
+		}
+		return n, err
+	}
+	var err error
+	if id.artist, err = artist(res.Artist, res.IDs.MBArtist); err != nil {
+		return id, err
+	}
+	id.trackArtist = id.artist
+	if res.TrackArtist != "" && res.TrackArtist != res.Artist {
+		if id.trackArtist, err = artist(res.TrackArtist, ""); err != nil {
+			return id, err
+		}
+	}
+	id.release, err = upsertID(ctx, tx,
+		`INSERT INTO releases(artist_id, title, year, mbid, release_group_mbid, created_at)
+		 VALUES(?, ?, NULLIF(?, 0), NULLIF(?, ''), NULLIF(?, ''), ?) ON CONFLICT(artist_id, title) DO NOTHING`,
+		[]any{id.artist, res.Release, res.Year, res.IDs.MBRelease, res.IDs.MBReleaseGroup, db.Now()},
+		"SELECT id FROM releases WHERE artist_id = ? AND title = ?", id.artist, res.Release)
+	if err != nil {
+		return id, err
+	}
+	if authoritative {
+		if _, err := tx.ExecContext(ctx, "UPDATE releases SET title = ? WHERE id = ? AND title COLLATE BINARY != ?",
+			res.Release, id.release, res.Release); err != nil {
+			return id, err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE releases SET
+		mbid = COALESCE(mbid, NULLIF(?, '')),
+		release_group_mbid = COALESCE(release_group_mbid, NULLIF(?, '')),
+		year = COALESCE(year, NULLIF(?, 0))
+		WHERE id = ?`, res.IDs.MBRelease, res.IDs.MBReleaseGroup, res.Year, id.release)
+	return id, err
 }
 
 // Undismiss lifts the dismissed marker for users who explicitly asked for a Track again.
@@ -270,12 +319,46 @@ func (g *Ingester) GrantPointers(ctx context.Context, trackID int64, users []int
 	return tx.Commit()
 }
 
-func (g *Ingester) saveArtwork(ctx context.Context, releaseID int64, ext string, data []byte) {
-	var existing sql.NullString
-	if err := g.DB.QueryRowContext(ctx, "SELECT art_path FROM releases WHERE id = ?", releaseID).Scan(&existing); err != nil || existing.Valid {
+// Artwork sources, best first (§3.2a): the resolved release's cover, then
+// art embedded in the file, then the source site's thumbnail. User-set
+// covers are per account and sit above all of these.
+const (
+	ArtCAA      = "caa"
+	ArtEmbedded = "embedded"
+	ArtSource   = "source"
+)
+
+var artRank = map[string]int{ArtCAA: 3, ArtEmbedded: 2, ArtSource: 1}
+
+type Art struct {
+	Source, Ext string
+	Data        []byte
+}
+
+// offerArtwork gives a release the best cover available, replacing one from
+// a worse source. The Cover Art Archive is asked only when it could win.
+func (g *Ingester) offerArtwork(ctx context.Context, releaseID int64, ids resolve.IDs, local ...Art) {
+	var current sql.NullString
+	if err := g.DB.QueryRowContext(ctx, "SELECT art_source FROM releases WHERE id = ?", releaseID).Scan(&current); err != nil {
 		return
 	}
-	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+	have := artRank[current.String]
+	if have < artRank[ArtCAA] && g.Covers != nil && (ids.MBRelease != "" || ids.MBReleaseGroup != "") {
+		if data, ext := g.Covers(ctx, ids.MBRelease, ids.MBReleaseGroup); data != nil {
+			g.saveArtwork(ctx, releaseID, Art{Source: ArtCAA, Ext: ext, Data: data})
+			return
+		}
+	}
+	for _, a := range local {
+		if len(a.Data) > 0 && artRank[a.Source] > have {
+			g.saveArtwork(ctx, releaseID, a)
+			return
+		}
+	}
+}
+
+func (g *Ingester) saveArtwork(ctx context.Context, releaseID int64, a Art) {
+	ext := strings.ToLower(strings.TrimPrefix(a.Ext, "."))
 	if ext == "" || ext == "jpeg" {
 		ext = "jpg"
 	}
@@ -284,11 +367,19 @@ func (g *Ingester) saveArtwork(ctx context.Context, releaseID int64, ext string,
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return
 	}
-	if err := os.WriteFile(full, data, 0o644); err != nil {
-		g.Log.Warn("could not save artwork", "err", err)
+	tmp := full + ".tmp"
+	if err := os.WriteFile(tmp, a.Data, 0o644); err != nil || os.Rename(tmp, full) != nil {
+		os.Remove(tmp)
+		g.Log.Warn("could not save artwork", "release", releaseID)
 		return
 	}
-	g.DB.ExecContext(ctx, "UPDATE releases SET art_path = ? WHERE id = ?", filepath.ToSlash(rel), releaseID)
+	var old sql.NullString
+	g.DB.QueryRowContext(ctx, "SELECT art_path FROM releases WHERE id = ?", releaseID).Scan(&old)
+	if old.Valid && old.String != filepath.ToSlash(rel) {
+		os.Remove(filepath.Join(g.DataDir, filepath.FromSlash(old.String)))
+	}
+	g.DB.ExecContext(ctx, "UPDATE releases SET art_path = ?, art_source = ? WHERE id = ?",
+		filepath.ToSlash(rel), a.Source, releaseID)
 }
 
 func (g *Ingester) startJob(ctx context.Context, req Request) (int64, error) {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 )
 
 // Capability names. Sine hides whatever a server does not list.
@@ -24,6 +25,7 @@ const CapIngest = "ingest"
 type API struct {
 	Auth    *auth.Service
 	Fetcher *fetch.Fetcher // nil when yt-dlp is unavailable
+	Review  *review.Service
 	Version string
 	Log     *slog.Logger
 }
@@ -32,6 +34,9 @@ func (a *API) capabilities() []string {
 	caps := []string{}
 	if a.Fetcher != nil && a.Fetcher.Runner.Available() {
 		caps = append(caps, CapIngest)
+	}
+	if a.Review != nil {
+		caps = append(caps, CapReview)
 	}
 	return caps
 }
@@ -46,6 +51,9 @@ func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /cosine/v1/ingest", a.authed(a.ingest(a.submit)))
 	mux.HandleFunc("GET /cosine/v1/ingest/jobs", a.authed(a.ingest(a.jobs)))
 	mux.HandleFunc("POST /cosine/v1/ingest/jobs/{id}/retry", a.authed(a.ingest(a.retry)))
+	if a.Review != nil {
+		a.registerReview(mux)
+	}
 }
 
 type handler func(w http.ResponseWriter, r *http.Request, u auth.User)

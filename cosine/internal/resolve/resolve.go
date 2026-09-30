@@ -30,6 +30,7 @@ type Input struct {
 	OriginalName string      // the name it arrived with
 	Tags         *Tags       // nil when the file has no readable tags
 	Source       *SourceInfo // nil unless fetched from a URL
+	DurationSec  int         // 0 when unknown; matching evidence for online sources
 }
 
 // SourceInfo is what the site a file came from says about it (yt-dlp's
@@ -50,15 +51,35 @@ type Tags struct {
 
 // Result is a resolved identity.
 type Result struct {
-	Artist     string
-	Release    string
-	Title      string
-	TrackNo    int
-	DiscNo     int
-	Year       int
-	Source     string
-	Tier       int
-	Confidence float64 // 0..1
+	Artist  string `json:"artist"`  // the release's artist: the folder the Track is filed under
+	Release string `json:"release"` // a single is a release named after its one track (§2.2)
+	Title   string `json:"title"`
+	// TrackArtist is the track's own credit when it differs from the
+	// release's, as on a compilation filed under Various Artists (Q74).
+	TrackArtist string  `json:"trackArtist,omitempty"`
+	TrackNo     int     `json:"trackNo,omitempty"`
+	DiscNo      int     `json:"discNo,omitempty"`
+	Year        int     `json:"year,omitempty"`
+	Source      string  `json:"source"` // which source identified it
+	Tier        int     `json:"tier"`
+	Confidence  float64 `json:"confidence"` // 0..1
+	IDs         IDs     `json:"ids,omitzero"`
+}
+
+// IDs are identifiers in outside catalogues. Empty unless the source has them.
+type IDs struct {
+	MBRecording    string `json:"mbRecording,omitempty"`
+	MBRelease      string `json:"mbRelease,omitempty"`
+	MBReleaseGroup string `json:"mbReleaseGroup,omitempty"`
+	MBArtist       string `json:"mbArtist,omitempty"`
+}
+
+// ArtistOfTrack is the credit shown on the track itself.
+func (r Result) ArtistOfTrack() string {
+	if r.TrackArtist != "" {
+		return r.TrackArtist
+	}
+	return r.Artist
 }
 
 // Resolver is one source in the chain.

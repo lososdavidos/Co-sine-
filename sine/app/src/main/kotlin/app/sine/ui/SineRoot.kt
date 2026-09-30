@@ -68,11 +68,14 @@ object Routes {
     const val SETTINGS = "settings"
     const val ADD_ACCOUNT = "add-account"
     const val ADD = "add?text={text}"
+    const val REVIEW = "review"
+    const val CORRECT = "review/{track}"
 
     fun artist(id: String) = "artist/${Uri.encode(id)}"
     fun album(id: String) = "album/${Uri.encode(id)}"
     fun playlist(id: String) = "playlist/${Uri.encode(id)}"
     fun add(text: String = "") = "add?text=${Uri.encode(text)}"
+    fun correct(track: String) = "review/${Uri.encode(track)}"
 }
 
 @Composable
@@ -131,6 +134,7 @@ private fun MainScaffold(session: AccountSession) {
     val offline = !network.connected || !reachable
     val account by session.accountFlow.collectAsStateWithLifecycle()
     val canIngest = session.cosine != null && Capability.INGEST in account.kind.capabilities
+    val canReview = session.cosine != null && Capability.REVIEW in account.kind.capabilities
     val share by graph.incomingShare.collectAsStateWithLifecycle()
 
     // Open Add with the shared text once this is the share target's scaffold.
@@ -157,6 +161,10 @@ private fun MainScaffold(session: AccountSession) {
                     actions = {
                         // Add lives on the Library, not in the navigation (§6.2), and
                         // only where the server can ingest: compat mode hides it (§2.1).
+                        // The review queue sits beside Add in the Library header (§6.12).
+                        if (route == Routes.LIBRARY && canReview) {
+                            TextButton(onClick = { nav.navigate(Routes.REVIEW) }) { Text("Review") }
+                        }
                         if (route == Routes.LIBRARY && canIngest) {
                             IconButton(onClick = { nav.navigate(Routes.add()) }) {
                                 Icon(Icons.Default.Add, contentDescription = "Add music")
@@ -221,6 +229,10 @@ private fun MainScaffold(session: AccountSession) {
                     Routes.ADD,
                     arguments = listOf(navArgument("text") { type = NavType.StringType; defaultValue = "" }),
                 ) { AddScreen(session, it.arguments?.getString("text").orEmpty()) }
+                composable(Routes.REVIEW) { ReviewScreen(session, onOpen = { nav.navigate(Routes.correct(it)) }) }
+                composable(Routes.CORRECT, arguments = listOf(navArgument("track") { type = NavType.StringType })) {
+                    CorrectionScreen(session, it.arguments?.getString("track").orEmpty(), onDone = { nav.popBackStack() })
+                }
                 composable(Routes.ADD_ACCOUNT) {
                     AddAccountScreen(onDone = { nav.popBackStack() }, onCancel = { nav.popBackStack() })
                 }
@@ -242,6 +254,8 @@ private fun titleFor(route: String?) = when (route) {
     Routes.SETTINGS -> "Settings"
     Routes.ADD_ACCOUNT -> "Add account"
     Routes.ADD -> "Add music"
+    Routes.REVIEW -> "Review"
+    Routes.CORRECT -> "Correct"
     else -> ""
 }
 

@@ -146,3 +146,51 @@ class SharesTest {
         file.delete()
     }
 }
+
+class ReviewClientTest {
+    private val server = MockWebServer()
+
+    @AfterTest
+    fun tearDown() = server.close()
+
+    @Test
+    fun `review round trip`() = runTest {
+        val bodies = mutableListOf<String>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.url.encodedPath
+                bodies += "$path ${request.body?.utf8() ?: ""}"
+                val body = when (path) {
+                    "/cosine/v1/auth" -> """{"token":"t"}"""
+                    "/cosine/v1/review" -> """{"total":1,"items":[{"trackId":"tr-1","why":"Guessed from the file name.",
+                        "identity":{"artist":"skeler","release":"tides","title":"tides","source":"filename","tier":4,"confidence":0.2,"reviewed":false},
+                        "files":[{"path":"skeler/tides/tides.mp3","source":"inbox","sizeBytes":10,"durationSec":201}]}]}"""
+                    "/cosine/v1/review/tr-1/candidates" -> """{"candidates":[{"key":"rec/rel","artist":"Skeler","release":"Tides","title":"Tides",
+                        "year":2019,"source":"musicbrainz","tier":1,"confidence":0.92,"ids":{"mbRecording":"rec","mbRelease":"rel"}}]}"""
+                    else -> """{"trackId":"tr-1","why":"","identity":{"artist":"Skeler","release":"Tides","title":"Tides","reviewed":true},"files":[]}"""
+                }
+                return MockResponse.Builder().body(body).build()
+            }
+        }
+        server.start()
+        val c = CosineClient(server.url("/").toString(), SubsonicCredentials("a", "tok", "s"), OkHttpClient())
+
+        val page = c.reviewQueue()
+        assertEquals(1, page.total)
+        assertEquals("filename", page.items[0].identity.source)
+        assertEquals(201, page.items[0].files[0].durationSec)
+
+        val cands = c.candidates("tr-1", app.sine.core.cosine.ReviewQuery(album = "Tides EP"))
+        assertEquals("rec", cands[0].ids.mbRecording)
+        assertEquals(0.92, cands[0].confidence)
+
+        assertTrue(c.choose("tr-1", app.sine.core.cosine.ReviewQuery(), cands[0].key).identity.reviewed)
+        c.correct("tr-1", app.sine.core.cosine.ManualIdentity(artist = "Skeler", title = "Tides (VIP)"))
+        c.confirm("tr-1")
+
+        assertTrue(bodies.any { it.startsWith("/cosine/v1/review/tr-1/candidates") && it.contains("\"album\":\"Tides EP\"") })
+        assertTrue(bodies.any { it.startsWith("/cosine/v1/review/tr-1/choose") && it.contains("\"key\":\"rec/rel\"") })
+        assertTrue(bodies.any { it.startsWith("/cosine/v1/review/tr-1/correct") && it.contains("\"title\":\"Tides (VIP)\"") })
+        assertTrue(bodies.any { it.startsWith("/cosine/v1/review/tr-1/confirm") })
+    }
+}

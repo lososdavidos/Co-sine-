@@ -18,8 +18,10 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/inbox"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/musicbrainz"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/native"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/subsonic"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
@@ -63,23 +65,34 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{cfg: cfg, log: log, db: d}
+
+	// The resolver chain (§3.2): MusicBrainz, then the source's own
+	// metadata. Discogs and Bandcamp slot in between as they arrive.
+	const threshold = 0.8
+	lookups := &http.Client{Timeout: 30 * time.Second}
+	ua := musicbrainz.UserAgent(cfg.Version)
+	mb := &musicbrainz.Client{HTTP: lookups, DB: d, UserAgent: ua}
+	covers := musicbrainz.CoverArt{HTTP: lookups, UserAgent: ua}
 	s.ingester = &ingest.Ingester{
 		DB:              d,
 		DataDir:         cfg.DataDir,
-		ReviewThreshold: 0.8,
+		ReviewThreshold: threshold,
 		Log:             log,
 		Probe:           ingest.FFProbe(),
+		Covers:          covers.Front,
 		Resolver: resolve.Chain{
-			MinConfidence: 0.8,
-			Resolvers:     []resolve.Resolver{resolve.SourceMetadata{}},
+			MinConfidence: threshold,
+			Resolvers:     []resolve.Resolver{musicbrainz.Resolver{Client: mb}, resolve.SourceMetadata{}},
 		},
 	}
+	reviews := &review.Service{DB: d, Ingester: s.ingester, MB: mb, Threshold: threshold, Log: log.With("component", "review")}
 	if s.ingester.Probe == nil {
 		log.Warn("ffprobe not found: track durations will be 0 until it is installed")
 	}
 
 	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, OnInboxChange: s.startInbox, Log: log}
-	nativeAPI := &native.API{Auth: as, Version: cfg.Version, Log: log}
+	nativeAPI := &native.API{Auth: as, Review: reviews, Version: cfg.Version, Log: log}
+	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not
 	// advertised and Sine hides Add entirely (§2.1).

@@ -12,11 +12,15 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/musicbrainz"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/testutil"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
@@ -185,6 +189,52 @@ func TestAddMusicFromALink(t *testing.T) {
 	}
 	_, body = e.post(t, "/add", url.Values{"url": {"https://soundcloud.com/skeler/two"}})
 	if !strings.Contains(body, "Queued 1 link") || !strings.Contains(body, "soundcloud.com/skeler/two") {
+		t.Fatal(body)
+	}
+}
+
+func TestReviewAndRevertInTheDashboard(t *testing.T) {
+	e := setup(t)
+	mb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"recordings":[{"id":"rec","score":100,"title":"Tides","artist-credit":[{"name":"Skeler","artist":{"id":"a"}}],
+			"releases":[{"id":"rel","title":"Tides","status":"Official","release-group":{"id":"rg","primary-type":"Single"}}]}]}`))
+	}))
+	defer mb.Close()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	g := &ingest.Ingester{DB: e.db, DataDir: e.dir, ReviewThreshold: 0.8, Log: log,
+		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}}
+	e.dash.Ingester = g
+	e.dash.Review = &review.Service{DB: e.db, Ingester: g, Threshold: 0.8, Log: log,
+		MB: &musicbrainz.Client{HTTP: mb.Client(), BaseURL: mb.URL, UserAgent: "t", Interval: time.Millisecond}}
+	e.srv.Config.Handler = e.dash.Handler()
+	store := filepath.Join(e.dir, "s")
+	e.post(t, "/setup", e.setupForm(store, filepath.Join(e.dir, "i")))
+	drop := t.TempDir()
+	out, err := g.Ingest(context.Background(), ingest.Request{Path: testutil.MP3{Title: "tides", Artist: "skeler", Body: "x"}.
+		Write(t, filepath.Join(drop, "a.mp3")), Source: "inbox"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := "tr-" + itoa(out.TrackID)
+
+	_, body := e.get(t, "/review")
+	if !strings.Contains(body, "1 track to review") || !strings.Contains(body, "Read from the file") {
+		t.Fatal(body)
+	}
+	_, body = e.get(t, "/review/"+track)
+	if !strings.Contains(body, "Use this") || !strings.Contains(body, "92%") {
+		t.Fatal(body)
+	}
+	_, body = e.post(t, "/review/"+track+"/choose", url.Values{"key": {"rec/rel"}, "artist": {"skeler"}, "title": {"tides"}})
+	if !strings.Contains(body, "Corrected: Skeler / Tides") {
+		t.Fatal(body)
+	}
+	_, body = e.get(t, "/corrections")
+	if !strings.Contains(body, "skeler / tides / tides") || !strings.Contains(body, "Revert") {
+		t.Fatal(body)
+	}
+	_, body = e.post(t, "/corrections/1/revert", nil)
+	if !strings.Contains(body, "Reverted.") || strings.Count(body, ">Revert<") != 0 {
 		t.Fatal(body)
 	}
 }

@@ -1,0 +1,24 @@
+{{define "content"}}
+{{with .Data}}
+<p>{{.Total}} track{{if ne .Total 1}}s{{end}} to review. Each was identified from its own tags, file name or source page, or matched by MusicBrainz without enough certainty.</p>
+<p>Re-resolve asks MusicBrainz again (one lookup per second) and applies only confident matches. Every change is logged and can be reverted under <a href="/corrections">Corrections</a>.
+{{if .Progress.Running}}<br>Re-resolving: {{.Progress.Done}} of {{.Progress.Total}}, {{.Progress.Improved}} matched. <a href="/review">Refresh</a>.{{else if .Progress.Total}}<br>Last re-resolve: {{.Progress.Done}} of {{.Progress.Total}} checked, {{.Progress.Improved}} matched.{{end}}
+{{if .Progress.Error}}<br>{{.Progress.Error}}{{end}}</p>
+{{if .Items}}
+<form method="post" action="/review/bulk">
+<table>
+<tr><th></th><th>Artist</th><th>Release</th><th>Title</th><th>Why it's here</th><th>File</th></tr>
+{{range .Items}}<tr>
+<td><input type="checkbox" name="track" value="{{.TrackID}}"></td>
+<td>{{.Identity.Artist}}</td><td>{{.Identity.Release}}</td>
+<td><a href="/review/{{.TrackID}}">{{.Identity.Title}}</a></td><td>{{.Why}}</td>
+<td>{{with index .Files 0}}{{if .SourceURL}}<a href="{{.SourceURL}}" rel="noreferrer">{{.Source}}</a>{{else}}{{.Source}}{{end}}{{end}}</td></tr>
+{{end}}</table>
+<button name="action" value="confirm">Confirm selected as they are</button>
+<button name="action" value="reresolve">Re-resolve selected</button>
+<button name="action" value="reresolve-all">Re-resolve all {{.Total}}</button>
+</form>
+{{if gt .Total (len .Items)}}<p>Showing the first {{len .Items}}. Work through these to see more.</p>{{end}}
+{{else}}<p>Nothing to review.</p>{{end}}
+{{end}}
+{{end}}
