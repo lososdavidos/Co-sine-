@@ -1,0 +1,23 @@
+{{define "content"}}
+<form method="get" action="/add">
+<label>Paste a link, or search<br><input name="q" value="{{.Data.Query}}" size="60" required autofocus></label>
+<button>Look up</button>
+</form>
+{{with .Data.Lookup}}
+{{if eq .Kind "search"}}<p>Search results{{if eq .Backend "api"}} from the source APIs{{else}} from yt-dlp search{{end}}.</p>{{end}}
+{{if eq .Kind "collection"}}<p>{{.Title}}: {{len .Items}} tracks. Queue everything, or untick what you don't want.</p>{{end}}
+{{if .Items}}
+<form method="post" action="/add">
+<table>
+<tr><th></th><th>Title</th><th>By</th><th>Length</th><th>Plays</th><th>Source</th><th></th></tr>
+{{range .Items}}<tr>
+<td><input type="checkbox" name="url" value="{{.URL}}" {{if and (ne $.Data.Lookup.Kind "search") (not .InLibrary)}}checked{{end}}></td>
+<td><a href="{{.URL}}" rel="noreferrer">{{.Title}}</a></td><td>{{.Uploader}}</td>
+<td>{{duration .DurationSec}}</td><td>{{if .Plays}}{{.Plays}}{{end}}</td><td>{{.Source}}</td>
+<td>{{if .InLibrary}}In your library{{end}}</td></tr>
+{{end}}</table>
+<button>Add selected</button>
+</form>
+{{else}}<p>No results.</p>{{end}}
+{{end}}
+{{end}}

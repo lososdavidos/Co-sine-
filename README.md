@@ -29,9 +29,11 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Offline: downloaded music browses, plays and shows artwork with the server gone
 - Plays are recorded locally as timestamped events and scrobbled with their real time when the server is reachable
 
-**Cosine** now has its core: first-run setup in a dashboard, Inbox ingest into a content-hashed Store, a tags/filename resolver, and the Subsonic API Sine uses. Sine can log in to it in place of Navidrome. Details in [`cosine/README.md`](cosine/README.md).
+**Cosine** has its core: first-run setup in a dashboard, Inbox ingest into a content-hashed Store, a tags/filename resolver, and the Subsonic API Sine uses. Sine can log in to it in place of Navidrome. Details in [`cosine/README.md`](cosine/README.md).
 
-**Not yet built:** yt-dlp ingest, the review queue UI, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, remote control, Jam, and the desktop client.
+**Adding music from links:** paste a link or search in Sine's Add screen (the Library's top-right action on a Cosine account), share a link to Sine from any app, or use the dashboard. Cosine fetches it with yt-dlp and files it. Links shared while offline are kept and sent on reconnect.
+
+**Not yet built:** the review queue UI, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, remote control, Jam, and the desktop client.
 
 ## Design
 

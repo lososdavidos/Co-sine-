@@ -31,6 +31,10 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # The real yt-dlp checks that every flag Cosine passes is still accepted.
+      - name: Install yt-dlp
+        run: pipx install yt-dlp && yt-dlp --version
+
       - name: Test
         run: go test -race ./...
 

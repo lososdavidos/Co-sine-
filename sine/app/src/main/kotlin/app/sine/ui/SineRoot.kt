@@ -3,6 +3,7 @@
 package app.sine.ui
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +34,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
@@ -49,6 +52,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import app.sine.core.server.Capability
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.graph
@@ -63,10 +67,12 @@ object Routes {
     const val NOW_PLAYING = "now-playing"
     const val SETTINGS = "settings"
     const val ADD_ACCOUNT = "add-account"
+    const val ADD = "add?text={text}"
 
     fun artist(id: String) = "artist/${Uri.encode(id)}"
     fun album(id: String) = "album/${Uri.encode(id)}"
     fun playlist(id: String) = "playlist/${Uri.encode(id)}"
+    fun add(text: String = "") = "add?text=${Uri.encode(text)}"
 }
 
 @Composable
@@ -75,6 +81,23 @@ fun SineRoot() {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
         val accounts by graph.accounts.state.collectAsStateWithLifecycle()
         val session by graph.activeSession.collectAsStateWithLifecycle()
+        val share by graph.incomingShare.collectAsStateWithLifecycle()
+        val context = LocalContext.current
+
+        // A share goes to the share target, chosen by construction (§6.10): the
+        // most recently added Cosine account. No setting, no picker.
+        LaunchedEffect(share) {
+            if (share == null) return@LaunchedEffect
+            val target = graph.accounts.state.value.shareTarget
+            when {
+                target == null -> {
+                    Toast.makeText(context, "No Cosine account to add music to.", Toast.LENGTH_LONG).show()
+                    graph.incomingShare.value = null
+                }
+                target.id != graph.activeSession.value?.account?.id -> graph.accounts.setActive(target.id)
+            }
+        }
+
         Surface(Modifier.fillMaxSize()) {
             val active = session
             if (accounts.accounts.isEmpty() || active == null) {
@@ -106,6 +129,18 @@ private fun MainScaffold(session: AccountSession) {
     val network by graph.network.state.collectAsStateWithLifecycle()
     val reachable by session.reachable.collectAsStateWithLifecycle()
     val offline = !network.connected || !reachable
+    val account by session.accountFlow.collectAsStateWithLifecycle()
+    val canIngest = session.cosine != null && Capability.INGEST in account.kind.capabilities
+    val share by graph.incomingShare.collectAsStateWithLifecycle()
+
+    // Open Add with the shared text once this is the share target's scaffold.
+    LaunchedEffect(share, account.id) {
+        val text = share ?: return@LaunchedEffect
+        if (graph.accounts.state.value.shareTarget?.id == account.id) {
+            graph.incomingShare.value = null
+            nav.navigate(Routes.add(text)) { launchSingleTop = true }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -120,6 +155,13 @@ private fun MainScaffold(session: AccountSession) {
                         }
                     },
                     actions = {
+                        // Add lives on the Library, not in the navigation (§6.2), and
+                        // only where the server can ingest: compat mode hides it (§2.1).
+                        if (route == Routes.LIBRARY && canIngest) {
+                            IconButton(onClick = { nav.navigate(Routes.add()) }) {
+                                Icon(Icons.Default.Add, contentDescription = "Add music")
+                            }
+                        }
                         // The account control (§6.11): every screen except now-playing.
                         if (route != Routes.SETTINGS) {
                             IconButton(onClick = { nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }) {
@@ -175,6 +217,10 @@ private fun MainScaffold(session: AccountSession) {
                 }
                 composable(Routes.NOW_PLAYING) { NowPlayingScreen(onClose = { nav.popBackStack() }) }
                 composable(Routes.SETTINGS) { SettingsScreen(session, nav) }
+                composable(
+                    Routes.ADD,
+                    arguments = listOf(navArgument("text") { type = NavType.StringType; defaultValue = "" }),
+                ) { AddScreen(session, it.arguments?.getString("text").orEmpty()) }
                 composable(Routes.ADD_ACCOUNT) {
                     AddAccountScreen(onDone = { nav.popBackStack() }, onCancel = { nav.popBackStack() })
                 }
@@ -195,6 +241,7 @@ private fun titleFor(route: String?) = when (route) {
     Routes.LIBRARY -> "Library"
     Routes.SETTINGS -> "Settings"
     Routes.ADD_ACCOUNT -> "Add account"
+    Routes.ADD -> "Add music"
     else -> ""
 }
 

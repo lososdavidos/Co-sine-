@@ -5,6 +5,17 @@
 <p>Changing this moves every file to the new location. Nothing else changes: files are addressed relative to the Store.</p>
 <button>Move Store</button>
 </form>
+<h2>Adding music</h2>
+<p>yt-dlp: {{if .Data.YtDlp}}{{.Data.YtDlp}}{{else}}not installed. Links and search are unavailable until it is.{{end}}</p>
+<form method="post" action="/settings/search">
+<p>Search backend</p>
+<label><input type="radio" name="backend" value="ytdlp" {{if ne .Data.Backend "api"}}checked{{end}}> yt-dlp search: no keys, results only as good as yt-dlp's</label>
+<label><input type="radio" name="backend" value="api" {{if eq .Data.Backend "api"}}checked{{end}}> Source APIs: artwork, lengths and play counts. Falls back to yt-dlp search on any failure.</label>
+<label>SoundCloud client ID<br><input name="soundcloud" value="{{.Data.SoundCloudID}}" size="40" autocomplete="off"></label>
+<label>YouTube Data API key<br><input name="youtube" value="{{.Data.YouTubeKey}}" size="40" autocomplete="off"></label>
+<p>{{.Data.SearchStatus}}</p>
+<button>Save search settings</button>
+</form>
 <h2>Inbox</h2>
 <form method="post" action="/settings/inbox">
 <label>Inbox path<br><input name="path" value="{{.Data.Inbox}}" size="50" required></label>

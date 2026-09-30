@@ -36,6 +36,19 @@ type Request struct {
 	// ForUsers receive a Pointer. Nil means every account: an Inbox drop is
 	// a broadcast (§4.1).
 	ForUsers []int64
+
+	// JobID continues an existing ingest_jobs row (a queued fetch) instead of starting one.
+	JobID int64
+	// SourceInfo is the source site's metadata, for the resolver.
+	SourceInfo *resolve.SourceInfo
+	// DurationSec is used when the file can't be probed.
+	DurationSec int
+	// Artwork is the source's cover, used when the file embeds none.
+	Artwork    []byte
+	ArtworkExt string
+	// Explicit means ForUsers asked for this Track themselves, which lifts
+	// their dismissed marker. Broadcasts (the Inbox) never do (§4.1).
+	Explicit bool
 }
 
 type Outcome struct {
@@ -79,9 +92,11 @@ func (g *Ingester) Ingest(ctx context.Context, req Request) (Outcome, error) {
 		return Outcome{}, ErrNoStore
 	}
 
-	jobID, err := g.startJob(ctx, req)
-	if err != nil {
-		return Outcome{}, err
+	jobID := req.JobID
+	if jobID == 0 {
+		if jobID, err = g.startJob(ctx, req); err != nil {
+			return Outcome{}, err
+		}
 	}
 	out, err := g.ingest(ctx, req, root, suffix, contentType)
 	g.finishJob(ctx, jobID, out, err)
@@ -98,7 +113,12 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 	var existingTrack int64
 	err = g.DB.QueryRowContext(ctx, "SELECT track_id FROM objects WHERE hash = ?", hash).Scan(&existingTrack)
 	if err == nil {
-		if err := g.grantPointers(ctx, existingTrack, req.ForUsers); err != nil {
+		if req.Explicit {
+			if err := g.Undismiss(ctx, existingTrack, req.ForUsers); err != nil {
+				return Outcome{}, err
+			}
+		}
+		if err := g.GrantPointers(ctx, existingTrack, req.ForUsers); err != nil {
 			return Outcome{}, err
 		}
 		os.Remove(req.Path)
@@ -109,13 +129,18 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 	}
 
 	tags := resolve.ReadTags(req.Path)
-	res, err := g.Resolver.Resolve(ctx, resolve.Input{Path: req.Path, OriginalName: req.OriginalName, Tags: tags})
+	res, err := g.Resolver.Resolve(ctx, resolve.Input{
+		Path: req.Path, OriginalName: req.OriginalName, Tags: tags, Source: req.SourceInfo,
+	})
 	if err != nil {
 		return Outcome{}, err
 	}
 	duration := 0
 	if g.Probe != nil {
 		duration = g.Probe(req.Path)
+	}
+	if duration == 0 {
+		duration = req.DurationSec
 	}
 	bitrate := 0
 	if duration > 0 {
@@ -179,18 +204,31 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 		return Outcome{}, err
 	}
 
-	if err := g.grantPointers(ctx, trackID, req.ForUsers); err != nil {
+	if err := g.GrantPointers(ctx, trackID, req.ForUsers); err != nil {
 		return Outcome{}, err
 	}
-	if tags != nil && tags.Picture != nil {
+	switch {
+	case tags != nil && tags.Picture != nil:
 		g.saveArtwork(ctx, releaseID, tags.Picture.Ext, tags.Picture.Data)
+	case len(req.Artwork) > 0:
+		g.saveArtwork(ctx, releaseID, req.ArtworkExt, req.Artwork)
 	}
 	return Outcome{TrackID: trackID, Hash: hash, RelPath: rel}, nil
 }
 
-// grantPointers gives each account a Pointer, skipping any account that
+// Undismiss lifts the dismissed marker for users who explicitly asked for a Track again.
+func (g *Ingester) Undismiss(ctx context.Context, trackID int64, users []int64) error {
+	for _, uid := range users {
+		if _, err := g.DB.ExecContext(ctx, "DELETE FROM dismissed WHERE user_id = ? AND track_id = ?", uid, trackID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GrantPointers gives each account a Pointer, skipping any account that
 // dismissed this Track: nothing rejected comes back on its own (§4.1).
-func (g *Ingester) grantPointers(ctx context.Context, trackID int64, users []int64) error {
+func (g *Ingester) GrantPointers(ctx context.Context, trackID int64, users []int64) error {
 	if users == nil {
 		rows, err := g.DB.QueryContext(ctx, "SELECT id FROM users")
 		if err != nil {
@@ -275,8 +313,12 @@ func (g *Ingester) finishJob(ctx context.Context, id int64, out Outcome, err err
 	if out.TrackID != 0 {
 		track = out.TrackID
 	}
-	g.DB.ExecContext(ctx, "UPDATE ingest_jobs SET status = ?, error = NULLIF(?, ''), track_id = ?, updated_at = ? WHERE id = ?",
-		status, msg, track, db.Now(), id)
+	progress := 0.0
+	if err == nil {
+		progress = 1
+	}
+	g.DB.ExecContext(ctx, "UPDATE ingest_jobs SET status = ?, error = NULLIF(?, ''), track_id = ?, progress = ?, updated_at = ? WHERE id = ?",
+		status, msg, track, progress, db.Now(), id)
 }
 
 // upsertID inserts a row unless it exists, then returns its id either way.

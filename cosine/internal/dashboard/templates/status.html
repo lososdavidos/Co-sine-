@@ -8,11 +8,18 @@
 <tr><th>Missing from the Store</th><td>{{.Data.Missing}}</td></tr>
 <tr><th>Accounts</th><td>{{.Data.Users}}</td></tr>
 </table>
+<p>{{if .Data.Ingest}}<a href="/add">Add music</a> from a link or a search.{{else}}Install yt-dlp to add music from links. Until then, drop files into the Inbox.{{end}}</p>
 <h2>Recent ingests</h2>
 {{if .Data.Jobs}}
 <table>
-<tr><th>When</th><th>Source</th><th>Input</th><th>Status</th><th>Detail</th></tr>
-{{range .Data.Jobs}}<tr><td>{{.When}}</td><td>{{.Source}}</td><td>{{.Input}}</td><td>{{.Status}}</td><td>{{.Detail}}</td></tr>
+<tr><th>When</th><th>Who</th><th>Source</th><th>What</th><th>Status</th><th>Detail</th><th></th></tr>
+{{range .Data.Jobs}}<tr><td>{{.When}}</td><td>{{.Who}}</td><td>{{.Source}}</td>
+<td>{{if .URL}}<a href="{{.URL}}" rel="noreferrer">{{.Title}}</a>{{else}}{{.Title}}{{end}}</td>
+<td>{{.Status}}{{if eq .Status "running"}} {{.Percent}}%{{end}}</td>
+<td>{{if eq .Status "failed"}}Couldn't fetch — {{end}}{{.Detail}}</td>
+<td>{{if .Mine}}{{if eq .Status "failed"}}<form method="post" action="/jobs/{{.ID}}/retry"><button>Retry</button></form>{{end}}
+{{if eq .Status "known"}}<form method="post" action="/jobs/{{.ID}}/retry"><input type="hidden" name="force" value="1"><button>Add anyway</button></form>{{end}}{{end}}</td></tr>
 {{end}}</table>
-{{else}}<p>Nothing ingested yet. Drop audio files into the Inbox.</p>{{end}}
+{{if .Data.Active}}<p><a href="/">Refresh</a> to update progress.</p>{{end}}
+{{else}}<p>Nothing ingested yet.</p>{{end}}
 {{end}}

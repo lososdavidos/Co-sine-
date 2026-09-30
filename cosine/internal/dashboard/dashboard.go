@@ -19,7 +19,9 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 )
 
 //go:embed templates/*.html
@@ -34,6 +36,10 @@ type Dashboard struct {
 	// OnInboxChange restarts the Inbox watcher on a new path.
 	OnInboxChange func(path string)
 	Log           *slog.Logger
+	// Fetcher and Search are nil when yt-dlp is not installed.
+	Fetcher      *fetch.Fetcher
+	Search       *search.Service
+	YtDlpVersion string
 
 	pages map[string]*template.Template
 }
@@ -49,8 +55,14 @@ type page struct {
 
 func (d *Dashboard) Handler() http.Handler {
 	d.pages = map[string]*template.Template{}
-	for _, name := range []string{"setup", "login", "status", "users", "settings"} {
-		d.pages[name] = template.Must(template.ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
+	funcs := template.FuncMap{"duration": func(sec int) string {
+		if sec <= 0 {
+			return ""
+		}
+		return fmt.Sprintf("%d:%02d", sec/60, sec%60)
+	}}
+	for _, name := range []string{"setup", "login", "status", "users", "settings", "add"} {
+		d.pages[name] = template.Must(template.New(name).Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /setup", d.setupForm)
@@ -65,6 +77,10 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /settings", d.admin(d.settings))
 	mux.HandleFunc("POST /settings/store", d.admin(d.moveStore))
 	mux.HandleFunc("POST /settings/inbox", d.admin(d.changeInbox))
+	mux.HandleFunc("POST /settings/search", d.admin(d.saveSearch))
+	mux.HandleFunc("GET /add", d.admin(d.addForm))
+	mux.HandleFunc("POST /add", d.admin(d.add))
+	mux.HandleFunc("POST /jobs/{id}/retry", d.admin(d.retry))
 	return d.guard(mux)
 }
 
@@ -278,7 +294,10 @@ func (d *Dashboard) logout(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------- status
 
 type job struct {
-	When, Source, Input, Status, Detail string
+	ID                                            int64
+	When, Who, Source, Title, URL, Status, Detail string
+	Percent                                       int
+	Mine                                          bool
 }
 
 type statusData struct {
@@ -286,6 +305,7 @@ type statusData struct {
 	Tracks, Objects, Review, Missing, Users int
 	Size                                    string
 	Jobs                                    []job
+	Ingest, Active                          bool
 }
 
 func (d *Dashboard) status(w http.ResponseWriter, r *http.Request, u auth.User) {
@@ -303,14 +323,21 @@ func (d *Dashboard) status(w http.ResponseWriter, r *http.Request, u auth.User) 
 		(SELECT COUNT(*) FROM users)`).Scan(&s.Tracks, &s.Objects, &bytes, &s.Review, &s.Missing, &s.Users)
 	s.Size = humanBytes(bytes)
 
-	rows, err := d.DB.QueryContext(ctx,
-		"SELECT created_at, source, input, status, COALESCE(error, '') FROM ingest_jobs ORDER BY id DESC LIMIT 25")
+	s.Ingest = d.Fetcher != nil
+	rows, err := d.DB.QueryContext(ctx, `
+		SELECT j.id, j.created_at, COALESCE(u.name, 'everyone'), j.source, COALESCE(j.title, j.input),
+		       COALESCE(j.url, ''), j.status, COALESCE(j.error, ''), j.progress, COALESCE(j.user_id, 0) = ?
+		FROM ingest_jobs j LEFT JOIN users u ON u.id = j.user_id
+		ORDER BY j.id DESC LIMIT 50`, u.ID)
 	if err == nil {
 		for rows.Next() {
 			var j job
 			var at int64
-			if rows.Scan(&at, &j.Source, &j.Input, &j.Status, &j.Detail) == nil {
+			var progress float64
+			if rows.Scan(&j.ID, &at, &j.Who, &j.Source, &j.Title, &j.URL, &j.Status, &j.Detail, &progress, &j.Mine) == nil {
 				j.When = time.UnixMilli(at).Format("2006-01-02 15:04")
+				j.Percent = int(progress * 100)
+				s.Active = s.Active || j.Status == "queued" || j.Status == "running"
 				s.Jobs = append(s.Jobs, j)
 			}
 		}
@@ -389,7 +416,10 @@ func (d *Dashboard) deleteUser(w http.ResponseWriter, r *http.Request, u auth.Us
 
 // ---------------------------------------------------------------- settings
 
-type settingsData struct{ Store, Inbox string }
+type settingsData struct {
+	Store, Inbox                                           string
+	YtDlp, Backend, SoundCloudID, YouTubeKey, SearchStatus string
+}
 
 func (d *Dashboard) settings(w http.ResponseWriter, r *http.Request, u auth.User) {
 	d.renderSettings(w, r, u, "")
@@ -399,6 +429,15 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, u aut
 	var s settingsData
 	s.Store, _ = d.DB.Setting(r.Context(), db.SettingStorePath)
 	s.Inbox, _ = d.DB.Setting(r.Context(), db.SettingInboxPath)
+	s.Backend, _ = d.DB.Setting(r.Context(), db.SettingSearchBackend)
+	s.SoundCloudID, _ = d.DB.Setting(r.Context(), db.SettingSoundCloudID)
+	s.YouTubeKey, _ = d.DB.Setting(r.Context(), db.SettingYouTubeKey)
+	if d.Fetcher != nil {
+		s.YtDlp = "yt-dlp " + d.YtDlpVersion
+	}
+	if d.Search != nil {
+		s.SearchStatus = d.Search.Status()
+	}
 	d.render(w, "settings", page{Title: "Settings", User: &u, Error: errMsg, Done: r.URL.Query().Get("done"), Data: s})
 }
 
@@ -443,4 +482,87 @@ func (d *Dashboard) changeInbox(w http.ResponseWriter, r *http.Request, u auth.U
 		d.OnInboxChange(path)
 	}
 	done(w, r, "/settings", "Inbox changed.")
+}
+
+func (d *Dashboard) saveSearch(w http.ResponseWriter, r *http.Request, u auth.User) {
+	ctx := r.Context()
+	backend := search.BackendYtDlp
+	if r.FormValue("backend") == search.BackendAPI {
+		backend = search.BackendAPI
+	}
+	for key, value := range map[string]string{
+		db.SettingSearchBackend: backend,
+		db.SettingSoundCloudID:  strings.TrimSpace(r.FormValue("soundcloud")),
+		db.SettingYouTubeKey:    strings.TrimSpace(r.FormValue("youtube")),
+	} {
+		if err := d.DB.SetSetting(ctx, key, value); err != nil {
+			d.renderSettings(w, r, u, err.Error())
+			return
+		}
+	}
+	done(w, r, "/settings", "Search settings saved.")
+}
+
+// ---------------------------------------------------------------- adding music
+
+type addData struct {
+	Query  string
+	Lookup *fetch.Lookup
+}
+
+// addForm is the dashboard's Add: one field for a link or a search (§6.10).
+// Looking up changes nothing, so it is a GET.
+func (d *Dashboard) addForm(w http.ResponseWriter, r *http.Request, u auth.User) {
+	p := page{Title: "Add music", User: &u}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	data := addData{Query: q}
+	switch {
+	case d.Fetcher == nil:
+		p.Error = "yt-dlp is not installed on the server."
+	case q != "":
+		l, err := d.Fetcher.Lookup(r.Context(), u.ID, q)
+		if err != nil {
+			p.Error = "Couldn't fetch — " + err.Error()
+		} else {
+			data.Lookup = &l
+		}
+	}
+	p.Data = data
+	d.render(w, "add", p)
+}
+
+func (d *Dashboard) add(w http.ResponseWriter, r *http.Request, u auth.User) {
+	if d.Fetcher == nil {
+		http.Error(w, "yt-dlp is not installed.", http.StatusNotImplemented)
+		return
+	}
+	r.ParseForm()
+	urls := r.Form["url"]
+	if len(urls) == 0 {
+		d.render(w, "add", page{Title: "Add music", User: &u, Error: "Nothing selected.", Data: addData{}})
+		return
+	}
+	jobs, err := d.Fetcher.Submit(r.Context(), u.ID, urls, false)
+	if err != nil {
+		d.render(w, "add", page{Title: "Add music", User: &u, Error: err.Error(), Data: addData{}})
+		return
+	}
+	msg := "Queued 1 link."
+	if len(jobs) != 1 {
+		msg = fmt.Sprintf("Queued %d links.", len(jobs))
+	}
+	done(w, r, "/", msg)
+}
+
+func (d *Dashboard) retry(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || d.Fetcher == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := d.Fetcher.Retry(r.Context(), u.ID, id, r.FormValue("force") != ""); err != nil {
+		done(w, r, "/", err.Error())
+		return
+	}
+	done(w, r, "/", "Requeued.")
 }

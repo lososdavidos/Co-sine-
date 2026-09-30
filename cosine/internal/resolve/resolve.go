@@ -26,9 +26,19 @@ const (
 
 // Input is everything known about a file before resolution.
 type Input struct {
-	Path         string // the file on disk
-	OriginalName string // the name it arrived with
-	Tags         *Tags  // nil when the file has no readable tags
+	Path         string      // the file on disk
+	OriginalName string      // the name it arrived with
+	Tags         *Tags       // nil when the file has no readable tags
+	Source       *SourceInfo // nil unless fetched from a URL
+}
+
+// SourceInfo is what the site a file came from says about it (yt-dlp's
+// metadata). Structured fields exist on YouTube Music, Bandcamp and some
+// SoundCloud uploads; otherwise there is only an uploader and a title.
+type SourceInfo struct {
+	Title, Uploader      string
+	Artist, Track, Album string
+	TrackNo, Year        int
 }
 
 // Tags are the embedded metadata, read once.
@@ -121,10 +131,18 @@ func ReadTags(path string) *Tags {
 	return t
 }
 
-// SourceMetadata is tier 4: embedded tags where present, the filename otherwise.
+// SourceMetadata is tier 4: what the source site says, else embedded tags,
+// else the filename.
 type SourceMetadata struct{}
 
 func (SourceMetadata) Resolve(_ context.Context, in Input) (Result, bool, error) {
+	if in.Source != nil {
+		r := fromSource(in.Source)
+		if in.Tags != nil && r.Year == 0 {
+			r.Year = in.Tags.Year
+		}
+		return r, r.Title != "", nil
+	}
 	fromName := ParseFilename(in.OriginalName)
 	r := Result{Source: "tags", Tier: TierSource}
 	t := in.Tags
@@ -156,6 +174,29 @@ func (SourceMetadata) Resolve(_ context.Context, in Input) (Result, bool, error)
 	return r, r.Title != "", nil
 }
 
+func fromSource(s *SourceInfo) Result {
+	r := Result{Source: "yt-dlp", Tier: TierSource, TrackNo: s.TrackNo, Year: s.Year}
+	switch {
+	case s.Artist != "" && s.Track != "":
+		// The site gave structured metadata.
+		r.Artist, r.Title, r.Release, r.Confidence = s.Artist, s.Track, s.Album, 0.5
+	default:
+		// Most uploads are "Artist - Title" by whoever posted them; a title
+		// without that shape belongs to the uploader.
+		p := ParseTitle(s.Title, false)
+		if p.Artist != "" {
+			r.Artist, r.Title, r.Confidence = p.Artist, p.Title, 0.3
+		} else {
+			r.Artist, r.Title, r.Confidence = s.Uploader, p.Title, 0.2
+		}
+		r.Release = s.Album
+	}
+	r.Artist = firstNonEmpty(r.Artist, s.Uploader, "Unknown artist")
+	r.Title = firstNonEmpty(r.Title, s.Title)
+	r.Release = firstNonEmpty(r.Release, r.Title)
+	return r
+}
+
 // NameParts is what a filename says about itself.
 type NameParts struct {
 	Artist, Title string
@@ -171,13 +212,19 @@ var (
 // ParseFilename reads "NN Artist - Title.ext"-style names, the shape most rips take.
 func ParseFilename(name string) NameParts {
 	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
-	base = strings.ReplaceAll(base, "_", " ")
+	return ParseTitle(strings.ReplaceAll(base, "_", " "), true)
+}
+
+// ParseTitle reads "Artist - Title" from a free-text title. Leading track
+// numbers are only taken from filenames: in a title, "1998 - Song" is not
+// track 1998.
+func ParseTitle(base string, trackNumbers bool) NameParts {
 	base = idSuffix.ReplaceAllString(base, "")
 	base = bracketNoise.ReplaceAllString(base, "")
 	base = strings.TrimSpace(base)
 
 	var p NameParts
-	if m := leadingNumber.FindStringSubmatch(base); m != nil {
+	if m := leadingNumber.FindStringSubmatch(base); trackNumbers && m != nil {
 		p.TrackNo, _ = strconv.Atoi(m[1])
 		base = strings.TrimSpace(base[len(m[0]):])
 	}

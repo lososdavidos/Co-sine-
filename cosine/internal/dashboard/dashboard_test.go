@@ -15,10 +15,15 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/testutil"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
 )
 
 type env struct {
+	dash   *Dashboard
 	srv    *httptest.Server
 	client *http.Client
 	db     *db.DB
@@ -41,6 +46,7 @@ func setup(t *testing.T) *env {
 	dash := &Dashboard{DB: d, Auth: as, Log: log,
 		Ingester:      &ingest.Ingester{DB: d, DataDir: dir, Log: log},
 		OnInboxChange: func(p string) { e.inbox = p }}
+	e.dash = dash
 	e.srv = httptest.NewServer(dash.Handler())
 	t.Cleanup(e.srv.Close)
 	jar, _ := cookiejar.New(nil)
@@ -158,3 +164,27 @@ func TestCrossSitePostRefused(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestAddMusicFromALink(t *testing.T) {
+	e := setup(t)
+	const link = "https://soundcloud.com/skeler/sets/tides"
+	bin, _ := testutil.FakeYtDlp(t, map[string]any{
+		link: map[string]any{"_type": "playlist", "title": "Tides", "entries": []map[string]any{
+			{"_type": "url", "url": "https://soundcloud.com/skeler/one", "title": "One", "duration": 125},
+			{"_type": "url", "url": "https://soundcloud.com/skeler/two", "title": "Two"}}},
+	})
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	runner := ytdlp.Runner{Bin: bin}
+	e.dash.Fetcher = &fetch.Fetcher{DB: e.db, Runner: runner, Log: log, WorkDir: t.TempDir(),
+		Search: &search.Service{DB: e.db, YtDlp: search.YtDlpSearch{Runner: runner}, NewAPI: func(string, string) search.Backend { return nil }}}
+	e.post(t, "/setup", e.setupForm(filepath.Join(e.dir, "s"), filepath.Join(e.dir, "i")))
+
+	_, body := e.get(t, "/add?q="+url.QueryEscape(link))
+	if !strings.Contains(body, "Tides: 2 tracks") || !strings.Contains(body, "2:05") || strings.Count(body, "checked") != 2 {
+		t.Fatal(body)
+	}
+	_, body = e.post(t, "/add", url.Values{"url": {"https://soundcloud.com/skeler/two"}})
+	if !strings.Contains(body, "Queued 1 link") || !strings.Contains(body, "soundcloud.com/skeler/two") {
+		t.Fatal(body)
+	}
+}

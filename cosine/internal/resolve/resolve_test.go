@@ -80,3 +80,26 @@ func TestChainStopsAtFirstConfident(t *testing.T) {
 		t.Fatal("expected best-of when nothing is confident", r)
 	}
 }
+
+func TestSourceInfo(t *testing.T) {
+	cases := []struct {
+		in                 SourceInfo
+		artist, title, rel string
+		conf               float64
+	}{
+		// Structured metadata wins.
+		{SourceInfo{Title: "whatever", Uploader: "Label", Artist: "Skeler", Track: "Tides", Album: "Tides EP"}, "Skeler", "Tides", "Tides EP", 0.5},
+		// A repost titled "Artist - Title" belongs to the named artist, not the uploader.
+		{SourceInfo{Title: "Deadcrow - Hollow (VIP) [Free Download]", Uploader: "wave archive"}, "Deadcrow", "Hollow (VIP)", "Hollow (VIP)", 0.3},
+		// A bare title belongs to its uploader; the dot is not an extension.
+		{SourceInfo{Title: "glass v1.2", Uploader: "plenka"}, "plenka", "glass v1.2", "glass v1.2", 0.2},
+		// A number in a title is not a track number.
+		{SourceInfo{Title: "1998 - nostalgia", Uploader: "x"}, "1998", "nostalgia", "nostalgia", 0.3},
+	}
+	for _, c := range cases {
+		r, ok, _ := SourceMetadata{}.Resolve(context.Background(), Input{OriginalName: "abc.opus", Source: &c.in})
+		if !ok || r.Artist != c.artist || r.Title != c.title || r.Release != c.rel || r.Confidence != c.conf || r.Source != "yt-dlp" {
+			t.Errorf("%+v → %+v", c.in, r)
+		}
+	}
+}

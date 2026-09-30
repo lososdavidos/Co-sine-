@@ -3,6 +3,7 @@ package app.sine.data
 import android.content.Context
 import android.net.Uri
 import app.sine.core.account.Account
+import app.sine.core.cosine.CosineClient
 import app.sine.core.download.DownloadIndex
 import app.sine.core.download.DownloadLayout
 import app.sine.core.download.OfflineLibrary
@@ -31,12 +32,20 @@ class NotAvailableOffline : Exception("Not available offline.")
  */
 class AccountSession(
     context: Context,
-    val account: Account,
+    initial: Account,
     val http: OkHttpClient,
     private val network: NetworkMonitor,
 ) {
-    val dir = File(context.filesDir, "accounts/${account.id}").apply { mkdirs() }
-    val client = SubsonicClient(account.serverUrl, account.credentials, http)
+    private val _account = MutableStateFlow(initial)
+    /** The account as currently known; its capabilities can change while the app runs. */
+    val accountFlow: StateFlow<Account> = _account.asStateFlow()
+    val account: Account get() = _account.value
+
+    val dir = File(context.filesDir, "accounts/${initial.id}").apply { mkdirs() }
+    val client = SubsonicClient(initial.serverUrl, initial.credentials, http)
+    /** Cosine's native protocol; null for a plain Subsonic server (compat mode). */
+    val cosine: CosineClient? =
+        if (initial.isCosine) CosineClient(initial.serverUrl, initial.credentials, http) else null
     val downloads = DownloadIndex(File(dir, "downloads.json"))
     val plays = PlayLog(File(dir, "plays.json"))
     private val coversDir = File(dir, "covers")
@@ -47,6 +56,14 @@ class AccountSession(
     @Volatile private var lastFailureAt = 0L
 
     val isOnline: Boolean get() = network.state.value.connected && _reachable.value
+
+    /** Native-only features are hidden entirely unless the server declares them (§2.1). */
+    fun can(capability: String) = cosine != null && capability in account.kind.capabilities
+
+    internal fun replaceAccount(updated: Account) {
+        require(updated.id == account.id)
+        _account.value = updated
+    }
     fun offline() = OfflineLibrary(downloads.tracks.value.values)
 
     /**

@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,10 +15,14 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/dashboard"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/inbox"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/native"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/subsonic"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
 )
 
 type Config struct {
@@ -33,17 +36,13 @@ type Server struct {
 	log      *slog.Logger
 	db       *db.DB
 	ingester *ingest.Ingester
+	fetcher  *fetch.Fetcher // nil without yt-dlp
 	handler  http.Handler
 
 	inboxMu     sync.Mutex
 	inboxCancel context.CancelFunc
 	inboxDone   chan struct{}
 }
-
-// Capabilities are the native features this Cosine offers beyond Subsonic
-// (§9.3). Sine hides anything not listed. Additive only: an entry, once
-// shipped, never changes meaning.
-var Capabilities = []string{}
 
 func New(cfg Config, log *slog.Logger) (*Server, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
@@ -79,15 +78,34 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		log.Warn("ffprobe not found: track durations will be 0 until it is installed")
 	}
 
-	api := &subsonic.API{DB: d, Auth: as, DataDir: cfg.DataDir, Version: cfg.Version, Log: log}
 	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, OnInboxChange: s.startInbox, Log: log}
+	nativeAPI := &native.API{Auth: as, Version: cfg.Version, Log: log}
 
+	// URL ingest exists only with yt-dlp; without it the capability is not
+	// advertised and Sine hides Add entirely (§2.1).
+	if runner, err := ytdlp.Find(); err != nil {
+		log.Warn("yt-dlp not found: adding music from links is disabled until it is installed")
+	} else {
+		httpClient := &http.Client{Timeout: 30 * time.Second}
+		searcher := &search.Service{
+			DB:     d,
+			YtDlp:  search.YtDlpSearch{Runner: runner},
+			NewAPI: search.NewSourceAPIs(httpClient),
+		}
+		s.fetcher = &fetch.Fetcher{
+			DB: d, Ingester: s.ingester, Runner: runner, Search: searcher,
+			WorkDir: filepath.Join(cfg.DataDir, "fetch"), Workers: 2, HTTP: httpClient, Log: log.With("component", "fetch"),
+		}
+		dash.Fetcher, dash.Search = s.fetcher, searcher
+		dash.YtDlpVersion = runner.Version(context.Background())
+		nativeAPI.Fetcher = s.fetcher
+		log.Info("yt-dlp found", "path", runner.Bin, "version", dash.YtDlpVersion)
+	}
+
+	api := &subsonic.API{DB: d, Auth: as, DataDir: cfg.DataDir, Version: cfg.Version, Log: log}
 	mux := http.NewServeMux()
 	mux.Handle("/rest/", api.Handler())
-	mux.HandleFunc("GET /cosine/v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"version": cfg.Version, "capabilities": Capabilities})
-	})
+	nativeAPI.Register(mux)
 	mux.Handle("/", dash.Handler())
 	s.handler = mux
 	return s, nil
@@ -110,6 +128,13 @@ func (s *Server) Run(ctx context.Context) error {
 		s.startInbox(p)
 	}
 	defer s.stopInbox()
+	fetchDone := make(chan struct{})
+	if s.fetcher != nil {
+		go func() { s.fetcher.Run(ctx); close(fetchDone) }()
+	} else {
+		close(fetchDone)
+	}
+	defer func() { <-fetchDone }()
 
 	srv := &http.Server{Addr: s.cfg.Listen, Handler: s.handler, ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)

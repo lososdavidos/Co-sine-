@@ -14,9 +14,12 @@ import (
 //go:embed schema.sql
 var schemaV1 string
 
+//go:embed schema_v2.sql
+var schemaV2 string
+
 // migrations are applied in order; the index+1 is the schema version.
 // Additive only, like the wire protocol (§9.3).
-var migrations = []string{schemaV1}
+var migrations = []string{schemaV1, schemaV2}
 
 type DB struct {
 	*sql.DB
@@ -69,9 +72,12 @@ func Now() int64 { return time.Now().UnixMilli() }
 
 // Setting keys.
 const (
-	SettingStorePath  = "store_path"
-	SettingInboxPath  = "inbox_path"
-	SettingVisibility = "cross_user_visibility"
+	SettingStorePath     = "store_path"
+	SettingInboxPath     = "inbox_path"
+	SettingVisibility    = "cross_user_visibility"
+	SettingSearchBackend = "search_backend" // "ytdlp" or "api"
+	SettingSoundCloudID  = "soundcloud_client_id"
+	SettingYouTubeKey    = "youtube_api_key"
 )
 
 func (d *DB) Setting(ctx context.Context, key string) (string, error) {

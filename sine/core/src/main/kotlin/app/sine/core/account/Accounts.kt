@@ -66,6 +66,12 @@ class AccountStore(file: File) {
         s.copy(accounts = remaining, activeId = if (s.activeId == id) remaining.firstOrNull()?.id else s.activeId)
     }
 
+    /** Replaces an account's stored details, e.g. when its server's capabilities change (§9.3). */
+    @Synchronized
+    fun update(account: Account) = update { s ->
+        s.copy(accounts = s.accounts.map { if (it.id == account.id) account else it })
+    }
+
     @Synchronized
     fun setActive(id: String) = update { s ->
         require(s.accounts.any { it.id == id }) { "No account $id" }
