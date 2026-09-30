@@ -88,14 +88,18 @@ type Resolver interface {
 }
 
 // Chain tries resolvers in order and returns the first answer at or above
-// minConfidence, else the best answer seen. It errors only if none answers.
+// MinConfidence. When none is confident, it returns the last source that
+// answered — the file's own metadata, at the end of the chain — rather than
+// the highest-scoring guess: an unconfident catalogue match may name a
+// different artist entirely, and filing under it would be confidently
+// wrong. The catalogue's guesses stay on offer in the review queue.
 type Chain struct {
 	Resolvers     []Resolver
 	MinConfidence float64
 }
 
 func (c Chain) Resolve(ctx context.Context, in Input) (Result, error) {
-	var best Result
+	var fallback Result
 	found := false
 	for _, r := range c.Resolvers {
 		res, ok, err := r.Resolve(ctx, in)
@@ -105,14 +109,12 @@ func (c Chain) Resolve(ctx context.Context, in Input) (Result, error) {
 		if res.Confidence >= c.MinConfidence {
 			return res, nil
 		}
-		if !found || res.Confidence > best.Confidence {
-			best, found = res, true
-		}
+		fallback, found = res, true
 	}
 	if !found {
 		return Result{}, ErrUnresolved
 	}
-	return best, nil
+	return fallback, nil
 }
 
 type unresolved struct{}

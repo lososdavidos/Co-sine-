@@ -1,0 +1,43 @@
+name: Contract
+
+# Sine's real client code against a real, running Cosine. Either side can
+# break the other, so this runs when either changes.
+on:
+  push:
+    paths:
+      - "sine/**"
+      - "cosine/**"
+      - "scripts/contract-test.sh"
+      - ".github/workflows/contract.yml"
+  pull_request:
+    paths:
+      - "sine/**"
+      - "cosine/**"
+      - "scripts/contract-test.sh"
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cosine/go.mod
+          cache-dependency-path: cosine/go.sum
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Tools
+        run: |
+          sudo apt-get install -y -qq sqlite3 >/dev/null
+          pipx install yt-dlp
+
+      - name: Sine against Cosine
+        run: scripts/contract-test.sh

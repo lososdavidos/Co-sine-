@@ -77,7 +77,15 @@ func TestChainStopsAtFirstConfident(t *testing.T) {
 	c.MinConfidence = 2
 	r, _ = c.Resolve(context.Background(), Input{})
 	if r.Source != "d" {
-		t.Fatal("expected best-of when nothing is confident", r)
+		t.Fatal("expected the last source when nothing is confident", r)
+	}
+	// An unconfident catalogue guess must not beat the file's own reading.
+	c = Chain{MinConfidence: 0.8, Resolvers: []Resolver{
+		fixed{Result{Source: "musicbrainz", Artist: "Someone Else", Confidence: 0.7}, true},
+		fixed{Result{Source: "tags", Artist: "Contract Fixture", Confidence: 0.5}, true},
+	}}
+	if r, _ = c.Resolve(context.Background(), Input{}); r.Source != "tags" {
+		t.Fatal("an unconfident match overrode the file's own metadata:", r)
 	}
 }
 
