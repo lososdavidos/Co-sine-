@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -184,7 +185,9 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
                 }
                 heading?.let { SectionHeader(it) }
             }
-            items(l.items, key = { "r:" + it.url }) { item ->
+            // Keyed by position: a result list may repeat a link, and a
+            // repeated LazyColumn key crashes.
+            itemsIndexed(l.items, key = { i, it -> "r:$i:${it.url}" }) { _, item ->
                 ResultRow(item, checked = item.url in selected) {
                     selected = if (item.url in selected) selected - item.url else selected + item.url
                 }

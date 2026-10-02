@@ -202,9 +202,15 @@ install_packages() {
 	step "Installing system packages"
 	local packages=(ca-certificates curl unzip ffmpeg sqlite3 tzdata)
 	[[ $WITH_FINGERPRINT -eq 1 ]] && packages+=(libchromaprint-tools)
-	export DEBIAN_FRONTEND=noninteractive
+	info "This can take a few minutes on a fresh container: ffmpeg brings a lot with it."
+	# A shell opened from the Proxmox host passes its own locale (often
+	# en_US.UTF-8), which a minimal container doesn't have: Perl and apt then
+	# warn on every step. C.UTF-8 always exists. apt-listchanges has nothing
+	# useful to say during an unattended install.
+	export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8 LANG=C.UTF-8 LANGUAGE='' APT_LISTCHANGES_FRONTEND=none
 	apt-get update -qq
-	apt-get install -y -qq --no-install-recommends "${packages[@]}" >/dev/null
+	apt-get install -y -qq --no-install-recommends "${packages[@]}" >/dev/null 2>&1 ||
+		apt-get install -y -q --no-install-recommends "${packages[@]}" # on failure, again with output to show why
 	info "ffmpeg (for ffprobe), sqlite3 (for backups)$([[ $WITH_FINGERPRINT -eq 1 ]] && echo ", Chromaprint")"
 }
 

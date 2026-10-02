@@ -46,7 +46,13 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 		if info.IsCollection() {
 			l.Kind = KindCollection
 		}
+		seen := map[string]bool{}
 		for _, e := range collectionOrSelf(info) {
+			// A playlist can hold the same track twice; offer it once.
+			if seen[e.Link()] {
+				continue
+			}
+			seen[e.Link()] = true
 			l.Items = append(l.Items, Item{Result: search.Result{
 				Title: firstNonEmpty(e.Title, e.Link()), Uploader: e.Poster(), URL: e.Link(),
 				Thumbnail: e.CoverURL(), Source: sourceName(e.Source()),

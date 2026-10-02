@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
@@ -61,13 +62,15 @@ type Fetcher struct {
 	HTTP     *http.Client
 	Log      *slog.Logger
 
-	wake chan struct{}
+	wakeOnce sync.Once
+	wake     chan struct{}
 }
 
+// init creates the wake channel exactly once. Run and Submit both reach
+// it from different goroutines; two channels would mean a submitted link
+// rings one the workers aren't listening to.
 func (f *Fetcher) init() {
-	if f.wake == nil {
-		f.wake = make(chan struct{}, 8)
-	}
+	f.wakeOnce.Do(func() { f.wake = make(chan struct{}, 8) })
 }
 
 func (f *Fetcher) nudge() {

@@ -232,7 +232,8 @@ func TestLookup(t *testing.T) {
 		one: track(one, "1", "One", "Skeler", "one", nil),
 		set: map[string]any{"_type": "playlist", "title": "Tides", "entries": []map[string]any{
 			{"_type": "url", "url": one, "title": "One", "ie_key": "Soundcloud"},
-			{"_type": "url", "url": "https://soundcloud.com/skeler/two"}}},
+			{"_type": "url", "url": "https://soundcloud.com/skeler/two"},
+			{"_type": "url", "url": one, "title": "One again"}}}, // the same track twice
 		"scsearch": map[string]any{"_type": "playlist", "entries": []map[string]any{{"url": one, "title": "One", "uploader": "Skeler", "duration": 200}}},
 		"ytsearch": map[string]any{"_type": "playlist", "entries": []map[string]any{{"url": "https://www.youtube.com/watch?v=x", "title": "One (YT)"}}},
 	})

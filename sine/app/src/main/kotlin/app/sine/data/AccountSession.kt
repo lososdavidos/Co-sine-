@@ -117,7 +117,7 @@ class AccountSession(
                     if (batch.size < page) break
                     offset += page
                 }
-            }
+            }.distinctBy { it.id } // pages can overlap if the library changes mid-load; lists need unique keys
         },
     )
 
