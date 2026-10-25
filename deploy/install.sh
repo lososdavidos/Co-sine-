@@ -194,9 +194,9 @@ fi
 # ---------------------------------------------------------------- components
 #
 # Each component installs or upgrades one dependency and is safe to rerun.
-# Future metadata sources slot in here: MusicBrainz, Discogs and Bandcamp
-# lookups are HTTP calls made by Cosine itself and need nothing installed;
-# audio fingerprinting (AcoustID) needs Chromaprint's fpcalc, below.
+# Metadata sources slot in here: MusicBrainz, Discogs and Bandcamp lookups
+# are HTTP calls made by Cosine itself and need nothing installed; audio
+# fingerprinting (AcoustID) will need Chromaprint's fpcalc, below.
 
 install_packages() {
 	step "Installing system packages"

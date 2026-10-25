@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 )
 
 // Client talks to the MusicBrainz web service within its rules: a
@@ -40,7 +41,7 @@ const backoff = 5 * time.Minute
 
 // ErrUnavailable means MusicBrainz could not be asked (offline, throttled,
 // down). The resolver treats it as "no answer", never as a failed ingest.
-var ErrUnavailable = errors.New("MusicBrainz is unavailable")
+var ErrUnavailable = resolve.Unavailable("MusicBrainz")
 
 func UserAgent(version string) string {
 	return fmt.Sprintf("Cosine/%s ( https://github.com/lososdavidos/Co-sine- )", version)

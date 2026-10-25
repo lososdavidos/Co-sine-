@@ -205,7 +205,7 @@ func TestReviewAndRevertInTheDashboard(t *testing.T) {
 		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}}
 	e.dash.Ingester = g
 	e.dash.Review = &review.Service{DB: e.db, Ingester: g, Threshold: 0.8, Log: log,
-		MB: &musicbrainz.Client{HTTP: mb.Client(), BaseURL: mb.URL, UserAgent: "t", Interval: time.Millisecond}}
+		Sources: []review.Source{&musicbrainz.Client{HTTP: mb.Client(), BaseURL: mb.URL, UserAgent: "t", Interval: time.Millisecond}}}
 	e.srv.Config.Handler = e.dash.Handler()
 	store := filepath.Join(e.dir, "s")
 	e.post(t, "/setup", e.setupForm(store, filepath.Join(e.dir, "i")))

@@ -1,7 +1,7 @@
 {{define "content"}}
 {{with .Data}}
-<p>{{.Total}} track{{if ne .Total 1}}s{{end}} to review. Each was identified from its own tags, file name or source page, or matched by MusicBrainz without enough certainty.</p>
-<p>Re-resolve asks MusicBrainz again (one lookup per second) and applies only confident matches. Every change is logged and can be reverted under <a href="/corrections">Corrections</a>.
+<p>{{.Total}} track{{if ne .Total 1}}s{{end}} to review. Each was identified from its own tags, file name or source page, or matched by MusicBrainz, Discogs or Bandcamp without enough certainty.</p>
+<p>Re-resolve asks the catalogues again, at their own pace, and applies only confident matches. It also re-cleans guessed titles. Every change is logged and can be reverted under <a href="/corrections">Corrections</a>.
 {{if .Progress.Running}}<br>Re-resolving: {{.Progress.Done}} of {{.Progress.Total}}, {{.Progress.Improved}} matched. <a href="/review">Refresh</a>.{{else if .Progress.Total}}<br>Last re-resolve: {{.Progress.Done}} of {{.Progress.Total}} checked, {{.Progress.Improved}} matched.{{end}}
 {{if .Progress.Error}}<br>{{.Progress.Error}}{{end}}</p>
 {{if .Items}}

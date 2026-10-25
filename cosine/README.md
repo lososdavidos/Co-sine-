@@ -50,20 +50,24 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
   - The source's metadata feeds the resolver: yt-dlp's artist/track/album fields when the site has them, otherwise "Artist - Title" read from the title, otherwise the uploader. The source's cover becomes the artwork when the file has none.
 - **Search:** two backends, switched in the dashboard. yt-dlp search needs no keys and searches SoundCloud and YouTube together. The source APIs use a SoundCloud client ID and/or a YouTube Data API key and show lengths and play counts. If the APIs fail or have no keys, search quietly falls back to yt-dlp, and the settings page says which backend is actually in use (Q73).
 - **Native API** at `/cosine/v1/`: `capabilities`, `auth` (Subsonic token + salt in, session token out), `lookup`, `ingest`, `ingest/jobs`, `ingest/jobs/{id}/retry`, and `review` with `review/{track}` and its `/candidates`, `/choose`, `/correct` and `/confirm`. Additive only (§9.3).
+- **Title cleaning:** before anything is looked up, what uploaders add is stripped: bracketed noise ("[HD Upgrade]", "(Official Music Video)", "[Free DL]", "(Out Now!)", "[Monstercat Release]"), "PREMIERE:" prefixes, "| Label" tails, hashtags, and YouTube's "Artist - Topic" channels. What names the piece stays: "(VIP)", "(Extended Mix)", "(feat. X)".
 - **MusicBrainz (§3.2, tier 1):** every file is looked up by the artist and title its tags, filename or source page suggest, with the length as evidence.
   - A confident match files it under MusicBrainz's canonical artist, release and track number, and stores the MusicBrainz IDs.
   - Something that arrived as a single is filed as the single, not the compilation it also appears on.
   - A compilation is filed under Various Artists and keeps each track's own artist (Q74).
   - A file with the right name but the wrong length (a mix, an extended cut) is never confident.
   - Lookups are held to one per second and cached forever (Q15). If MusicBrainz can't be reached, Cosine backs off for five minutes and files things from their own metadata in the meantime.
-- **Covers:** in the order of §3.2a. The Cover Art Archive's cover for the matched release comes first, then art embedded in the file, then the source site's thumbnail. A better source replaces a worse one.
+- **Discogs (tier 2):** asked when MusicBrainz isn't confident. Searches masters and releases by artist and track, reads the tracklist for the track's length and position (vinyl sides too), and keeps each track's own artist on a Various compilation. Works without an account at 25 lookups a minute; a personal access token in Settings raises that to 60.
+- **Bandcamp (tier 3):** asked when neither is confident, through the search Bandcamp's own site uses, then the best hits' track pages for length, album and track number. Bandcamp has no public API, so this can break when Bandcamp changes; it then reads as "Bandcamp is unavailable" and nothing else is affected.
+- All three are scored the same way (title, artist, length), so their confidences compare. Every answer is cached forever, and a catalogue that stops answering is skipped for five minutes.
+- **Covers:** in the order of §3.2a. The matched release's cover (Cover Art Archive, Discogs or Bandcamp) comes first, then art embedded in the file, then the source site's thumbnail. A better source replaces a worse one.
 - **Review queue (§5.3, §6.12):** anything not confidently matched, which includes everything identified only from its own metadata.
   - In Sine it's under Library → Review. In the dashboard it's under Review, with bulk confirm.
-  - The correction screen shows MusicBrainz candidates (you can search again with other terms), "It's right as it is", and typing the details yourself.
+  - The correction screen shows candidates from all three catalogues at once, ranked together and labelled by source (you can search again with other terms), "It's right as it is", and typing the details yourself.
   - A correction applies for everyone and moves the files. If the corrected identity already exists, the two become versions of one Track, and plays, stars and playlists follow.
   - Every change is logged under Corrections, and the latest change to a track can be reverted with one click. A merge can't be undone automatically.
-  - Re-resolve (per track or for the whole queue) asks MusicBrainz again in the background and applies only confident matches.
-- **Resolver order:** MusicBrainz, then the file's own metadata (tier 4), meaning embedded tags, then the filename (`NN Artist - Title`, with yt-dlp's `[id]` suffixes stripped). Tier-4 results always go to the review queue (§5.3). Discogs and Bandcamp will slot in between the two.
+  - Re-resolve (per track or for the whole queue) asks the catalogues again in the background and applies only confident matches. A track none of them knows has its guessed title cleaned again, so music filed before a cleaner improvement catches up.
+- **Resolver order:** MusicBrainz, Discogs, Bandcamp, then the file's own metadata (tier 4), meaning the source page, embedded tags, then the filename (`NN Artist - Title`, with yt-dlp's `[id]` suffixes stripped). Tier-4 results always go to the review queue (§5.3).
 - **Subsonic API** (JSON and XML), scoped to each account's own library:
   - ping, getLicense, getMusicFolders, getUser
   - getArtists / getIndexes, getArtist, getAlbumList2 (newest, alphabetical, recent, frequent, random, starred), getAlbum, getSong, getRandomSongs
@@ -76,7 +80,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
 
 ## Not yet
 
-Push notifications for ingest progress (Sine polls while Add is open), uploads from the phone, the Discogs and Bandcamp resolvers, user-set covers, audio fingerprinting, playlist editing, invite codes, the cross-user visibility toggle, delta sync (the change log is already being written), loudness analysis, lyrics, orphan cleanup and quotas.
+Push notifications for ingest progress (Sine polls while Add is open), uploads from the phone, user-set covers, audio fingerprinting, playlist editing, invite codes, the cross-user visibility toggle, delta sync (the change log is already being written), loudness analysis, lyrics, orphan cleanup and quotas.
 
 ## Layout
 
@@ -84,8 +88,11 @@ Push notifications for ingest progress (Sine polls while Add is open), uploads f
 |---|---|
 | `internal/db` | Schema and migrations (additive only) |
 | `internal/store` | Hashing, canonical paths, placing and moving files |
-| `internal/resolve` | The resolver chain and its tier-4 source |
+| `internal/resolve` | The resolver chain, title cleaning, shared scoring, and the tier-4 source |
 | `internal/musicbrainz` | Tier-1 resolver, the lookup cache, the Cover Art Archive |
+| `internal/discogs` | Tier-2 resolver |
+| `internal/bandcamp` | Tier-3 resolver |
+| `internal/webcache` | Paced, cached HTTP for the catalogues |
 | `internal/review` | The review queue, corrections, the correction log and revert, re-resolve |
 | `internal/ingest` | The single path into the Store, plus relocation and the missing-file check |
 | `internal/inbox` | Filesystem watcher with the settle check |

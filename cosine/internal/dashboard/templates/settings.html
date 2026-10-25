@@ -16,6 +16,13 @@
 <p>{{.Data.SearchStatus}}</p>
 <button>Save search settings</button>
 </form>
+<h2>Identifying music</h2>
+<p>Everything is looked up in MusicBrainz, then Discogs, then Bandcamp, and filed under the first confident match. Anything none of them is sure of goes to <a href="/review">Review</a>.</p>
+<form method="post" action="/settings/catalogues">
+<label>Discogs personal access token (optional)<br><input name="discogs" value="{{.Data.DiscogsToken}}" size="40" autocomplete="off"></label>
+<p>Discogs answers without one, at 25 lookups a minute. With a token from discogs.com → Settings → Developers it allows 60.</p>
+<button>Save</button>
+</form>
 <h2>Inbox</h2>
 <form method="post" action="/settings/inbox">
 <label>Inbox path<br><input name="path" value="{{.Data.Inbox}}" size="50" required></label>

@@ -68,6 +68,8 @@ type Ingester struct {
 	Probe func(path string) int
 	// Covers fetches a release's cover from the Cover Art Archive; nil disables it.
 	Covers func(ctx context.Context, releaseMBID, releaseGroupMBID string) ([]byte, string)
+	// Images fetches a catalogue's cover by URL (Discogs, Bandcamp); nil disables them.
+	Images func(ctx context.Context, url string) ([]byte, string)
 
 	mu sync.Mutex // one ingest at a time: cheap on the P450 (G6), no filing races
 }
@@ -162,6 +164,10 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 	if err != nil {
 		return Outcome{}, err
 	}
+	res.Artist = id.artistName // the library's spelling, so the folder is the existing one
+	if res.TrackArtist != "" {
+		res.TrackArtist = id.trackArtistName
+	}
 	trackID, err := upsertID(ctx, tx,
 		`INSERT INTO tracks(release_id, artist_id, title, track_no, disc_no, resolver, tier, confidence, reviewed, mbid, created_at)
 		 VALUES(?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?, ?, NULLIF(?, ''), ?) ON CONFLICT(release_id, title) DO NOTHING`,
@@ -206,40 +212,60 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 	if tags != nil && tags.Picture != nil {
 		embedded = Art{Source: ArtEmbedded, Ext: tags.Picture.Ext, Data: tags.Picture.Data}
 	}
-	g.offerArtwork(ctx, id.release, res.IDs,
+	g.offerArtwork(ctx, id.release, res,
 		embedded, Art{Source: ArtSource, Ext: req.ArtworkExt, Data: req.Artwork})
 	return Outcome{TrackID: trackID, Hash: hash, RelPath: rel}, nil
 }
 
 type identityIDs struct {
 	artist, trackArtist, release int64
+	// The names as stored, which may be an existing artist's spelling.
+	artistName, trackArtistName string
 }
 
 // upsertIdentity finds or creates the artist(s) and release for an
 // identity, recording catalogue IDs the first time they're known. Names
-// match regardless of case; an authoritative identity (a person's
-// correction, a catalogue match) also fixes the stored spelling.
+// match regardless of case and punctuation, so "skeler." from Discogs is
+// the "Skeler" already in the library rather than a second artist. An
+// authoritative identity (MusicBrainz, or a name a person typed) also
+// fixes the stored spelling; anything else adopts the stored one.
 func upsertIdentity(ctx context.Context, tx *sql.Tx, res resolve.Result, authoritative bool) (identityIDs, error) {
 	var id identityIDs
-	artist := func(name, mbid string) (int64, error) {
-		n, err := upsertID(ctx, tx,
-			"INSERT INTO artists(name, mbid) VALUES(?, NULLIF(?, '')) ON CONFLICT(name) DO NOTHING", []any{name, mbid},
-			"SELECT id FROM artists WHERE name = ?", name)
-		if err == nil && mbid != "" {
-			_, err = tx.ExecContext(ctx, "UPDATE artists SET mbid = ? WHERE id = ? AND mbid IS NULL", mbid, n)
+	artist := func(name, mbid string) (int64, string, error) {
+		n, have, found, err := sameArtist(ctx, tx, name)
+		if err != nil {
+			return 0, "", err
 		}
-		if err == nil && authoritative {
-			_, err = tx.ExecContext(ctx, "UPDATE artists SET name = ? WHERE id = ? AND name COLLATE BINARY != ?", name, n, name)
+		if !found {
+			r, err := tx.ExecContext(ctx, "INSERT INTO artists(name, mbid) VALUES(?, NULLIF(?, ''))", name, mbid)
+			if err != nil {
+				return 0, "", err
+			}
+			n, have = 0, name
+			if n, err = r.LastInsertId(); err != nil {
+				return 0, "", err
+			}
 		}
-		return n, err
+		if mbid != "" {
+			if _, err := tx.ExecContext(ctx, "UPDATE artists SET mbid = ? WHERE id = ? AND mbid IS NULL", mbid, n); err != nil {
+				return 0, "", err
+			}
+		}
+		if authoritative && have != name {
+			if _, err := tx.ExecContext(ctx, "UPDATE artists SET name = ? WHERE id = ?", name, n); err != nil {
+				return 0, "", err
+			}
+			have = name
+		}
+		return n, have, nil
 	}
 	var err error
-	if id.artist, err = artist(res.Artist, res.IDs.MBArtist); err != nil {
+	if id.artist, id.artistName, err = artist(res.Artist, res.IDs.MBArtist); err != nil {
 		return id, err
 	}
-	id.trackArtist = id.artist
+	id.trackArtist, id.trackArtistName = id.artist, id.artistName
 	if res.TrackArtist != "" && res.TrackArtist != res.Artist {
-		if id.trackArtist, err = artist(res.TrackArtist, ""); err != nil {
+		if id.trackArtist, id.trackArtistName, err = artist(res.TrackArtist, ""); err != nil {
 			return id, err
 		}
 	}
@@ -263,6 +289,37 @@ func upsertIdentity(ctx context.Context, tx *sql.Tx, res resolve.Result, authori
 		year = COALESCE(year, NULLIF(?, 0))
 		WHERE id = ?`, res.IDs.MBRelease, res.IDs.MBReleaseGroup, res.Year, id.release)
 	return id, err
+}
+
+// sameArtist finds the artist a name refers to: the same name in any case,
+// else one that differs only in punctuation and spacing. A name that is all
+// punctuation ("✝✝✝") only ever matches itself.
+func sameArtist(ctx context.Context, tx *sql.Tx, name string) (id int64, stored string, found bool, err error) {
+	err = tx.QueryRowContext(ctx, "SELECT id, name FROM artists WHERE name = ?", name).Scan(&id, &stored)
+	if err == nil {
+		return id, stored, true, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, "", false, err
+	}
+	want := resolve.Normalise(name)
+	if want == "" {
+		return 0, "", false, nil
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT id, name FROM artists ORDER BY id")
+	if err != nil {
+		return 0, "", false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := rows.Scan(&id, &stored); err != nil {
+			return 0, "", false, err
+		}
+		if resolve.Normalise(stored) == want {
+			return id, stored, true, nil
+		}
+	}
+	return 0, "", false, rows.Err()
 }
 
 // Undismiss lifts the dismissed marker for users who explicitly asked for a Track again.
@@ -319,16 +376,19 @@ func (g *Ingester) GrantPointers(ctx context.Context, trackID int64, users []int
 	return tx.Commit()
 }
 
-// Artwork sources, best first (§3.2a): the resolved release's cover, then
-// art embedded in the file, then the source site's thumbnail. User-set
-// covers are per account and sit above all of these.
+// Artwork sources, best first (§3.2a): the resolved release's cover (from
+// whichever catalogue identified it), then art embedded in the file, then
+// the source site's thumbnail. User-set covers are per account and sit
+// above all of these.
 const (
 	ArtCAA      = "caa"
+	ArtDiscogs  = "discogs"
+	ArtBandcamp = "bandcamp"
 	ArtEmbedded = "embedded"
 	ArtSource   = "source"
 )
 
-var artRank = map[string]int{ArtCAA: 3, ArtEmbedded: 2, ArtSource: 1}
+var artRank = map[string]int{ArtCAA: 3, ArtDiscogs: 3, ArtBandcamp: 3, ArtEmbedded: 2, ArtSource: 1}
 
 type Art struct {
 	Source, Ext string
@@ -337,15 +397,23 @@ type Art struct {
 
 // offerArtwork gives a release the best cover available, replacing one from
 // a worse source. The Cover Art Archive is asked only when it could win.
-func (g *Ingester) offerArtwork(ctx context.Context, releaseID int64, ids resolve.IDs, local ...Art) {
+func (g *Ingester) offerArtwork(ctx context.Context, releaseID int64, res resolve.Result, local ...Art) {
 	var current sql.NullString
 	if err := g.DB.QueryRowContext(ctx, "SELECT art_source FROM releases WHERE id = ?", releaseID).Scan(&current); err != nil {
 		return
 	}
 	have := artRank[current.String]
+	ids := res.IDs
 	if have < artRank[ArtCAA] && g.Covers != nil && (ids.MBRelease != "" || ids.MBReleaseGroup != "") {
 		if data, ext := g.Covers(ctx, ids.MBRelease, ids.MBReleaseGroup); data != nil {
 			g.saveArtwork(ctx, releaseID, Art{Source: ArtCAA, Ext: ext, Data: data})
+			return
+		}
+	}
+	if src := map[string]string{"discogs": ArtDiscogs, "bandcamp": ArtBandcamp}[res.Source]; src != "" &&
+		have < artRank[src] && g.Images != nil && res.Cover != "" {
+		if data, ext := g.Images(ctx, res.Cover); data != nil {
+			g.saveArtwork(ctx, releaseID, Art{Source: src, Ext: ext, Data: data})
 			return
 		}
 	}

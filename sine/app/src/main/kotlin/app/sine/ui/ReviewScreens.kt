@@ -205,7 +205,7 @@ private fun Candidates(
         Button(onClick = {
             query = ReviewQuery(artist.trim(), title.trim(), album.trim())
             searches++
-        }) { Text("Search MusicBrainz") }
+        }) { Text("Search the catalogues") }
 
         val list = results
         when {
@@ -221,7 +221,7 @@ private fun Candidates(
                                 c.trackArtist,
                                 c.year.takeIf { it > 0 }?.toString(),
                                 "${(c.confidence * 100).toInt()}% match",
-                                if (c.source == "musicbrainz") "MusicBrainz" else c.source,
+                                Voice.sourceName(c.source),
                             ).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                         )

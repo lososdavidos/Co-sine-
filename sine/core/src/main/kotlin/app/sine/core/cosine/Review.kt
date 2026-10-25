@@ -9,6 +9,10 @@ data class CatalogueIds(
     val mbRelease: String? = null,
     val mbReleaseGroup: String? = null,
     val mbArtist: String? = null,
+    /** "release/123" or "master/123" on discogs.com. */
+    val discogs: String? = null,
+    /** The track's Bandcamp page. */
+    val bandcamp: String? = null,
 )
 
 /** What a Track is, as the resolver or a person decided (§3.2). */

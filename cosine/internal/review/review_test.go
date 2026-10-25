@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -61,7 +62,7 @@ func setup(t *testing.T) *env {
 	g := &ingest.Ingester{DB: d, DataDir: dir, ReviewThreshold: 0.8, Log: log,
 		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}, MinConfidence: 0.8}}
 	s := &Service{DB: d, Ingester: g, Threshold: 0.8, Log: log,
-		MB: &musicbrainz.Client{HTTP: mb.Client(), BaseURL: mb.URL, UserAgent: "test", Interval: time.Millisecond}}
+		Sources: []Source{&musicbrainz.Client{HTTP: mb.Client(), BaseURL: mb.URL, UserAgent: "test", Interval: time.Millisecond}}}
 	drop := filepath.Join(dir, "drop")
 	os.MkdirAll(drop, 0o755)
 	return &env{s, d, root, drop, admin, alice}
@@ -235,4 +236,109 @@ func TestReresolveAppliesOnlyConfidentMatches(t *testing.T) {
 	if len(hist) != 1 || hist[0].Kind != "reresolve" || hist[0].Who != "Cosine" || !hist[0].Revertible {
 		t.Fatalf("%+v", hist)
 	}
+}
+
+// stub is a catalogue that knows one answer, or is down.
+type stub struct {
+	answers []resolve.Result
+	down    bool
+}
+
+func (s stub) Candidates(_ context.Context, h resolve.Hint, n int) ([]resolve.Result, error) {
+	if s.down {
+		return nil, resolve.Unavailable("Stub")
+	}
+	var out []resolve.Result
+	for _, a := range s.answers {
+		if strings.EqualFold(a.Title, h.Title) {
+			out = append(out, a)
+		}
+	}
+	return out[:min(n, len(out))], nil
+}
+
+func wait(t *testing.T, s *Service) Progress {
+	deadline := time.Now().Add(5 * time.Second)
+	for s.Progress().Running && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return s.Progress()
+}
+
+func TestCandidatesComeFromEveryCatalogue(t *testing.T) {
+	e := setup(t)
+	discogs := stub{answers: []resolve.Result{{Artist: "skeler.", Release: "Tides", Title: "Tides", Source: "discogs",
+		Tier: resolve.TierDiscogs, Confidence: 0.97, IDs: resolve.IDs{Discogs: "release/1"}}}}
+	e.s.Sources = append(e.s.Sources, discogs, stub{down: true})
+	track := e.add(t, "a", "Skeler", "Tides", e.alice.ID)
+	ctx := context.Background()
+	cands, err := e.s.Candidates(ctx, e.alice, track, Query{})
+	if err != nil || len(cands) != 2 {
+		t.Fatal(cands, err)
+	}
+	// Ranked by confidence across catalogues; a catalogue that is down
+	// leaves the others' answers standing.
+	if cands[0].Source != "discogs" || cands[1].Source != "musicbrainz" {
+		t.Fatalf("%+v", cands)
+	}
+	it, err := e.s.Choose(ctx, e.alice, track, Query{}, CandidateKey(cands[0]))
+	// Discogs spells him "skeler."; the library already has "Skeler", and
+	// one artist stays one artist.
+	if err != nil || it.Identity.Source != "discogs" || it.Identity.Artist != "Skeler" || it.Why != "Discogs match, 100% sure." {
+		t.Fatalf("%+v %v", it, err)
+	}
+	if n, _ := countArtists(e); n != 1 {
+		t.Fatalf("%d artists for one", n)
+	}
+
+	e.s.Sources = []Source{stub{down: true}, stub{down: true}}
+	if _, err := e.s.Candidates(ctx, e.alice, track, Query{}); !errors.Is(err, resolve.ErrUnavailable) {
+		t.Fatal("expected unavailable when no catalogue answers:", err)
+	}
+}
+
+func TestReresolveTriesEachCatalogueThenRecleans(t *testing.T) {
+	e := setup(t)
+	bandcamp := stub{answers: []resolve.Result{{Artist: "plenka", Release: "glass EP", Title: "glass", Source: "bandcamp",
+		Tier: resolve.TierBandcamp, Confidence: 0.95, IDs: resolve.IDs{Bandcamp: "https://plenka.bandcamp.com/track/glass"}}}}
+	e.s.Sources = append(e.s.Sources, stub{down: true}, bandcamp)
+	found := e.add(t, "a", "plenka", "glass", e.alice.ID)
+	// Filed before the cleaner knew "[HD Upgrade]": ingest cleans it now.
+	noisy := e.add(t, "b", "Deadcrow", "Hollow (VIP)", e.alice.ID)
+	old := "Hollow (VIP) [HD Upgrade]"
+	if _, _, err := e.s.Ingester.Refile(context.Background(), noisy, ingest.Identity{Result: resolve.Result{
+		Artist: "Deadcrow", Release: old, Title: old, Source: "tags", Tier: resolve.TierSource, Confidence: 0.5}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.s.Reresolve(nil); err != nil {
+		t.Fatal(err)
+	}
+	if p := wait(t, e.s); p.Done != 2 || p.Improved != 2 || p.Error != "" {
+		t.Fatalf("%+v", p)
+	}
+	ctx := context.Background()
+	f, _ := e.s.Ingester.Identity(ctx, found)
+	n, _ := e.s.Ingester.Identity(ctx, noisy)
+	if f.Source != "bandcamp" || f.Release != "glass EP" || !f.Reviewed {
+		t.Fatalf("%+v", f)
+	}
+	// No catalogue knows it, so it stays a guess, but a clean one.
+	if n.Title != "Hollow (VIP)" || n.Release != "Hollow (VIP)" || n.Reviewed {
+		t.Fatalf("%+v", n)
+	}
+	if _, err := os.Stat(filepath.Join(e.root, "Deadcrow", "Hollow (VIP)", "Hollow (VIP).mp3")); err != nil {
+		t.Fatal("not refiled under the clean title:", err)
+	}
+
+	e.s.Sources = []Source{stub{down: true}}
+	e.s.Reresolve(nil)
+	if p := wait(t, e.s); p.Error == "" || p.Done != 1 {
+		t.Fatalf("should stop when no catalogue answers: %+v", p)
+	}
+}
+
+func countArtists(e *env) (int, error) {
+	var n int
+	err := e.db.QueryRow("SELECT COUNT(*) FROM artists").Scan(&n)
+	return n, err
 }

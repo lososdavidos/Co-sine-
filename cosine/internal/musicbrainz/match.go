@@ -3,30 +3,20 @@ package musicbrainz
 import (
 	"context"
 	"math"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 )
 
 // Hint is what's known before asking: usually the tier-4 guess.
-type Hint struct {
-	Artist, Title, Release string
-	DurationSec            int
-}
-
-func (h Hint) usable() bool {
-	return strings.TrimSpace(h.Title) != "" && strings.TrimSpace(h.Artist) != "" &&
-		!strings.EqualFold(h.Artist, "Unknown artist")
-}
+type Hint = resolve.Hint
 
 // Candidates returns up to n identities for a hint, most likely first, each
 // with a confidence. The correction screen shows these (§6.12).
 func (c *Client) Candidates(ctx context.Context, h Hint, n int) ([]resolve.Result, error) {
-	if !h.usable() {
+	if !h.Usable() {
 		return nil, nil
 	}
 	q := "recording:" + phrase(h.Title) + " AND artist:" + phrase(h.Artist)
@@ -131,37 +121,14 @@ func finish(h Hint, r recording, rel release, conf float64) resolve.Result {
 	return res
 }
 
-// score is how well a recording fits the hint, 0..1: title and artist
-// dominate, duration confirms. A confident guess from a filename is still
-// only as good as this agreement.
+// score is how well a recording fits the hint, by the measure every
+// catalogue shares (resolve.Score).
 func score(h Hint, r recording) float64 {
-	title := similarity(h.Title, r.Title)
-	artist := similarity(h.Artist, r.ArtistCredit.String())
+	names := []string{r.ArtistCredit.String()}
 	for _, c := range r.ArtistCredit {
-		artist = math.Max(artist, similarity(h.Artist, c.Name))
+		names = append(names, c.Name)
 	}
-	dur := 0.6 // unknown: neither confirms nor contradicts
-	contradicted := false
-	if h.DurationSec > 0 && r.Length > 0 {
-		d := math.Abs(float64(h.DurationSec) - float64(r.Length)/1000)
-		switch {
-		case d <= 3:
-			dur = 1
-		case d <= 10:
-			dur = 0.7
-		case d <= 30:
-			dur = 0.3
-		default:
-			dur, contradicted = 0, true
-		}
-	}
-	s := 0.45*title + 0.35*artist + 0.20*dur
-	if contradicted {
-		// Same name, very different length: a mix, an extended cut or a
-		// different piece. Never confident enough to skip review.
-		s = math.Min(s, 0.6)
-	}
-	return s
+	return resolve.Score(h, r.Title, names, (r.Length+500)/1000)
 }
 
 // rankReleases orders a recording's releases by how canonical they are for
@@ -206,46 +173,4 @@ func dateKey(d string) string {
 	return d
 }
 
-var bracketed = regexp.MustCompile(`\s*[\[(](?:feat\.?|ft\.?|with)[^\])]*[\])]`)
-
-// normalise lowercases, drops featured-artist brackets and punctuation, and
-// collapses whitespace, so "Tides (feat. X)" and "tides" compare equal.
-func normalise(s string) string {
-	s = bracketed.ReplaceAllString(strings.ToLower(s), "")
-	var b strings.Builder
-	space := false
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsNumber(r) {
-			b.WriteRune(r)
-			space = false
-		} else if !space {
-			b.WriteByte(' ')
-			space = true
-		}
-	}
-	return strings.TrimSpace(b.String())
-}
-
-// similarity is 1 for equal names, else the Dice overlap of their words.
-func similarity(a, b string) float64 {
-	a, b = normalise(a), normalise(b)
-	if a == "" || b == "" {
-		return 0
-	}
-	if a == b {
-		return 1
-	}
-	wa, wb := strings.Fields(a), strings.Fields(b)
-	set := map[string]int{}
-	for _, w := range wa {
-		set[w]++
-	}
-	shared := 0
-	for _, w := range wb {
-		if set[w] > 0 {
-			set[w]--
-			shared++
-		}
-	}
-	return 2 * float64(shared) / float64(len(wa)+len(wb))
-}
+func similarity(a, b string) float64 { return resolve.Similarity(a, b) }

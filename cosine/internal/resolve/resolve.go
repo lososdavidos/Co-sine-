@@ -1,7 +1,7 @@
 // Package resolve identifies what a file is (§3.2). Sources are tried in
-// tier order and the first confident answer wins. Only tier 4 (source
-// metadata: tags and filenames) exists so far; MusicBrainz, Discogs and
-// Bandcamp slot in ahead of it behind the same interface.
+// tier order and the first confident answer wins: MusicBrainz, Discogs and
+// Bandcamp (each in its own package, behind Lookup), then the file's own
+// metadata, here.
 package resolve
 
 import (
@@ -64,6 +64,10 @@ type Result struct {
 	Tier        int     `json:"tier"`
 	Confidence  float64 `json:"confidence"` // 0..1
 	IDs         IDs     `json:"ids,omitzero"`
+	// Cover is the catalogue's cover for the release, when it has one at a
+	// URL of its own (Discogs, Bandcamp); the Cover Art Archive is found
+	// by IDs instead (§3.2a).
+	Cover string `json:"cover,omitempty"`
 }
 
 // IDs are identifiers in outside catalogues. Empty unless the source has them.
@@ -72,6 +76,49 @@ type IDs struct {
 	MBRelease      string `json:"mbRelease,omitempty"`
 	MBReleaseGroup string `json:"mbReleaseGroup,omitempty"`
 	MBArtist       string `json:"mbArtist,omitempty"`
+	// Discogs is "release/123" or "master/123": a path on discogs.com.
+	Discogs string `json:"discogs,omitempty"`
+	// Bandcamp is the track's page.
+	Bandcamp string `json:"bandcamp,omitempty"`
+}
+
+// URL is the identity's page in the catalogue that named it.
+func (ids IDs) URL() string {
+	switch {
+	case ids.MBRelease != "":
+		return "https://musicbrainz.org/release/" + ids.MBRelease
+	case ids.MBRecording != "":
+		return "https://musicbrainz.org/recording/" + ids.MBRecording
+	case ids.Discogs != "":
+		return "https://www.discogs.com/" + ids.Discogs
+	}
+	return ids.Bandcamp
+}
+
+// SourceName is how a source is named to people.
+func SourceName(source string) string {
+	switch source {
+	case "musicbrainz":
+		return "MusicBrainz"
+	case "discogs":
+		return "Discogs"
+	case "bandcamp":
+		return "Bandcamp"
+	}
+	return source
+}
+
+// Key identifies an identity among a search's candidates, across catalogues.
+func (ids IDs) Key() string {
+	switch {
+	case ids.MBRecording != "":
+		return ids.MBRecording + "/" + ids.MBRelease
+	case ids.Discogs != "":
+		return "discogs:" + ids.Discogs
+	case ids.Bandcamp != "":
+		return "bandcamp:" + ids.Bandcamp
+	}
+	return ""
 }
 
 // ArtistOfTrack is the credit shown on the track itself.
@@ -173,9 +220,9 @@ func (SourceMetadata) Resolve(_ context.Context, in Input) (Result, bool, error)
 		t = &Tags{}
 	}
 
-	r.Artist = firstNonEmpty(t.AlbumArtist, t.Artist)
-	r.Title = t.Title
-	r.Release = t.Album
+	r.Artist = CleanArtist(firstNonEmpty(t.AlbumArtist, t.Artist))
+	r.Title = CleanTitle(t.Title)
+	r.Release = CleanTitle(t.Album)
 	r.TrackNo, r.DiscNo, r.Year = t.Track, t.Disc, t.Year
 
 	switch {
@@ -202,19 +249,19 @@ func fromSource(s *SourceInfo) Result {
 	switch {
 	case s.Artist != "" && s.Track != "":
 		// The site gave structured metadata.
-		r.Artist, r.Title, r.Release, r.Confidence = s.Artist, s.Track, s.Album, 0.5
+		r.Artist, r.Title, r.Release, r.Confidence = CleanArtist(s.Artist), CleanTitle(s.Track), CleanTitle(s.Album), 0.5
 	default:
 		// Most uploads are "Artist - Title" by whoever posted them; a title
 		// without that shape belongs to the uploader.
 		p := ParseTitle(s.Title, false)
 		if p.Artist != "" {
-			r.Artist, r.Title, r.Confidence = p.Artist, p.Title, 0.3
+			r.Artist, r.Title, r.Confidence = CleanArtist(p.Artist), p.Title, 0.3
 		} else {
-			r.Artist, r.Title, r.Confidence = s.Uploader, p.Title, 0.2
+			r.Artist, r.Title, r.Confidence = CleanArtist(s.Uploader), p.Title, 0.2
 		}
-		r.Release = s.Album
+		r.Release = CleanTitle(s.Album)
 	}
-	r.Artist = firstNonEmpty(r.Artist, s.Uploader, "Unknown artist")
+	r.Artist = firstNonEmpty(r.Artist, CleanArtist(s.Uploader), "Unknown artist")
 	r.Title = firstNonEmpty(r.Title, s.Title)
 	r.Release = firstNonEmpty(r.Release, r.Title)
 	return r
@@ -228,7 +275,6 @@ type NameParts struct {
 
 var (
 	leadingNumber = regexp.MustCompile(`^(\d{1,3})\s*[-._)\]]?\s+`)
-	bracketNoise  = regexp.MustCompile(`(?i)\s*[\[(](official( music)? (video|audio)|audio|lyrics?|hq|hd|free download|visuali[sz]er)[\])]`)
 	idSuffix      = regexp.MustCompile(`\s*\[[A-Za-z0-9_-]{8,16}\]$`) // yt-dlp's default " [videoid]"
 )
 
@@ -242,9 +288,7 @@ func ParseFilename(name string) NameParts {
 // numbers are only taken from filenames: in a title, "1998 - Song" is not
 // track 1998.
 func ParseTitle(base string, trackNumbers bool) NameParts {
-	base = idSuffix.ReplaceAllString(base, "")
-	base = bracketNoise.ReplaceAllString(base, "")
-	base = strings.TrimSpace(base)
+	base = CleanTitle(idSuffix.ReplaceAllString(base, ""))
 
 	var p NameParts
 	if m := leadingNumber.FindStringSubmatch(base); trackNumbers && m != nil {

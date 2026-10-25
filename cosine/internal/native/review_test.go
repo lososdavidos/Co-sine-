@@ -47,7 +47,7 @@ func reviewServer(t *testing.T) (*httptest.Server, int64) {
 		t.Fatal(err)
 	}
 	api := &API{Auth: as, Version: "t", Log: log, Review: &review.Service{DB: d, Ingester: g, Threshold: 0.8, Log: log,
-		MB: &musicbrainz.Client{HTTP: mb.Client(), BaseURL: mb.URL, UserAgent: "t", Interval: time.Millisecond}}}
+		Sources: []review.Source{&musicbrainz.Client{HTTP: mb.Client(), BaseURL: mb.URL, UserAgent: "t", Interval: time.Millisecond}}}}
 	mux := http.NewServeMux()
 	api.Register(mux)
 	srv := httptest.NewServer(mux)

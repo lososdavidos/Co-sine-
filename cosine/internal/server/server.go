@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/bandcamp"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/dashboard"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/discogs"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/inbox"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
@@ -66,12 +68,17 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, log: log, db: d}
 
-	// The resolver chain (§3.2): MusicBrainz, then the source's own
-	// metadata. Discogs and Bandcamp slot in between as they arrive.
+	// The resolver chain (§3.2): MusicBrainz, Discogs, Bandcamp, then the
+	// source's own metadata. The first confident answer wins.
 	const threshold = 0.8
 	lookups := &http.Client{Timeout: 30 * time.Second}
 	ua := musicbrainz.UserAgent(cfg.Version)
 	mb := &musicbrainz.Client{HTTP: lookups, DB: d, UserAgent: ua}
+	dg := discogs.New(lookups, d, ua, func() string {
+		t, _ := d.Setting(context.Background(), db.SettingDiscogsToken)
+		return t
+	})
+	bc := bandcamp.New(lookups, d, ua)
 	covers := musicbrainz.CoverArt{HTTP: lookups, UserAgent: ua}
 	s.ingester = &ingest.Ingester{
 		DB:              d,
@@ -80,12 +87,19 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		Log:             log,
 		Probe:           ingest.FFProbe(),
 		Covers:          covers.Front,
+		Images:          covers.Image,
 		Resolver: resolve.Chain{
 			MinConfidence: threshold,
-			Resolvers:     []resolve.Resolver{musicbrainz.Resolver{Client: mb}, resolve.SourceMetadata{}},
+			Resolvers: []resolve.Resolver{
+				musicbrainz.Resolver{Client: mb},
+				resolve.Lookup{Matcher: dg},
+				resolve.Lookup{Matcher: bc},
+				resolve.SourceMetadata{},
+			},
 		},
 	}
-	reviews := &review.Service{DB: d, Ingester: s.ingester, MB: mb, Threshold: threshold, Log: log.With("component", "review")}
+	reviews := &review.Service{DB: d, Ingester: s.ingester, Sources: []review.Source{mb, dg, bc},
+		Threshold: threshold, Log: log.With("component", "review")}
 	if s.ingester.Probe == nil {
 		log.Warn("ffprobe not found: track durations will be 0 until it is installed")
 	}
