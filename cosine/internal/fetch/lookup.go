@@ -3,6 +3,7 @@ package fetch
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
@@ -57,6 +58,7 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 				Title: firstNonEmpty(e.Title, e.Link()), Uploader: e.Poster(), URL: e.Link(),
 				Thumbnail: e.CoverURL(), Source: sourceName(e.Source()),
 				DurationSec: int(e.Duration + 0.5), Plays: e.ViewCount,
+				Preview: e.PreviewOnly() || search.LooksLikePreview(sourceName(e.Source()), e.Duration),
 			}})
 		}
 		f.markLibrary(ctx, userID, l.Items)
@@ -71,6 +73,8 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 	for _, r := range res {
 		l.Items = append(l.Items, Item{Result: r})
 	}
+	// Previews can't be added; the full versions (often YouTube's) come first.
+	sort.SliceStable(l.Items, func(i, j int) bool { return !l.Items[i].Preview && l.Items[j].Preview })
 	f.markLibrary(ctx, userID, l.Items)
 	return l, nil
 }

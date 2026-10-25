@@ -1,0 +1,14 @@
+{{define "content"}}
+{{with .Data}}
+<p>Files that were deleted or moved out of the Store from outside Cosine. Their tracks aren't offered to Sine or any other app. Put a file back and its track returns by itself. Cosine checks every few minutes, and straight away when someone tries to play a missing file.</p>
+<form method="post" action="/missing/check"><button>Check the Store now</button></form>
+{{if .Files}}
+<table>
+<tr><th>Artist</th><th>Title</th><th>Was at</th><th>Size</th></tr>
+{{range .Files}}<tr><td>{{.Artist}}</td><td>{{.Title}}</td><td>{{.Path}}</td><td>{{.Size}}</td></tr>
+{{end}}</table>
+<p>Forgetting removes these files from Cosine for good. Their tracks' plays, stars and playlist places are kept out of sight, and come back if you add the same song again.</p>
+<form method="post" action="/missing/forget"><button>Forget {{len .Files}} missing file{{if ne (len .Files) 1}}s{{end}}</button></form>
+{{else}}<p>Nothing is missing.</p>{{end}}
+{{end}}
+{{end}}

@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -236,5 +237,61 @@ func TestOneArtistAcrossSpellings(t *testing.T) {
 	}
 	if n := count(t, f.db, "SELECT COUNT(*) FROM artists"); n != 3 {
 		t.Fatalf("%d artists; symbol-only names must not merge", n)
+	}
+}
+
+func TestForgetMissingKeepsHistoryForAComeback(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	keep, _ := f.g.Ingest(ctx, Request{Path: testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "keep"}.
+		Write(t, filepath.Join(f.drop, "a.mp3")), Source: "inbox"})
+	src := testutil.MP3{Title: "Hollow", Artist: "Deadcrow", Body: "gone"}
+	gone, _ := f.g.Ingest(ctx, Request{Path: src.Write(t, filepath.Join(f.drop, "b.mp3")), Source: "inbox"})
+	f.db.Exec("INSERT INTO plays(user_id, track_id, played_at) VALUES(?, ?, 5)", f.users[0], gone.TrackID)
+	if _, err := f.db.Exec("UPDATE pointers SET starred_at = 9, pin_hash = ? WHERE track_id = ?", gone.Hash, gone.TrackID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing missing: nothing to forget.
+	if n, err := f.g.Forget(ctx); n != 0 || err != nil {
+		t.Fatal(n, err)
+	}
+	// Deleted outside Cosine.
+	os.Remove(filepath.Join(f.root, gone.RelPath))
+	if n, _ := f.g.Verify(ctx); n != 1 {
+		t.Fatal("not noticed")
+	}
+	if n, err := f.g.Forget(ctx); n != 1 || err != nil {
+		t.Fatal(n, err)
+	}
+	if count(t, f.db, "SELECT COUNT(*) FROM objects") != 1 ||
+		count(t, f.db, "SELECT COUNT(*) FROM tracks WHERE id = ?", gone.TrackID) != 1 ||
+		count(t, f.db, "SELECT COUNT(*) FROM plays WHERE track_id = ?", gone.TrackID) != 1 {
+		t.Fatal("forgetting the file should keep the Track and its history")
+	}
+	if _, err := os.Stat(filepath.Join(f.root, "Deadcrow")); !os.IsNotExist(err) {
+		t.Fatal("the emptied folders were left behind")
+	}
+	// Added again: the same Track, with its star.
+	again, err := f.g.Ingest(ctx, Request{Path: src.Write(t, filepath.Join(f.drop, "c.mp3")), Source: "inbox"})
+	if err != nil || again.Duplicate || again.TrackID != gone.TrackID {
+		t.Fatal(again, err)
+	}
+	if count(t, f.db, "SELECT COUNT(*) FROM pointers WHERE track_id = ? AND starred_at = 9", gone.TrackID) != len(f.users) {
+		t.Fatal("stars lost")
+	}
+
+	// An unmounted Store looks like every file deleted: never forget then.
+	os.Rename(f.root, f.root+".away")
+	if _, err := f.g.Forget(ctx); !errors.Is(err, ErrStoreGone) {
+		t.Fatal(err)
+	}
+	os.Rename(f.root+".away", f.root)
+	os.MkdirAll(f.root, 0o755)
+	for _, rel := range []string{keep.RelPath, again.RelPath} {
+		os.Remove(filepath.Join(f.root, rel))
+	}
+	if _, err := f.g.Forget(ctx); !errors.Is(err, ErrStoreGone) || count(t, f.db, "SELECT COUNT(*) FROM objects") != 2 {
+		t.Fatal("every file missing must not be forgotten:", err)
 	}
 }

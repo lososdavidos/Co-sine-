@@ -36,7 +36,9 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Identifying music:** Cosine cleans uploader noise out of titles ("[HD Upgrade]", "(Official Video)", "PREMIERE:"), then looks everything up in MusicBrainz, Discogs and Bandcamp, in that order, and files it under the first confident match's artist and release, with that catalogue's cover. Anything none of them is sure of goes to the review queue (Sine: Library → Review; also in the dashboard). There you pick a match or type the details yourself. Every correction is logged and can be reverted.
 
-**Not yet built:** audio fingerprinting, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, remote control, Jam, and the desktop client.
+**Listening statistics:** Cosine's dashboard has a Listening page with top artists, albums and tracks, listening over time and a year by year view, for everyone or one account. The same data is in the native API, ready for Sine's statistics screen, Home tiles and smart playlists, which aren't built yet.
+
+**Not yet built:** audio fingerprinting, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, smart playlists and the statistics screen in Sine, Last.fm/ListenBrainz scrobbling, remote control, Jam, and the desktop client.
 
 ## Design
 

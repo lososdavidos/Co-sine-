@@ -24,6 +24,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 )
 
 //go:embed templates/*.html
@@ -43,6 +44,7 @@ type Dashboard struct {
 	Search       *search.Service
 	YtDlpVersion string
 	Review       *review.Service
+	Stats        *stats.Service // nil: no Listening page
 
 	pages map[string]*template.Template
 }
@@ -68,8 +70,17 @@ func (d *Dashboard) Handler() http.Handler {
 		"percent":    func(f float64) string { return fmt.Sprintf("%d%%", int(f*100+0.5)) },
 		"key":        review.CandidateKey,
 		"sourceName": resolve.SourceName,
+		"hours":      listeningTime,
+		"date":       func(t time.Time) string { return t.Format("2 Jan 2006") },
+		"inc":        func(i int) int { return i + 1 },
+		"bar": func(n, top int) int {
+			if top == 0 || n == 0 {
+				return 0
+			}
+			return max(1, n*300/top) // a bar always shows for a day with plays
+		},
 	}
-	for _, name := range []string{"setup", "login", "status", "users", "settings", "add", "review", "correct", "corrections"} {
+	for _, name := range []string{"setup", "login", "status", "users", "settings", "add", "review", "correct", "corrections", "missing", "listening"} {
 		d.pages[name] = template.Must(template.New(name).Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
 	}
 	mux := http.NewServeMux()
@@ -90,6 +101,10 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /add", d.admin(d.addForm))
 	mux.HandleFunc("POST /add", d.admin(d.add))
 	mux.HandleFunc("POST /jobs/{id}/retry", d.admin(d.retry))
+	mux.HandleFunc("GET /listening", d.admin(d.listening))
+	mux.HandleFunc("GET /missing", d.admin(d.missing))
+	mux.HandleFunc("POST /missing/check", d.admin(d.checkStore))
+	mux.HandleFunc("POST /missing/forget", d.admin(d.forgetMissing))
 	if d.Review != nil {
 		mux.HandleFunc("GET /review", d.admin(d.reviewList))
 		mux.HandleFunc("POST /review/bulk", d.admin(d.reviewBulk))
@@ -334,10 +349,10 @@ func (d *Dashboard) status(w http.ResponseWriter, r *http.Request, u auth.User) 
 	s.Inbox, _ = d.DB.Setting(ctx, db.SettingInboxPath)
 	var bytes int64
 	d.DB.QueryRowContext(ctx, `SELECT
-		(SELECT COUNT(*) FROM tracks),
+		(SELECT COUNT(*) FROM tracks t WHERE `+db.Available+`),
 		(SELECT COUNT(*) FROM objects),
 		(SELECT COALESCE(SUM(size), 0) FROM objects),
-		(SELECT COUNT(*) FROM tracks WHERE reviewed = 0),
+		(SELECT COUNT(*) FROM tracks t WHERE t.reviewed = 0 AND `+db.Available+`),
 		(SELECT COUNT(*) FROM objects WHERE missing = 1),
 		(SELECT COUNT(*) FROM users)`).Scan(&s.Tracks, &s.Objects, &bytes, &s.Review, &s.Missing, &s.Users)
 	s.Size = humanBytes(bytes)
@@ -400,7 +415,7 @@ func (d *Dashboard) renderUsers(w http.ResponseWriter, r *http.Request, u auth.U
 	rows := make([]userRow, 0, len(list))
 	for _, x := range list {
 		row := userRow{User: x, Self: x.ID == u.ID}
-		d.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM pointers WHERE user_id = ?", x.ID).Scan(&row.Tracks)
+		d.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM pointers p JOIN tracks t ON t.id = p.track_id WHERE p.user_id = ? AND "+db.Available, x.ID).Scan(&row.Tracks)
 		rows = append(rows, row)
 	}
 	d.render(w, "users", page{Title: "Accounts", User: &u, Error: errMsg, Done: r.URL.Query().Get("done"),
@@ -530,6 +545,147 @@ func (d *Dashboard) saveCatalogues(w http.ResponseWriter, r *http.Request, u aut
 		return
 	}
 	done(w, r, "/settings", "Saved.")
+}
+
+// ---------------------------------------------------------------- listening
+
+type listeningData struct {
+	Accounts []struct {
+		ID   int64
+		Name string
+	}
+	Account int64 // 0: everyone
+	Windows []stats.Window
+	Report  stats.Report
+	Years   []stats.Year
+	Max     int // the busiest bucket, for scaling the bars
+}
+
+// listening is the statistics screen (§6.13) for the admin: everyone's
+// listening, or one account's. Sine doesn't show it yet.
+func (d *Dashboard) listening(w http.ResponseWriter, r *http.Request, u auth.User) {
+	if d.Stats == nil {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, q := r.Context(), r.URL.Query()
+	var data listeningData
+	data.Account, _ = strconv.ParseInt(q.Get("account"), 10, 64)
+	sc := stats.Scope{User: data.Account}
+	key := q.Get("window")
+	if key == "" {
+		key = "30d"
+	}
+	win, err := stats.ParseWindow(key, d.Stats.Clock())
+	if err != nil {
+		win, _ = stats.ParseWindow("30d", d.Stats.Clock())
+	}
+	rows, err := d.DB.QueryContext(ctx, "SELECT id, name FROM users ORDER BY name")
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	for rows.Next() {
+		var a struct {
+			ID   int64
+			Name string
+		}
+		rows.Scan(&a.ID, &a.Name)
+		data.Accounts = append(data.Accounts, a)
+	}
+	rows.Close()
+	if data.Report, err = d.Stats.Report(ctx, sc, win, 10); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if data.Windows, err = d.Stats.Windows(ctx, sc); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if data.Years, err = d.Stats.Years(ctx, sc); err != nil {
+		d.fail(w, err)
+		return
+	}
+	for _, b := range data.Report.OverTime {
+		data.Max = max(data.Max, b.Plays)
+	}
+	d.render(w, "listening", page{Title: "Listening", User: &u, Data: data})
+}
+
+// listeningTime reads seconds as "3 h 12 min" or "12 min".
+func listeningTime(sec int64) string {
+	h, m := sec/3600, (sec%3600+30)/60
+	if m == 60 {
+		h, m = h+1, 0
+	}
+	if h > 0 {
+		return fmt.Sprintf("%d h %d min", h, m)
+	}
+	return fmt.Sprintf("%d min", m)
+}
+
+// ---------------------------------------------------------------- missing files
+
+type missingFile struct {
+	Artist, Title, Path, Size string
+}
+
+// fail reports an error the person can't act on, and logs it.
+func (d *Dashboard) fail(w http.ResponseWriter, err error) {
+	d.Log.Error("dashboard", "err", err)
+	http.Error(w, "Server error.", http.StatusInternalServerError)
+}
+
+func (d *Dashboard) missing(w http.ResponseWriter, r *http.Request, u auth.User) {
+	var files []missingFile
+	rows, err := d.DB.QueryContext(r.Context(), `
+		SELECT ta.name, t.title, o.rel_path, o.size
+		FROM objects o JOIN tracks t ON t.id = o.track_id JOIN artists ta ON ta.id = t.artist_id
+		WHERE o.missing = 1 ORDER BY o.rel_path`)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var f missingFile
+		var size int64
+		if err := rows.Scan(&f.Artist, &f.Title, &f.Path, &size); err != nil {
+			d.fail(w, err)
+			return
+		}
+		f.Size = humanBytes(size)
+		files = append(files, f)
+	}
+	d.render(w, "missing", page{Title: "Missing from the Store", User: &u, Done: r.URL.Query().Get("done"),
+		Data: struct{ Files []missingFile }{files}})
+}
+
+func (d *Dashboard) checkStore(w http.ResponseWriter, r *http.Request, u auth.User) {
+	n, err := d.Ingester.Verify(r.Context())
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	msg := "Checked: nothing is missing."
+	if n > 0 {
+		msg = fmt.Sprintf("Checked: %d missing.", n)
+	}
+	done(w, r, "/missing", msg)
+}
+
+func (d *Dashboard) forgetMissing(w http.ResponseWriter, r *http.Request, u auth.User) {
+	n, err := d.Ingester.Forget(r.Context())
+	switch {
+	case errors.Is(err, ingest.ErrStoreGone):
+		done(w, r, "/missing", "Every file in the Store is missing, so its disk is probably not mounted. Nothing was forgotten.")
+	case err != nil:
+		d.fail(w, err)
+	case n == 1:
+		done(w, r, "/missing", "Forgot 1 file.")
+	default:
+		done(w, r, "/missing", fmt.Sprintf("Forgot %d files.", n))
+	}
 }
 
 // ---------------------------------------------------------------- adding music

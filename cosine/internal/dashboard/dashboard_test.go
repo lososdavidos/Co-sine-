@@ -8,6 +8,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/testutil"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
 )
@@ -235,6 +237,80 @@ func TestReviewAndRevertInTheDashboard(t *testing.T) {
 	}
 	_, body = e.post(t, "/corrections/1/revert", nil)
 	if !strings.Contains(body, "Reverted.") || strings.Count(body, ">Revert<") != 0 {
+		t.Fatal(body)
+	}
+}
+
+func TestMissingFilesPage(t *testing.T) {
+	e := setup(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	g := &ingest.Ingester{DB: e.db, DataDir: e.dir, ReviewThreshold: 0.8, Log: log,
+		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}}
+	e.dash.Ingester = g
+	store := filepath.Join(e.dir, "s")
+	e.post(t, "/setup", e.setupForm(store, filepath.Join(e.dir, "i")))
+	drop := t.TempDir()
+	var gone ingest.Outcome
+	for _, title := range []string{"Tides", "Hollow"} {
+		out, err := g.Ingest(context.Background(), ingest.Request{Path: testutil.MP3{Title: title, Artist: "Skeler", Body: title}.
+			Write(t, filepath.Join(drop, title+".mp3")), Source: "inbox"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		gone = out
+	}
+	if _, body := e.get(t, "/missing"); !strings.Contains(body, "Nothing is missing") {
+		t.Fatal(body)
+	}
+	os.Remove(filepath.Join(store, gone.RelPath))
+	if _, body := e.post(t, "/missing/check", nil); !strings.Contains(body, "Checked: 1 missing.") || !strings.Contains(body, "Hollow") {
+		t.Fatal(body)
+	}
+	if _, body := e.get(t, "/"); !strings.Contains(body, `<a href="/missing">1</a>`) {
+		t.Fatal("status should link to the missing files")
+	}
+	_, body := e.post(t, "/missing/forget", nil)
+	if !strings.Contains(body, "Forgot 1 file.") || !strings.Contains(body, "Nothing is missing") {
+		t.Fatal(body)
+	}
+}
+
+func TestListeningPage(t *testing.T) {
+	e := setup(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	g := &ingest.Ingester{DB: e.db, DataDir: e.dir, ReviewThreshold: 0.8, Log: log, Probe: func(string) int { return 200 },
+		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}}
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	e.dash.Ingester = g
+	e.dash.Stats = &stats.Service{DB: e.db, Now: func() time.Time { return now }}
+	e.srv.Config.Handler = e.dash.Handler()
+	store := filepath.Join(e.dir, "s")
+	e.post(t, "/setup", e.setupForm(store, filepath.Join(e.dir, "i")))
+	if _, body := e.get(t, "/listening"); !strings.Contains(body, "No plays: Last 30 days.") {
+		t.Fatal(body)
+	}
+	out, err := g.Ingest(context.Background(), ingest.Request{Path: testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "x"}.
+		Write(t, filepath.Join(t.TempDir(), "a.mp3")), Source: "inbox"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _ := e.auth.CreateUser(context.Background(), "bob", "pw", false)
+	for i, at := range []time.Time{now.AddDate(0, 0, -1), now.AddDate(0, 0, -3), now.AddDate(-1, 0, 0)} {
+		user := int64(1) // the admin made at setup
+		if i == 1 {
+			user = other.ID
+		}
+		e.db.Exec("INSERT INTO plays(user_id, track_id, played_at) VALUES(?, ?, ?)", user, out.TrackID, at.UnixMilli())
+	}
+	_, body := e.get(t, "/listening")
+	for _, want := range []string{"Last 30 days: 2 plays, 7 min of listening, 1 track by 1 artist.", "<td>Skeler</td>",
+		"First played", "25 Oct 2025", "Year by year", `window=2025">2025</a>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in\n%s", want, body)
+		}
+	}
+	_, body = e.get(t, "/listening?account="+itoa(other.ID)+"&window=all")
+	if !strings.Contains(body, "All time: 1 play,") || !strings.Contains(body, `selected>bob</option>`) {
 		t.Fatal(body)
 	}
 }

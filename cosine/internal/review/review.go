@@ -109,6 +109,7 @@ func (s *Service) Queue(ctx context.Context, u auth.User, limit, offset int) ([]
 		scope, args = "AND EXISTS (SELECT 1 FROM pointers p WHERE p.track_id = t.id AND p.user_id = ?)", []any{u.ID}
 	}
 	var total int
+	scope += " AND " + db.Available // nothing to listen to, nothing to correct
 	if err := s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM tracks t WHERE t.reviewed = 0 "+scope, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -488,7 +489,7 @@ func (s *Service) Reresolve(trackIDs []int64) error {
 	}
 	ctx := context.Background()
 	if trackIDs == nil {
-		rows, err := s.DB.QueryContext(ctx, "SELECT id FROM tracks WHERE reviewed = 0 ORDER BY id")
+		rows, err := s.DB.QueryContext(ctx, "SELECT t.id FROM tracks t WHERE t.reviewed = 0 AND "+db.Available+" ORDER BY t.id")
 		if err != nil {
 			s.mu.Unlock()
 			return err

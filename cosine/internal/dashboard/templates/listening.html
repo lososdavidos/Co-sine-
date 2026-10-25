@@ -1,0 +1,52 @@
+{{define "content"}}
+{{with .Data}}
+<form method="get" action="/listening">
+<label style="display:inline">Account <select name="account">
+<option value="">Everyone</option>
+{{range .Accounts}}<option value="{{.ID}}"{{if eq .ID $.Data.Account}} selected{{end}}>{{.Name}}</option>
+{{end}}</select></label>
+<label style="display:inline">Window <select name="window">
+{{range .Windows}}<option value="{{.Key}}"{{if eq .Key $.Data.Report.Window.Key}} selected{{end}}>{{.Label}}</option>
+{{end}}</select></label>
+<button>Show</button>
+</form>
+{{with .Report}}
+{{if .Summary.Plays}}
+<p>{{.Window.Label}}: {{.Summary.Plays}} play{{if ne .Summary.Plays 1}}s{{end}}, {{hours .Summary.Seconds}} of listening, {{.Summary.Tracks}} track{{if ne .Summary.Tracks 1}}s{{end}} by {{.Summary.Artists}} artist{{if ne .Summary.Artists 1}}s{{end}}.</p>
+
+<h2>Over time</h2>
+<table>
+{{range .OverTime}}<tr><td>{{.Label}}</td><td><span class="bar" style="width:{{bar .Plays $.Data.Max}}px"></span> {{if .Plays}}{{.Plays}}{{end}}</td></tr>
+{{end}}</table>
+
+<h2>Top artists</h2>
+<table>
+<tr><th></th><th>Artist</th><th>Plays</th><th>Time</th><th>First played</th></tr>
+{{range $i, $e := .Artists}}<tr><td>{{inc $i}}</td><td>{{$e.Name}}</td><td>{{$e.Plays}}</td><td>{{hours $e.Seconds}}</td><td>{{date $e.FirstPlayed}}</td></tr>
+{{end}}</table>
+
+<h2>Top albums</h2>
+<table>
+<tr><th></th><th>Album</th><th>Artist</th><th>Plays</th><th>Time</th><th>First played</th></tr>
+{{range $i, $e := .Albums}}<tr><td>{{inc $i}}</td><td>{{$e.Name}}</td><td>{{$e.Artist}}</td><td>{{$e.Plays}}</td><td>{{hours $e.Seconds}}</td><td>{{date $e.FirstPlayed}}</td></tr>
+{{end}}</table>
+
+<h2>Top tracks</h2>
+<table>
+<tr><th></th><th>Track</th><th>Artist</th><th>Plays</th><th>Time</th><th>First played</th></tr>
+{{range $i, $e := .Tracks}}<tr><td>{{inc $i}}</td><td>{{$e.Name}}</td><td>{{$e.Artist}}</td><td>{{$e.Plays}}</td><td>{{hours $e.Seconds}}</td><td>{{date $e.FirstPlayed}}</td></tr>
+{{end}}</table>
+{{else}}<p>No plays: {{.Window.Label}}.</p>{{end}}
+{{end}}
+
+{{if .Years}}
+<h2>Year by year</h2>
+<table>
+<tr><th>Year</th><th>Plays</th><th>Time</th><th>Top artist</th><th>Top track</th></tr>
+{{range .Years}}<tr><td><a href="/listening?account={{if $.Data.Account}}{{$.Data.Account}}{{end}}&amp;window={{.Year}}">{{.Year}}</a></td><td>{{.Summary.Plays}}</td><td>{{hours .Summary.Seconds}}</td>
+<td>{{with .TopArtist}}{{.Name}} ({{.Plays}}){{end}}</td><td>{{with .TopTrack}}{{.Name}} by {{.Artist}} ({{.Plays}}){{end}}</td></tr>
+{{end}}</table>
+{{end}}
+<p>A play is recorded when a client reports it: Sine after half a track or four minutes, whichever comes first. Time is each track's length per play.</p>
+{{end}}
+{{end}}

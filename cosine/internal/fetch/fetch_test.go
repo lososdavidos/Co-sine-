@@ -262,3 +262,34 @@ func TestLookup(t *testing.T) {
 		t.Fatal(l, err)
 	}
 }
+
+func TestPreviewOnlyTrackIsRefused(t *testing.T) {
+	snip := "https://soundcloud.com/halseymusic/bad-at-love"
+	full := "https://www.youtube.com/watch?v=xdYFuCp3m9k"
+	previews := []map[string]any{{"format_id": "hls_mp3_1_0_preview"}, {"format_id": "http_mp3_1_0_preview"}}
+	e := setup(t, map[string]any{
+		snip: track(snip, "323294441", "Bad At Love", "HalseyMusic", "clip", map[string]any{"duration": 30.0, "formats": previews}),
+		"scsearch": map[string]any{"_type": "playlist", "entries": []map[string]any{
+			{"url": snip, "title": "Bad At Love", "uploader": "HalseyMusic", "duration": 30.0}}},
+		"ytsearch": map[string]any{"_type": "playlist", "entries": []map[string]any{
+			{"url": full, "title": "Halsey - Bad At Love (Audio)", "uploader": "Halsey", "duration": 182.0}}},
+	})
+	ctx := context.Background()
+	jobs, _ := e.f.Submit(ctx, e.alice, []string{snip}, false)
+	j := e.wait(t, jobs[0].ID, StatusFailed)
+	if !strings.Contains(j.Error, "30-second preview") || e.downloads() != 0 {
+		t.Fatalf("%q, %d downloads", j.Error, e.downloads())
+	}
+
+	// Search marks it and lists the full version first, though SoundCloud
+	// answers first otherwise.
+	l, err := e.f.Lookup(ctx, e.alice, "halsey bad at love")
+	if err != nil || len(l.Items) != 2 || l.Items[0].URL != full || l.Items[0].Preview || !l.Items[1].Preview {
+		t.Fatalf("%+v %v", l.Items, err)
+	}
+	// So does looking the link up directly.
+	l, _ = e.f.Lookup(ctx, e.alice, snip)
+	if len(l.Items) != 1 || !l.Items[0].Preview {
+		t.Fatalf("%+v", l.Items)
+	}
+}

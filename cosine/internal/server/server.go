@@ -25,6 +25,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/subsonic"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
 )
@@ -104,8 +105,9 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		log.Warn("ffprobe not found: track durations will be 0 until it is installed")
 	}
 
-	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, OnInboxChange: s.startInbox, Log: log}
-	nativeAPI := &native.API{Auth: as, Review: reviews, Version: cfg.Version, Log: log}
+	listening := &stats.Service{DB: d}
+	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, Stats: listening, OnInboxChange: s.startInbox, Log: log}
+	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Version: cfg.Version, Log: log}
 	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not
@@ -144,13 +146,7 @@ func (s *Server) Handler() http.Handler { return s.handler }
 func (s *Server) Run(ctx context.Context) error {
 	defer s.db.Close()
 
-	go func() {
-		if n, err := s.ingester.Verify(ctx); err != nil {
-			s.log.Error("verifying the Store", "err", err)
-		} else if n > 0 {
-			s.log.Warn("files missing from the Store", "count", n)
-		}
-	}()
+	go s.watchStore(ctx)
 	if p, _ := s.db.Setting(ctx, db.SettingInboxPath); p != "" {
 		s.startInbox(p)
 	}
@@ -179,6 +175,35 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// storeCheck is how often the Store is checked for files deleted or put
+// back outside Cosine. A play of a deleted file notices sooner.
+const storeCheck = 5 * time.Minute
+
+// watchStore checks the Store at startup and every storeCheck after, so a
+// deleted file leaves everyone's library and one put back returns (§2.2).
+func (s *Server) watchStore(ctx context.Context) {
+	last := -1
+	for {
+		n, err := s.ingester.Verify(ctx)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			s.log.Error("checking the Store", "err", err)
+		case err == nil && n != last:
+			if n > 0 {
+				s.log.Warn("files missing from the Store", "count", n)
+			} else if last > 0 {
+				s.log.Info("no files missing from the Store any more")
+			}
+			last = n
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(storeCheck):
+		}
+	}
 }
 
 // startInbox (re)starts the watcher on path.

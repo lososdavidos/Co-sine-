@@ -23,17 +23,17 @@ func (c *Client) Candidates(ctx context.Context, h Hint, n int) ([]resolve.Resul
 	// A well-known song has dozens of recordings in MusicBrainz, mostly
 	// live bootlegs and music videos, and its search scores them all 100:
 	// "Californication" by Red Hot Chili Peppers has 71, and the studio one
-	// came 14th. So the official, non-video, non-live recordings are asked
-	// for first, and everything only when that finds nothing confident.
+	// came 14th. So official, non-video recordings are asked for first, and
+	// everything only when that finds nothing confident. Live recordings
+	// can't be left out the same way: "NOT secondarytype:live" drops any
+	// recording on any live album, which a hit's studio recording often is
+	// ("Bad at Love" vanished). versionPenalty sorts those out instead.
 	base := "recording:" + phrase(h.Title) + " AND artist:" + phrase(h.Artist)
-	queries := []string{base}
-	if !asksFor(h, "live") {
-		queries = []string{base + " AND status:official AND video:false AND NOT secondarytype:live", base}
-	}
+	queries := []string{base + " AND status:official AND video:false", base}
 	var out []candidate
 	seen := map[string]bool{}
 	for _, q := range queries {
-		recs, err := c.searchRecordings(ctx, q, 25)
+		recs, err := c.searchRecordings(ctx, q, 50)
 		if err != nil {
 			if len(out) > 0 {
 				break // keep what the first search found
@@ -210,7 +210,10 @@ func versionPenalty(h Hint, r recording) float64 {
 	case all(r.Releases, func(rel release) bool { return rel.Status == "Bootleg" }):
 		p += 0.1
 	case all(r.Releases, compilation):
-		p += 0.03 // the same recording on its original release would be better
+		// MusicBrainz often keeps a hit's compilation appearances as a
+		// recording of their own; the album's should win even when the
+		// compilation's length is a second closer.
+		p += 0.1
 	}
 	return p
 }

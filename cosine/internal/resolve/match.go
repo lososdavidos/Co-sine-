@@ -97,6 +97,8 @@ func DurationFit(hintSec, lengthSec int) (score float64, contradicted bool) {
 	switch {
 	case d <= 3:
 		return 1, false
+	case d <= 6: // a longer fade, a second of silence: the same take
+		return 0.9, false
 	case d <= 10:
 		return 0.7, false
 	case d <= 30:

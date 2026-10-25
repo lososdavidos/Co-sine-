@@ -35,7 +35,7 @@ Nouns (used consistently throughout):
 | **Inbox** | A watched folder outside the Store. Anything dropped in is picked up and run through the ingest pipeline, exactly as a download would be. |
 | **Track** | A resolved musical identity — what the tree shows and what a Pointer refers to. |
 | **Object** | One physical audio file in the Store. A Track may have several (a 320 MP3 and a FLAC of the same song). |
-| **Pointer** | A per-account, lightweight reference to a Track. Database row; carries that account's view — added-at date, play count, favourite, download state, optional version pin. |
+| **Pointer** | A per-account, lightweight reference to a Track. Database row; carries that account's view — added-at date, play history (counts are derived from it, Q37), favourite, download state, optional version pin. |
 | **Library** | One account's set of Pointers, presented as a folder tree. The tree mirrors the Store's canonical structure, filtered to what that account has. |
 | **Playlist** | A per-Library ordered list of Pointers. Can be shared with other accounts. |
 
@@ -152,10 +152,20 @@ gets an album folder named after the track itself — a single is a release of o
 song, which is also how MusicBrainz models it, so the tree stays uniform with no
 special cases and no "loose files" area.
 
-`RESOLVED` **A missing Object greys out rather than disappearing.** If a disk is
-unplugged or a file is deleted outside the system, the Track stays listed and
-marked unavailable, playlists keep their entry, and everything returns to normal
-when the file does. The library never silently shrinks.
+`RESOLVED` **A missing Object is hidden until it returns, and forgotten only on
+request.** If a file is deleted outside the system or a disk is unplugged, the
+server notices (it checks the Store every few minutes, and at once when a play
+finds the file gone) and stops offering a Track with no file left: it leaves
+every Library, and playlists skip it. Nothing about it is lost: its plays,
+stars and playlist places are kept, and everything returns when the file does.
+The dashboard lists missing files and can **forget** them, which drops their
+records for good while the Track's history waits, out of sight, for the same
+song to be added again. Forgetting is refused when every file is missing:
+that is an unmounted disk, not deleted music.
+
+Revised from "greys out rather than disappearing": a deliberate deletion should
+look like one in the apps, and an unplugged disk is recovered by plugging it
+back in, not by keeping dead rows on screen.
 
 `NOTE` Natural extension, not decided: for anything that came from a URL, the
 server already knows where it was fetched from, so an unavailable Track could
@@ -540,7 +550,14 @@ third-party clients get this for free.
 `RESOLVED` **Scrobbling is server-side.** Last.fm / ListenBrainz credentials
 live on the server, which scrobbles when a play arrives. Offline plays that sync
 up later are scrobbled correctly, and Subsonic clients scrobble without any
-setup of their own. `OPEN` — how late-arriving offline plays are timestamped.
+setup of their own. Late-arriving offline plays carry the time they were played
+(Q70).
+
+`RESOLVED` **A play counts after half the track or four minutes, whichever
+comes first** — the scrobbler convention. The client that heard it decides and
+reports it with its time; Cosine records what it is told. Sine applies this
+rule; other Subsonic clients apply their own, which is the same convention in
+practice.
 
 `RESOLVED` **Volume normalisation is computed at ingest and stored in the
 database.** Loudness analysis runs once per Object; the value is metadata, never
@@ -1349,6 +1366,13 @@ than requiring new collection.
 This is not a recommendation engine and NG3 stands: it describes what you did,
 it never suggests what to do next.
 
+`RESOLVED` **How the numbers are counted.** Artists are counted by each track's
+own credit, so a compilation counts for the artists on it, not for Various
+Artists (Q74). Listening time is the track's length for every play, not the
+seconds actually heard. *First played* is the first play ever, whatever window
+is shown. Days and months follow the server's time zone. Tracks whose files
+are gone still count: history is never pruned.
+
 Reachable from the account control, and pinnable as a Home tile.
 
 ⚠️ **Graphit rules out most chart types, and the rule is unusually clarifying.**
@@ -1542,6 +1566,7 @@ not silently keep gigabytes.
 | — | Store writers | Server only; outside files arrive via a watched Inbox |
 | — | Queue | Server-side, resumes across devices |
 | — | Scrobbling | Server-side |
+| — | What counts as a play | Half the track or four minutes, decided by the client that heard it |
 | — | Normalisation | Analysed at ingest, stored in DB, applied at playback |
 | — | Long mixes | No special handling |
 | — | Inbox drops | Pointer for every account; removal is opt-out and remembered |
@@ -1557,7 +1582,7 @@ not silently keep gigabytes.
 | — | Account deletion | Pointers removed, Objects kept |
 | — | Orphan GC | Manual by default, optional automatic with grace period |
 | — | Store layout | `Artist / Album / Track`; singles get an album named after the song |
-| — | Missing files | Greyed out, still listed |
+| — | Missing files | Hidden until the file returns; forgotten from the dashboard on request |
 | — | Inbox watching | Filesystem events, with a settle check before ingest |
 | — | Added-at | Per-Pointer — your recents are yours |
 | — | Device storage | Visible folder for pinned downloads; cache stays internal |

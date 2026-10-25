@@ -68,6 +68,10 @@ type Info struct {
 	ExtractorKey string      `json:"extractor_key"`
 	IEKey        string      `json:"ie_key"`
 	Entries      []Info      `json:"entries"`
+	Formats      []struct {
+		FormatID string `json:"format_id"`
+	} `json:"formats"` // only when a single item is described in full
+
 }
 
 type Thumbnail struct {
@@ -84,6 +88,21 @@ func (i Info) Link() string {
 		return i.WebpageURL
 	}
 	return i.URL
+}
+
+// PreviewOnly reports a track the source only lets yt-dlp have a preview
+// of: SoundCloud serves 30 seconds of Go+ tracks, which much popular music
+// on it is. yt-dlp labels every such format "preview".
+func (i Info) PreviewOnly() bool {
+	if len(i.Formats) == 0 {
+		return false
+	}
+	for _, f := range i.Formats {
+		if !strings.Contains(f.FormatID, "preview") {
+			return false
+		}
+	}
+	return true
 }
 
 // Poster is who uploaded it: the fallback artist.

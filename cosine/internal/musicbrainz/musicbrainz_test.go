@@ -191,7 +191,7 @@ func TestResolverUsesTheTier4ReadingAsItsHint(t *testing.T) {
 	if err != nil || !ok || res.IDs.MBRecording != "rec-tides" {
 		t.Fatal(res, ok, err)
 	}
-	if q := f.lastQuery.Load().(string); q != `recording:"Tides" AND artist:"Skeler" AND status:official AND video:false AND NOT secondarytype:live` {
+	if q := f.lastQuery.Load().(string); q != `recording:"Tides" AND artist:"Skeler" AND status:official AND video:false` {
 		t.Fatal(q)
 	}
 }
@@ -338,5 +338,28 @@ func TestAnAlbumOutranksTheSingle(t *testing.T) {
 	r, _, _ = c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Around the World (Single)", DurationSec: 239})
 	if r.IDs.MBRelease != "rel-single" {
 		t.Fatalf("%+v", r)
+	}
+}
+
+func TestTheAlbumsRecordingBeatsACompilationCopy(t *testing.T) {
+	// "Bad at Love": MusicBrainz keeps the compilations' copy as its own
+	// recording, a second closer to a YouTube upload than the album's.
+	body := `{"recordings":[
+ {"id":"rec-comp","score":100,"title":"Bad at Love","length":182000,
+  "artist-credit":[{"name":"Halsey","artist":{"id":"art-h","name":"Halsey"}}],
+  "releases":[{"id":"rel-hits","title":"Just the Hits: Love Songs","status":"Official","date":"2019",
+   "artist-credit":[{"name":"Various Artists","artist":{"id":"art-va","name":"Various Artists"}}],
+   "release-group":{"id":"rg-c","primary-type":"Album","secondary-types":["Compilation"]}}]},
+ {"id":"rec-album","score":97,"title":"Bad at Love","length":181000,
+  "artist-credit":[{"name":"Halsey","artist":{"id":"art-h","name":"Halsey"}}],
+  "releases":[{"id":"rel-hfk","title":"hopeless fountain kingdom","status":"Official","date":"2017-06-02",
+   "release-group":{"id":"rg-a","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"5"}]}]}]}
+]}`
+	c := client(t, newFake(t, body), false)
+	for _, d := range []int{182, 184, 186} {
+		r, ok, _ := c.Match(context.Background(), Hint{Artist: "Halsey", Title: "Bad At Love", Release: "Bad At Love", DurationSec: d})
+		if !ok || r.Release != "hopeless fountain kingdom" || r.Artist != "Halsey" || r.Confidence < 0.8 {
+			t.Fatalf("%ds: %+v", d, r)
+		}
 	}
 }
