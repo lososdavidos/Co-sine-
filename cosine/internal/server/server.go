@@ -25,6 +25,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/subsonic"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
 )
@@ -104,8 +105,9 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		log.Warn("ffprobe not found: track durations will be 0 until it is installed")
 	}
 
-	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, OnInboxChange: s.startInbox, Log: log}
-	nativeAPI := &native.API{Auth: as, Review: reviews, Version: cfg.Version, Log: log}
+	listening := &stats.Service{DB: d}
+	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, Stats: listening, OnInboxChange: s.startInbox, Log: log}
+	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Version: cfg.Version, Log: log}
 	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not

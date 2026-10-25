@@ -24,6 +24,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 )
 
 //go:embed templates/*.html
@@ -43,6 +44,7 @@ type Dashboard struct {
 	Search       *search.Service
 	YtDlpVersion string
 	Review       *review.Service
+	Stats        *stats.Service // nil: no Listening page
 
 	pages map[string]*template.Template
 }
@@ -68,8 +70,17 @@ func (d *Dashboard) Handler() http.Handler {
 		"percent":    func(f float64) string { return fmt.Sprintf("%d%%", int(f*100+0.5)) },
 		"key":        review.CandidateKey,
 		"sourceName": resolve.SourceName,
+		"hours":      listeningTime,
+		"date":       func(t time.Time) string { return t.Format("2 Jan 2006") },
+		"inc":        func(i int) int { return i + 1 },
+		"bar": func(n, top int) int {
+			if top == 0 || n == 0 {
+				return 0
+			}
+			return max(1, n*300/top) // a bar always shows for a day with plays
+		},
 	}
-	for _, name := range []string{"setup", "login", "status", "users", "settings", "add", "review", "correct", "corrections", "missing"} {
+	for _, name := range []string{"setup", "login", "status", "users", "settings", "add", "review", "correct", "corrections", "missing", "listening"} {
 		d.pages[name] = template.Must(template.New(name).Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
 	}
 	mux := http.NewServeMux()
@@ -90,6 +101,7 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /add", d.admin(d.addForm))
 	mux.HandleFunc("POST /add", d.admin(d.add))
 	mux.HandleFunc("POST /jobs/{id}/retry", d.admin(d.retry))
+	mux.HandleFunc("GET /listening", d.admin(d.listening))
 	mux.HandleFunc("GET /missing", d.admin(d.missing))
 	mux.HandleFunc("POST /missing/check", d.admin(d.checkStore))
 	mux.HandleFunc("POST /missing/forget", d.admin(d.forgetMissing))
@@ -533,6 +545,83 @@ func (d *Dashboard) saveCatalogues(w http.ResponseWriter, r *http.Request, u aut
 		return
 	}
 	done(w, r, "/settings", "Saved.")
+}
+
+// ---------------------------------------------------------------- listening
+
+type listeningData struct {
+	Accounts []struct {
+		ID   int64
+		Name string
+	}
+	Account int64 // 0: everyone
+	Windows []stats.Window
+	Report  stats.Report
+	Years   []stats.Year
+	Max     int // the busiest bucket, for scaling the bars
+}
+
+// listening is the statistics screen (§6.13) for the admin: everyone's
+// listening, or one account's. Sine doesn't show it yet.
+func (d *Dashboard) listening(w http.ResponseWriter, r *http.Request, u auth.User) {
+	if d.Stats == nil {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, q := r.Context(), r.URL.Query()
+	var data listeningData
+	data.Account, _ = strconv.ParseInt(q.Get("account"), 10, 64)
+	sc := stats.Scope{User: data.Account}
+	key := q.Get("window")
+	if key == "" {
+		key = "30d"
+	}
+	win, err := stats.ParseWindow(key, d.Stats.Clock())
+	if err != nil {
+		win, _ = stats.ParseWindow("30d", d.Stats.Clock())
+	}
+	rows, err := d.DB.QueryContext(ctx, "SELECT id, name FROM users ORDER BY name")
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	for rows.Next() {
+		var a struct {
+			ID   int64
+			Name string
+		}
+		rows.Scan(&a.ID, &a.Name)
+		data.Accounts = append(data.Accounts, a)
+	}
+	rows.Close()
+	if data.Report, err = d.Stats.Report(ctx, sc, win, 10); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if data.Windows, err = d.Stats.Windows(ctx, sc); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if data.Years, err = d.Stats.Years(ctx, sc); err != nil {
+		d.fail(w, err)
+		return
+	}
+	for _, b := range data.Report.OverTime {
+		data.Max = max(data.Max, b.Plays)
+	}
+	d.render(w, "listening", page{Title: "Listening", User: &u, Data: data})
+}
+
+// listeningTime reads seconds as "3 h 12 min" or "12 min".
+func listeningTime(sec int64) string {
+	h, m := sec/3600, (sec%3600+30)/60
+	if m == 60 {
+		h, m = h+1, 0
+	}
+	if h > 0 {
+		return fmt.Sprintf("%d h %d min", h, m)
+	}
+	return fmt.Sprintf("%d min", m)
 }
 
 // ---------------------------------------------------------------- missing files

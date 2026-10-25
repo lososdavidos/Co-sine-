@@ -50,7 +50,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
   - Jobs survive restarts, run two at a time, report progress, and show yt-dlp's own reason when they fail, with a Retry.
   - The source's metadata feeds the resolver: yt-dlp's artist/track/album fields when the site has them, otherwise "Artist - Title" read from the title, otherwise the uploader. The source's cover becomes the artwork when the file has none.
 - **Search:** two backends, switched in the dashboard. yt-dlp search needs no keys and searches SoundCloud and YouTube together. The source APIs use a SoundCloud client ID and/or a YouTube Data API key and show lengths and play counts. If the APIs fail or have no keys, search quietly falls back to yt-dlp, and the settings page says which backend is actually in use (Q73).
-- **Native API** at `/cosine/v1/`: `capabilities`, `auth` (Subsonic token + salt in, session token out), `lookup`, `ingest`, `ingest/jobs`, `ingest/jobs/{id}/retry`, and `review` with `review/{track}` and its `/candidates`, `/choose`, `/correct` and `/confirm`. Additive only (§9.3).
+- **Native API** at `/cosine/v1/`: `capabilities`, `auth` (Subsonic token + salt in, session token out), `lookup`, `ingest`, `ingest/jobs`, `ingest/jobs/{id}/retry`, `review` with `review/{track}` and its `/candidates`, `/choose`, `/correct` and `/confirm`, and `stats` (`?window=30d|year|2025|all`), `stats/years`, `views` and `views/{name}`, always the caller's own listening. Additive only (§9.3).
 - **Title cleaning:** before anything is looked up, what uploaders add is stripped: bracketed noise ("[HD Upgrade]", "(Official Music Video)", "[Free DL]", "(Out Now!)", "[Monstercat Release]"), "PREMIERE:" prefixes, "| Label" tails, hashtags, and YouTube's "Artist - Topic" channels. What names the piece stays: "(VIP)", "(Extended Mix)", "(feat. X)".
 - **MusicBrainz (§3.2, tier 1):** every file is looked up by the artist and title its tags, filename or source page suggest, with the length as evidence.
   - A confident match files it under MusicBrainz's canonical artist, release and track number, and stores the MusicBrainz IDs.
@@ -77,6 +77,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
   - scrobble: plays are stored as timestamped events, and a resent play is ignored
   - stream / download: always the original bytes, with range requests for seeking
   - getCoverArt: embedded artwork, extracted when the file is ingested
+- **Listening statistics (§6.13):** the dashboard's Listening page shows everyone's listening or one account's, for the last 30 days, this year, any earlier year or all time: totals and listening time, top artists, albums and tracks with first-played dates, listening over time, and the year by year. The same numbers, and the views Home tiles and smart playlists will be built from (most played, recently played, forgotten, never played, this time last year), are in the native API for Sine to use later.
 - **Dashboard:** first-run setup, admin-only login, status with recent ingests, accounts (create and delete; deleting keeps the music), moving the Store (resumable if interrupted), and changing the Inbox.
 - **Missing files (§2.2):** the Store is checked at startup and every five minutes, and a play that finds its file gone marks it at once. A track with no file left isn't offered to Sine or any app (it leaves artists, albums, search and playlists) and returns by itself when the file does, with its plays, stars and playlist places. The dashboard's Missing page lists them and can forget them for good; forgetting is refused when every file is missing, which means an unmounted disk.
 
@@ -95,6 +96,7 @@ Push notifications for ingest progress (Sine polls while Add is open), uploads f
 | `internal/discogs` | Tier-2 resolver |
 | `internal/bandcamp` | Tier-3 resolver |
 | `internal/webcache` | Paced, cached HTTP for the catalogues |
+| `internal/stats` | Listening statistics and the views tiles and smart playlists share |
 | `internal/review` | The review queue, corrections, the correction log and revert, re-resolve |
 | `internal/ingest` | The single path into the Store, plus relocation and the missing-file check |
 | `internal/inbox` | Filesystem watcher with the settle check |
