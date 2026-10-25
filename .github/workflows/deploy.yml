@@ -48,7 +48,12 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src ${{ matrix.image }} bash -euxc '
             apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
             ./deploy/install.sh --binary ./cosine-linux-amd64 --with-fingerprinting
-            ./deploy/install.sh --binary ./cosine-linux-amd64 | grep -q "Kept your existing settings"
+            out="$(./deploy/install.sh --binary ./cosine-linux-amd64)"; echo "$out"
+            grep -q "Kept your existing settings" <<<"$out"
+            grep -q "Already installed:" <<<"$out"         # a rerun skips apt
+            grep -q "already the latest" <<<"$out"          # and current downloads
+            out="$(./deploy/install.sh --binary ./cosine-linux-amd64 --reinstall)"; echo "$out"
+            if grep -qi "already" <<<"$out"; then echo "--reinstall skipped something"; exit 1; fi
             command -v yt-dlp deno ffprobe fpcalc sqlite3
             systemd-analyze verify /etc/systemd/system/cosine.service /etc/systemd/system/*.timer 2>/dev/null || true
             runuser -u cosine -- env $(grep -v "^#" /etc/cosine/cosine.env | xargs) /opt/cosine/bin/cosine &

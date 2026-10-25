@@ -72,6 +72,7 @@ Options (`--help` for all):
 | `--uid N --gid N` | IDs for the `cosine` user, to match bind-mounted folders |
 | `--with-fingerprinting` | Also install Chromaprint |
 | `--no-deno`, `--no-backup`, `--no-start` | Skip those parts |
+| `--reinstall` | Install every component again. Normally a rerun skips what's already current: apt isn't run when the packages are there, and yt-dlp, Deno and Cosine are only downloaded when a newer release exists |
 | `--uninstall [--purge]` | Remove Cosine; `--purge` also deletes its data. Music is never deleted |
 
 ## Afterwards

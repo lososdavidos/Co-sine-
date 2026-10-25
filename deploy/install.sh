@@ -31,6 +31,7 @@ WITH_FINGERPRINT=0
 START=1
 UNINSTALL=0
 PURGE=0
+REINSTALL=0
 
 usage() {
 	cat <<EOF
@@ -51,6 +52,8 @@ Usage: install.sh [options]
                        Also install Chromaprint (fpcalc) for audio
                        fingerprinting. Nothing in Cosine uses it yet.
   --no-start           Install everything but don't start or enable services.
+  --reinstall          Download and install every component again, even the
+                       ones that are already current (a rerun skips those).
   --uninstall          Remove Cosine's program and services. Data and music stay.
   --purge              With --uninstall, also delete $DATA_DIR and $CONF_DIR.
                        Music folders are never deleted.
@@ -97,6 +100,7 @@ while [[ $# -gt 0 ]]; do
 	--no-start) START=0 ;;
 	--uninstall) UNINSTALL=1 ;;
 	--purge) PURGE=1 ;;
+	--reinstall) REINSTALL=1 ;;
 	-h | --help) usage; exit 0 ;;
 	*) die "Unknown option: $1 (see --help)" ;;
 	esac
@@ -165,6 +169,24 @@ verify() {
 	[[ "$want" == "$got" ]] || die "Checksum mismatch for $3: refusing to install it."
 }
 
+# latest_tag OWNER/REPO ASSET: the newest release's tag. GitHub answers a
+# latest-download link with a redirect naming the version; the file itself
+# isn't fetched, and there is no API rate limit. Empty if it can't tell.
+latest_tag() {
+	local url tag
+	url="$(curl -fsS --retry 2 --proto '=https' -o /dev/null -w '%{redirect_url}' \
+		"https://github.com/$1/releases/latest/download/$2" 2>/dev/null)" || return 0
+	[[ "$url" == */releases/download/*/"$2" ]] || return 0
+	tag="${url#*/releases/download/}"
+	printf '%s' "${tag%%/*}"
+}
+
+# current HAVE WANT: true when the installed version is the one wanted, so
+# a rerun doesn't download it again. --reinstall always says no.
+current() {
+	[[ $REINSTALL -eq 0 && -n "$1" && "$1" == "$2" ]]
+}
+
 systemd_run() { # systemctl args, only when systemd is running
 	if [[ $HAVE_SYSTEMD -eq 1 ]]; then systemctl "$@"; fi
 }
@@ -200,17 +222,27 @@ fi
 
 install_packages() {
 	step "Installing system packages"
-	local packages=(ca-certificates curl unzip ffmpeg sqlite3 tzdata)
+	local packages=(ca-certificates curl unzip ffmpeg sqlite3 tzdata) missing=() p
 	[[ $WITH_FINGERPRINT -eq 1 ]] && packages+=(libchromaprint-tools)
-	info "This can take a few minutes on a fresh container: ffmpeg brings a lot with it."
+	for p in "${packages[@]}"; do
+		# shellcheck disable=SC2016 # ${Status} is dpkg-query's field, not ours
+		[[ "$(dpkg-query -W -f='${Status}' "$p" 2>/dev/null)" == "install ok installed" ]] || missing+=("$p")
+	done
+	[[ $REINSTALL -eq 1 ]] && missing=("${packages[@]}")
+	if [[ ${#missing[@]} -eq 0 ]]; then
+		info "Already installed: ${packages[*]} (apt keeps them up to date)"
+		return
+	fi
+	[[ " ${missing[*]} " == *" ffmpeg "* ]] &&
+		info "This can take a few minutes on a fresh container: ffmpeg brings a lot with it."
 	# A shell opened from the Proxmox host passes its own locale (often
 	# en_US.UTF-8), which a minimal container doesn't have: Perl and apt then
 	# warn on every step. C.UTF-8 always exists. apt-listchanges has nothing
 	# useful to say during an unattended install.
 	export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8 LANG=C.UTF-8 LANGUAGE='' APT_LISTCHANGES_FRONTEND=none
 	apt-get update -qq
-	apt-get install -y -qq --no-install-recommends "${packages[@]}" >/dev/null 2>&1 ||
-		apt-get install -y -q --no-install-recommends "${packages[@]}" # on failure, again with output to show why
+	apt-get install -y -qq --no-install-recommends "${missing[@]}" >/dev/null 2>&1 ||
+		apt-get install -y -q --no-install-recommends "${missing[@]}" # on failure, again with output to show why
 	info "ffmpeg (for ffprobe), sqlite3 (for backups)$([[ $WITH_FINGERPRINT -eq 1 ]] && echo ", Chromaprint")"
 }
 
@@ -218,7 +250,13 @@ install_packages() {
 # they scrape and stop working; this one updates itself daily (timer below).
 install_ytdlp() {
 	step "Installing yt-dlp"
-	local base="https://github.com/yt-dlp/yt-dlp/releases/latest/download"
+	local have latest base="https://github.com/yt-dlp/yt-dlp/releases/latest/download"
+	have="$("$BIN_DIR/yt-dlp" --version 2>/dev/null || true)"
+	latest="$(latest_tag yt-dlp/yt-dlp "$YTDLP_ASSET")"
+	if current "$have" "$latest"; then
+		info "yt-dlp $have, already the latest"
+		return
+	fi
 	download "$base/$YTDLP_ASSET" "$TMP/$YTDLP_ASSET"
 	download "$base/SHA2-256SUMS" "$TMP/yt-dlp.sums"
 	verify "$TMP/$YTDLP_ASSET" "$TMP/yt-dlp.sums" "$YTDLP_ASSET"
@@ -231,7 +269,13 @@ install_ytdlp() {
 install_deno() {
 	[[ $WITH_DENO -eq 1 ]] || return 0
 	step "Installing Deno (JavaScript runtime for yt-dlp's YouTube support)"
-	local zip="deno-$DENO_TRIPLE.zip" base="https://github.com/denoland/deno/releases/latest/download"
+	local have latest zip="deno-$DENO_TRIPLE.zip" base="https://github.com/denoland/deno/releases/latest/download"
+	have="$("$BIN_DIR/deno" --version 2>/dev/null | awk 'NR == 1 && $2 { print "v" $2 }' || true)"
+	latest="$(latest_tag denoland/deno "$zip")"
+	if current "$have" "$latest"; then
+		info "Deno $have, already the latest"
+		return
+	fi
 	download "$base/$zip" "$TMP/$zip"
 	download "$base/$zip.sha256sum" "$TMP/deno.sums"
 	verify "$TMP/$zip" "$TMP/deno.sums" "$zip"
@@ -248,6 +292,13 @@ install_cosine() {
 		cp "$LOCAL_BINARY" "$bin"
 		info "From $LOCAL_BINARY"
 	else
+		local want="$VERSION" have
+		[[ "$want" == "latest" ]] && want="$(latest_tag "$REPO" "cosine-linux-$ARCH")"
+		have="$("$PREFIX/bin/cosine" -version 2>/dev/null || true)"
+		if current "$have" "$want"; then
+			info "Cosine $have, already installed"
+			return
+		fi
 		local base="https://github.com/$REPO/releases/latest/download"
 		[[ "$VERSION" != "latest" ]] && base="https://github.com/$REPO/releases/download/$VERSION"
 		local asset="cosine-linux-$ARCH"
