@@ -163,11 +163,17 @@ const (
 // path. The stream is stored exactly as received: no extraction, no
 // re-encode, no remux, no fixups (§3.1a) — the hash is the file the source
 // actually sent.
+//
+// The exception is HLS (all SoundCloud offers now), where the source sends
+// no file, only ~10 s segments. Joined natively they make a fragmented MP4
+// with a zero duration and a sidx per segment, which players read as 10 s
+// long. ffmpeg joins them into one plain MP4 instead, copying the audio.
 func (r Runner) Download(ctx context.Context, url, dir string, progress func(float64)) (string, error) {
 	cmd := r.command(ctx,
 		"--format", "bestaudio/best",
 		"--no-playlist",
 		"--fixup", "never",
+		"--downloader", "m3u8:ffmpeg",
 		"--no-mtime",
 		"--no-warnings",
 		"--newline",
