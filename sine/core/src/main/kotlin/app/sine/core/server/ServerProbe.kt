@@ -41,6 +41,8 @@ object Capability {
     const val CROSS_USER = "cross-user"
     const val REVIEW = "review"
     const val VERSION_PINS = "version-pins"
+    /** Taking songs out of your library (§4.1). */
+    const val REMOVE = "remove"
 }
 
 sealed interface ProbeResult {

@@ -176,3 +176,23 @@ func contains(list []string, s string) bool {
 }
 
 func itoa(n int64) string { return strings.TrimPrefix(trackID(n), "tr-") }
+
+func TestARemovalReachesOnlyThatAccount(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	tides := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "a"}, e.alice, e.bob)
+	a0, _ := e.s.Since(ctx, e.alice, 0)
+	b0, _ := e.s.Since(ctx, e.bob, 0)
+
+	if _, err := e.g.Dismiss(ctx, e.alice, []int64{tides.TrackID}); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := e.s.Since(ctx, e.alice, a0.Cursor)
+	if strings.Join(a.Removed, " ") != "tr-"+itoa(tides.TrackID) || len(a.Tracks) != 0 {
+		t.Fatalf("%+v", a)
+	}
+	b, _ := e.s.Since(ctx, e.bob, b0.Cursor)
+	if len(b.Removed) != 0 {
+		t.Fatalf("bob still has it: %+v", b)
+	}
+}

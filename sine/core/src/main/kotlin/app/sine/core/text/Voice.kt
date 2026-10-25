@@ -18,6 +18,19 @@ object Voice {
     const val NOTHING_TO_REVIEW = "Nothing to review."
     const val CHOOSE_DOWNLOAD_FOLDER = "Choose a folder for downloads first."
 
+    /** Taking songs out of your library (§4.1): asked first, then said. */
+    fun removeQuestion(count: Int) =
+        if (count == 1) "Remove this song from your library?" else "Remove $count songs from your library?"
+
+    fun removeExplained(count: Int) =
+        if (count == 1) "Its download on this phone goes too. Adding it again brings it back."
+        else "Their downloads on this phone go too. Adding one again brings it back."
+
+    fun removeAction(count: Int) = if (count == 1) "Remove 1 song" else "Remove $count songs"
+
+    fun removed(count: Int) =
+        if (count == 1) "Removed 1 song from your library." else "Removed $count songs from your library."
+
     fun downloadQueued(count: Int) =
         if (count == 1) "Downloading 1 track." else "Downloading $count tracks."
 

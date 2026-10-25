@@ -157,6 +157,24 @@ class AccountSession(
     suspend fun artists(): Sourced<List<Artist>> =
         library()?.let { Sourced(it.artists(), false) } ?: fetch(offline = { it.artists() }, remote = { it.artists() })
 
+    /**
+     * A release's tracks when they're known here without asking: the
+     * mirror's, or offline the downloaded ones. Null means ask the server.
+     */
+    fun knownTracks(album: Album, fromDownloads: Boolean): List<Track>? =
+        library()?.album(album.id)?.tracks ?: if (fromDownloads) offline().albumTracks(album.id) else null
+
+    /**
+     * Takes tracks out of this account's library (§4.1) and catches the
+     * mirror up, so they're gone from every screen. Returns how many were in it.
+     */
+    suspend fun remove(trackIds: List<String>): Int {
+        val c = cosine ?: throw CosineException(400, "Removing songs needs a Cosine server.")
+        val n = c.remove(trackIds)
+        sync()
+        return n
+    }
+
     /** Searches the mirror, or null when there is none and the server must be asked. */
     fun searchMirror(query: String) = library()?.search(query)
 

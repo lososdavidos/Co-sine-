@@ -6,6 +6,7 @@
 <tr><th>Files</th><td>{{.Data.Objects}} ({{.Data.Size}})</td></tr>
 <tr><th>Awaiting review</th><td><a href="/review">{{.Data.Review}}</a></td></tr>
 <tr><th>Missing from the Store</th><td>{{if .Data.Missing}}<a href="/missing">{{.Data.Missing}}</a>{{else}}0{{end}}</td></tr>
+<tr><th>Unused files</th><td>{{if .Data.Unused}}<a href="/unused">{{.Data.Unused}} ({{.Data.UnusedSize}})</a>{{else}}0{{end}}</td></tr>
 <tr><th>Accounts</th><td>{{.Data.Users}}</td></tr>
 </table>
 <p>{{if .Data.Ingest}}<a href="/add">Add music</a> from a link or a search.{{else}}Install yt-dlp to add music from links. Until then, drop files into the Inbox.{{end}}</p>

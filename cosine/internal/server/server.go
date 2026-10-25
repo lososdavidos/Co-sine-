@@ -113,7 +113,8 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 
 	listening := &stats.Service{DB: d}
 	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, Stats: listening, OnInboxChange: s.startInbox, Log: log}
-	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Mirror: &mirror.Service{DB: d}, Version: cfg.Version, Log: log}
+	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Mirror: &mirror.Service{DB: d},
+		Ingester: s.ingester, Version: cfg.Version, Log: log}
 	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not

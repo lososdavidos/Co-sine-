@@ -16,6 +16,7 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
@@ -30,8 +31,10 @@ type API struct {
 	Review  *review.Service
 	Stats   *stats.Service  // nil: no statistics
 	Mirror  *mirror.Service // nil: no library mirror
-	Version string
-	Log     *slog.Logger
+	// Ingester takes tracks out of Libraries; nil: no removing.
+	Ingester *ingest.Ingester
+	Version  string
+	Log      *slog.Logger
 }
 
 func (a *API) capabilities() []string {
@@ -47,6 +50,9 @@ func (a *API) capabilities() []string {
 	}
 	if a.Mirror != nil {
 		caps = append(caps, CapSync)
+	}
+	if a.Ingester != nil {
+		caps = append(caps, CapRemove)
 	}
 	return caps
 }
@@ -69,6 +75,9 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Mirror != nil {
 		a.registerSync(mux)
+	}
+	if a.Ingester != nil {
+		a.registerLibrary(mux)
 	}
 }
 

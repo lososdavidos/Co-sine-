@@ -75,6 +75,8 @@ data class IngestJob(
 @Serializable private data class ErrorResponse(val error: String)
 @Serializable private data class CandidatesResponse(val candidates: List<Candidate> = emptyList())
 @Serializable private data class ChooseRequest(val query: ReviewQuery, val key: String)
+@Serializable private data class RemoveRequest(val tracks: List<String>)
+@Serializable private data class RemoveResponse(val removed: Int)
 @Serializable private data class CapabilitiesResponse(val version: String, val capabilities: Set<String> = emptySet())
 
 /**
@@ -123,6 +125,14 @@ class CosineClient(
 
     suspend fun correct(trackId: String, identity: ManualIdentity): ReviewItem =
         send(post("review/$trackId/correct", ManualIdentity.serializer(), identity), ReviewItem.serializer())
+
+    /**
+     * Takes tracks out of this account's library (§4.1). They stay out: the
+     * Inbox won't bring them back, though adding one again on purpose will.
+     * Returns how many were in the library.
+     */
+    suspend fun remove(trackIds: List<String>): Int =
+        send(post("library/remove", RemoveRequest.serializer(), RemoveRequest(trackIds)), RemoveResponse.serializer()).removed
 
     /** The library since [after] (0: all of it), for the mirror (§5.2). */
     suspend fun sync(after: Long): SyncChanges =

@@ -93,6 +93,7 @@ func (s *Service) Since(ctx context.Context, user, after int64) (Changes, error)
 	}
 
 	tracks, releases, artists := map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
+	mine := map[int64]bool{} // tracks this account's own Library changed
 	rows, err := s.DB.QueryContext(ctx, `SELECT entity, entity_id FROM changes
 		WHERE seq > ? AND seq <= ? AND (user_id IS NULL OR user_id = ?)`, after, cursor, user)
 	if err != nil {
@@ -109,8 +110,10 @@ func (s *Service) Since(ctx context.Context, user, after int64) (Changes, error)
 			continue
 		}
 		switch entity {
-		case "track", "pointer":
+		case "track":
 			tracks[id] = true
+		case "pointer":
+			tracks[id], mine[id] = true, true
 		case "album":
 			releases[id] = true
 		case "artist":
@@ -144,14 +147,15 @@ func (s *Service) Since(ctx context.Context, user, after int64) (Changes, error)
 		if present[ref] {
 			continue
 		}
-		// Gone (merged into another), or this account's but with no file
-		// left. Another account's track was never on this client.
+		// Gone (merged into another), removed from this Library, or this
+		// account's but with no file left. Another account's track, never
+		// on this client, isn't mentioned.
 		var exists, ours bool
 		if err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tracks WHERE id = ?1),
 			EXISTS(SELECT 1 FROM pointers WHERE track_id = ?1 AND user_id = ?2)`, id, user).Scan(&exists, &ours); err != nil {
 			return Changes{}, err
 		}
-		if !exists || ours {
+		if !exists || ours || mine[id] {
 			out.Removed = append(out.Removed, ref)
 		}
 	}

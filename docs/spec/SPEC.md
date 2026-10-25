@@ -272,6 +272,12 @@ Automatic collection after a configurable grace period can be switched on if
 you'd rather not think about it. Manual is the default because an automatic
 sweep will eventually delete something you meant to keep.
 
+`NOTE` Built (manual only): the dashboard's **Unused files** page, linked from
+Status, lists the files whose song every account has removed, largest first,
+with a Delete per file and a separate "Delete N unused files (size)". A file
+someone has added back meanwhile is never deleted. The song's history stays, as
+with a forgotten missing file.
+
 `NOTE` Because the Store is shared, library privacy is enforced only in the
 server's query layer. Anyone with shell or file access to the box sees every
 user's files. Acceptable at this scale, but stated rather than discovered.
@@ -566,6 +572,12 @@ twenty it's spam. Fine, given NG1.
 your Library records "this account does not want this Track", not just an
 absence. One consistent rule, applied to manual removals, Inbox drops and shared
 playlist adds alike, so nothing you have rejected can ever come back on its own.
+
+`NOTE` Built: "Remove from library" in Sine, on a release's selected tracks
+or the whole release (not in a playlist, where "remove" would mean the
+playlist). It asks first, naming the count, and deletes the songs' downloads on
+the phone too. Adding a removed song again on purpose (Add, "Add anyway") lifts
+the marker; an Inbox drop does not.
 
 Consequence to accept: a shared playlist that auto-adds Tracks (§2.3) will skip
 anything you previously dismissed, so that playlist plays with a hole in it. The
@@ -1339,6 +1351,11 @@ artist released — albums as release rows, singles as track rows, together. It
 reads as a body of work, which is how this music is actually made and released;
 sectioning albums above singles would impose a record-industry hierarchy the
 library does not have.
+
+`NOTE` Built with the mirror: oldest first by year, releases without a year
+last. A single row plays that song and the artist's singles after it, and a long
+press selects it as on a release. Without the mirror (compat mode) the tracks of
+each release aren't known up front, so every release shows as a release.
 
 `RESOLVED` **An artist has a picture, shown round.** It comes from Deezer, whose
 artist pictures are square press photos: through MusicBrainz's link to the

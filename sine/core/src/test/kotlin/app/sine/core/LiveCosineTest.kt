@@ -154,5 +154,14 @@ class LiveCosineTest {
         assertTrue(!delta.full && delta.tracks.any { it.id == status.trackId }, "$delta")
         mirror.apply(delta)
         assertEquals(fetched, mirror.library.value.track(status.trackId!!))
+
+        // Removing it (§4.1): gone from browsing, and from the mirror as a change.
+        assertTrue(Capability.REMOVE in kind.capabilities, "$kind")
+        assertEquals(1, cosine.remove(listOf(status.trackId!!)))
+        assertTrue(sub.search("fetched").tracks.none { it.id == status.trackId }, "removed, but still offered")
+        val gone = cosine.sync(mirror.cursor)
+        assertEquals(listOf(status.trackId), gone.removedTracks)
+        mirror.apply(gone)
+        assertEquals(null, mirror.library.value.track(status.trackId!!))
     }
 }

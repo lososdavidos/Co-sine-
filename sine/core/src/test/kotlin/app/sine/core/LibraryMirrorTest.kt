@@ -4,6 +4,8 @@ import app.sine.core.mirror.LibraryMirror
 import app.sine.core.mirror.SyncChanges
 import app.sine.core.model.Album
 import app.sine.core.model.Artist
+import app.sine.core.model.ArtistEntry
+import app.sine.core.model.ArtistPage
 import app.sine.core.model.Track
 import java.io.File
 import java.nio.file.Files
@@ -98,5 +100,29 @@ class LibraryMirrorTest {
         m.apply(SyncChanges(cursor = 3, full = true, artists = listOf(plenka), albums = listOf(glass), tracks = listOf(glassTrack)))
         assertEquals(listOf("plenka"), m.library.value.artists().map { it.name })
         assertEquals(3, m.cursor)
+    }
+}
+
+class ArtistPageTest {
+    private fun album(id: String, name: String, tracks: Int) = Album(id, name, "Skeler", "ar-1", trackCount = tracks)
+    private fun track(id: String, title: String, albumId: String) =
+        Track(id = id, title = title, artist = "Skeler", album = "", albumId = albumId, durationSec = 200)
+
+    @Test
+    fun `a release of one song named like it is a single`() {
+        val albums = listOf(
+            album("al-1", "Tides EP", 3),
+            album("al-2", "Plume", 1),        // a single
+            album("al-3", "Hollow Sessions", 1), // one track, another name: still a release
+            album("al-4", "glass ", 1),       // unknown tracks: stays a release
+        )
+        val tracks = mapOf(
+            "al-2" to listOf(track("tr-2", "plume", "al-2")),
+            "al-3" to listOf(track("tr-3", "Hollow", "al-3")),
+        )
+        val entries = ArtistPage.entries(albums) { tracks[it.id] }
+        assertEquals(listOf("Release", "Single", "Release", "Release"), entries.map { it::class.simpleName })
+        assertEquals("tr-2", (entries[1] as ArtistEntry.Single).track.id)
+        assertEquals(albums, entries.map { it.album }) // the order is the releases'
     }
 }
