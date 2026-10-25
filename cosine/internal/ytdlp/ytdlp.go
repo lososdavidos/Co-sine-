@@ -152,6 +152,13 @@ func (r Runner) Probe(ctx context.Context, url string) (Info, error) {
 	return r.json(ctx, "--dump-single-json", "--flat-playlist", "--no-playlist", "--no-warnings", "--", url)
 }
 
+// SearchURL lists the first n results of a site's own search page, such as
+// YouTube Music's, without describing each in full.
+func (r Runner) SearchURL(ctx context.Context, url string, n int) ([]Info, error) {
+	info, err := r.json(ctx, "--dump-single-json", "--flat-playlist", "--playlist-end", strconv.Itoa(n), "--no-warnings", "--", url)
+	return info.Entries, err
+}
+
 // Search runs a yt-dlp search, e.g. prefix "scsearch" or "ytsearch".
 func (r Runner) Search(ctx context.Context, prefix, query string, n int) ([]Info, error) {
 	info, err := r.json(ctx, "--dump-single-json", "--flat-playlist", "--no-warnings", "--",

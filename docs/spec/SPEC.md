@@ -408,6 +408,23 @@ maintain a whitelist.
 
 The chosen result is a URL either way; ingest from that point is identical.
 
+`RESOLVED` **yt-dlp search also asks YouTube Music for songs.** Labels upload
+every release track by track to an "Artist - Topic" channel: the album audio,
+without a music video's intro or outro, at the release's length, carrying the
+release's artist, title and album. The first few are described in full, and the
+one that is the song asked for is listed first.
+
+`RESOLVED` **Results are ranked by the song as released.** That upload's length
+is the release's. Every result that is the same song is labelled with how its
+length compares ("Same length as the release", "0:44 longer than the
+release"); those of the release's length come first, those much longer or
+shorter (a video's intro, a 12-minute extended upload) after everything else,
+and previews last. With nothing to compare against, the sites' own order stands.
+
+`NOTE` Audiomack was considered as a fourth source and is not possible for now:
+yt-dlp's Audiomack support relies on an endpoint Audiomack retired, and its
+current API needs a consumer key that Audiomack issues only by arrangement.
+
 `RESOLVED` **Best available stream, stored untouched.** The server takes the
 highest-quality audio the source offers and writes it to the Store exactly as
 downloaded — no re-encode, no remux, no container normalisation. The library

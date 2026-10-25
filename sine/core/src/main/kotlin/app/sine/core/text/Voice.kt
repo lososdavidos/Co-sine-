@@ -40,6 +40,17 @@ object Voice {
         else -> source
     }
 
+    /** How a search result's length compares with the release (§6.10), as Cosine's dashboard says it. */
+    fun lengthNote(durationSec: Int, releaseSec: Int): String? {
+        if (releaseSec <= 0 || durationSec <= 0) return null
+        val off = kotlin.math.abs(durationSec - releaseSec)
+        return when {
+            off <= 6 -> "Same length as the release"
+            durationSec > releaseSec -> "${formatDuration(off)} longer than the release"
+            else -> "${formatDuration(off)} shorter than the release"
+        }
+    }
+
     fun formatDuration(seconds: Int): String {
         val h = seconds / 3600
         val m = (seconds % 3600) / 60

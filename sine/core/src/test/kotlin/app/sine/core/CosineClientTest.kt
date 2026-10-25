@@ -6,6 +6,7 @@ import app.sine.core.cosine.PendingShare
 import app.sine.core.cosine.PendingShares
 import app.sine.core.cosine.ShareText
 import app.sine.core.subsonic.SubsonicCredentials
+import app.sine.core.text.Voice
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
@@ -47,7 +48,7 @@ class CosineClientTest {
                 return when (path) {
                     "/cosine/v1/lookup" -> json(
                         """{"kind":"collection","title":"Tides","items":[
-                           {"title":"One","uploader":"Skeler","url":"https://sc/one","source":"soundcloud","durationSec":125,"inLibrary":true},
+                           {"title":"One","uploader":"Skeler","url":"https://sc/one","source":"soundcloud","durationSec":125,"inLibrary":true,"releaseSec":124},
                            {"title":"Two","url":"https://sc/two","newField":1,"preview":true}]}"""
                     )
                     "/cosine/v1/ingest" -> json("""{"jobs":[{"id":7,"url":"https://sc/two","title":"https://sc/two","status":"queued"}]}""", 202)
@@ -81,6 +82,10 @@ class CosineClientTest {
         assertEquals(listOf(true, false), lookup.items.map { it.inLibrary })
         assertEquals(listOf(false, true), lookup.items.map { it.preview })
         assertEquals(125, lookup.items[0].durationSec)
+        assertEquals("Same length as the release", Voice.lengthNote(lookup.items[0].durationSec, lookup.items[0].releaseSec))
+        assertEquals(null, Voice.lengthNote(lookup.items[1].durationSec, lookup.items[1].releaseSec))
+        assertEquals("0:44 longer than the release", Voice.lengthNote(225, 181))
+        assertEquals("2:31 shorter than the release", Voice.lengthNote(30, 181))
         c.submit(listOf("https://sc/two"))
         val jobs = c.jobs()
         assertEquals(1, sessionsIssued)

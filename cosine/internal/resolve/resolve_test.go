@@ -130,11 +130,11 @@ func TestAnotherVersionNeedsAsking(t *testing.T) {
 	if s := Score(Hint{Artist: "Halsey", Title: "Bad At Love (Autograf Remix)"}, "Bad at Love (Autograf remix)", []string{"Halsey"}, 0); s < 0.8 {
 		t.Error("an asked-for remix scored", s)
 	}
-	if anotherVersion(Hint{Title: "Bad at Love", Release: "Bad at Love (Remixes)"}, "Bad at Love (Autograf remix)") {
+	if AnotherVersion(Hint{Title: "Bad at Love", Release: "Bad at Love (Remixes)"}, "Bad at Love (Autograf remix)") {
 		t.Error("the album named the remixes")
 	}
 	// A song whose name has such a word in it is itself.
-	if anotherVersion(Hint{Title: "Live Forever"}, "Live Forever") {
+	if AnotherVersion(Hint{Title: "Live Forever"}, "Live Forever") {
 		t.Error("Live Forever")
 	}
 }

@@ -243,6 +243,7 @@ private fun ResultRow(item: AddItem, checked: Boolean, onToggle: () -> Unit) {
                 item.source.ifBlank { null },
                 if (item.inLibrary) "In your library" else null,
                 if (item.preview) "30-second preview only" else null,
+                Voice.lengthNote(item.durationSec, item.releaseSec),
             ).joinToString(" · ")
             if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall)
         }

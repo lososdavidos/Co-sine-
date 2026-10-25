@@ -71,6 +71,7 @@ func (d *Dashboard) Handler() http.Handler {
 		"key":        review.CandidateKey,
 		"sourceName": resolve.SourceName,
 		"hours":      listeningTime,
+		"lengthNote": search.LengthNote,
 		"date":       func(t time.Time) string { return t.Format("2 Jan 2006") },
 		"inc":        func(i int) int { return i + 1 },
 		"bar": func(n, top int) int {
