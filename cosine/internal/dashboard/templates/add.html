@@ -14,7 +14,7 @@
 <td><input type="checkbox" name="url" value="{{.URL}}" {{if and (ne $.Data.Lookup.Kind "search") (not .InLibrary)}}checked{{end}}></td>
 <td><a href="{{.URL}}" rel="noreferrer">{{.Title}}</a></td><td>{{.Uploader}}</td>
 <td>{{duration .DurationSec}}</td><td>{{if .Plays}}{{.Plays}}{{end}}</td><td>{{.Source}}</td>
-<td>{{if .InLibrary}}In your library{{end}}{{if .Preview}}30-second preview only{{end}}</td></tr>
+<td>{{if .InLibrary}}In your library<br>{{end}}{{if .Preview}}30-second preview only{{end}}{{lengthNote .Result}}</td></tr>
 {{end}}</table>
 <button>Add selected</button>
 </form>

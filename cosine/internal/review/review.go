@@ -102,7 +102,9 @@ func (s *Service) visible(ctx context.Context, u auth.User, trackID int64) bool 
 	return s.DB.QueryRowContext(ctx, q, args...).Scan(&one) == nil
 }
 
-// Queue lists unreviewed Tracks, oldest first so a backlog drains in order.
+// Queue lists unreviewed Tracks, most recently added first: what you just
+// added is what you're checking, and a backlog from a bulk ingest must not
+// hide it. The rest pages in behind.
 func (s *Service) Queue(ctx context.Context, u auth.User, limit, offset int) ([]Item, int, error) {
 	scope, args := "", []any{}
 	if !u.IsAdmin {
@@ -113,7 +115,9 @@ func (s *Service) Queue(ctx context.Context, u auth.User, limit, offset int) ([]
 	if err := s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM tracks t WHERE t.reviewed = 0 "+scope, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.DB.QueryContext(ctx, "SELECT t.id FROM tracks t WHERE t.reviewed = 0 "+scope+" ORDER BY t.id LIMIT ? OFFSET ?",
+	// A file that joins an older Track (a second version) counts as new.
+	rows, err := s.DB.QueryContext(ctx, "SELECT t.id FROM tracks t WHERE t.reviewed = 0 "+scope+
+		" ORDER BY (SELECT MAX(o.created_at) FROM objects o WHERE o.track_id = t.id) DESC, t.id DESC LIMIT ? OFFSET ?",
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, 0, err

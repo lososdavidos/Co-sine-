@@ -408,6 +408,23 @@ maintain a whitelist.
 
 The chosen result is a URL either way; ingest from that point is identical.
 
+`RESOLVED` **yt-dlp search also asks YouTube Music for songs.** Labels upload
+every release track by track to an "Artist - Topic" channel: the album audio,
+without a music video's intro or outro, at the release's length, carrying the
+release's artist, title and album. The first few are described in full, and the
+one that is the song asked for is listed first.
+
+`RESOLVED` **Results are ranked by the song as released.** That upload's length
+is the release's. Every result that is the same song is labelled with how its
+length compares ("Same length as the release", "0:44 longer than the
+release"); those of the release's length come first, those much longer or
+shorter (a video's intro, a 12-minute extended upload) after everything else,
+and previews last. With nothing to compare against, the sites' own order stands.
+
+`NOTE` Audiomack was considered as a fourth source and is not possible for now:
+yt-dlp's Audiomack support relies on an endpoint Audiomack retired, and its
+current API needs a consumer key that Audiomack issues only by arrangement.
+
 `RESOLVED` **Best available stream, stored untouched.** The server takes the
 highest-quality audio the source offers and writes it to the Store exactly as
 downloaded — no re-encode, no remux, no container normalisation. The library
@@ -447,6 +464,19 @@ The resolver tries sources in order and stops at the first confident match:
 Every resolved track records **which source identified it** and a **confidence**,
 so low-confidence entries are visible and correctable rather than silently
 wrong. `OPEN` — how confidence is expressed in the UI.
+
+`RESOLVED` **The artist's own release, not a compilation the source names.** A
+song is filed under the album it has been on, else its EP, else its single;
+compilations, soundtracks and live albums come last, and an album the file
+itself names goes first. A named compilation is the exception: YouTube credits a
+video to whichever release claimed it ("Hot Party Winter 2018") and a ripped
+"NOW" CD names one too, so it only goes ahead of other compilations. A song that
+was only ever on compilations is filed under Various Artists (Q74).
+
+`RESOLVED` **A remix is another track.** A catalogue title that names a version
+— remix, rework, VIP, cover, live, acoustic, instrumental, karaoke, nightcore,
+slowed or sped up — only matches a file whose title or album asks for it. By
+name and often by length it is otherwise as good a fit as the song.
 
 `RESOLVED` **Corrections are global.** The Store is canonical, so fixing a bad
 match refiles the Object for everyone. Because identity is the content hash,
@@ -1357,10 +1387,16 @@ global; those two are about the library specifically.
 guess and where it came from; tapping opens a correction screen carrying
 candidate matches and a search field. It scales to a backlog, which a
 one-at-a-time flow does not — and after a bulk ingest there will be a backlog.
+Most recently added first, so a backlog never hides what you just added; the
+rest pages in behind it.
 
 The queue is reachable from the Library header beside Add, and from its Home
 tile. Its count is the yellow plane; zero is a resting state, not an empty
 screen.
+
+`RESOLVED` **Anything filed can be corrected, not only what is queued.** A
+confident match never enters the queue, so a wrong one would have no way back:
+every finished item in Add's list of recent adds opens its correction screen.
 
 `RESOLVED` **The correction screen shows all sources at once, ranked, with each
 candidate labelled by origin** — MusicBrainz, Discogs, Bandcamp — so you can see

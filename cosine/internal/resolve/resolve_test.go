@@ -111,3 +111,30 @@ func TestSourceInfo(t *testing.T) {
 		}
 	}
 }
+
+func TestAnotherVersionNeedsAsking(t *testing.T) {
+	plain := Hint{Artist: "Halsey", Title: "Bad At Love", DurationSec: 205}
+	song := Score(plain, "Bad at Love", []string{"Halsey"}, 205)
+	for _, title := range []string{"Bad at Love (Autograf remix)", "Bad at Love (Live)", "Bad At Love - Acoustic", "Bad at Love (Halsey cover)"} {
+		if s := Score(plain, title, []string{"Halsey"}, 205); s >= 0.8 || s >= song {
+			t.Errorf("%q scored %.2f for a plain title", title, s)
+		}
+	}
+	// The same take under another label is the song; length decides.
+	for _, title := range []string{"Bad at Love (Radio Edit)", "Bad at Love (Original Mix)"} {
+		if s := Score(plain, title, []string{"Halsey"}, 205); s < 0.8 {
+			t.Errorf("%q scored %.2f", title, s)
+		}
+	}
+	// Asked for, in the title or the album, a version matches.
+	if s := Score(Hint{Artist: "Halsey", Title: "Bad At Love (Autograf Remix)"}, "Bad at Love (Autograf remix)", []string{"Halsey"}, 0); s < 0.8 {
+		t.Error("an asked-for remix scored", s)
+	}
+	if AnotherVersion(Hint{Title: "Bad at Love", Release: "Bad at Love (Remixes)"}, "Bad at Love (Autograf remix)") {
+		t.Error("the album named the remixes")
+	}
+	// A song whose name has such a word in it is itself.
+	if AnotherVersion(Hint{Title: "Live Forever"}, "Live Forever") {
+		t.Error("Live Forever")
+	}
+}

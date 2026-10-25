@@ -228,7 +228,9 @@ private fun MainScaffold(session: AccountSession) {
                 composable(
                     Routes.ADD,
                     arguments = listOf(navArgument("text") { type = NavType.StringType; defaultValue = "" }),
-                ) { AddScreen(session, it.arguments?.getString("text").orEmpty()) }
+                ) {
+                    AddScreen(session, it.arguments?.getString("text").orEmpty(), onCorrect = { track -> nav.navigate(Routes.correct(track)) })
+                }
                 composable(Routes.REVIEW) { ReviewScreen(session, onOpen = { nav.navigate(Routes.correct(it)) }) }
                 composable(Routes.CORRECT, arguments = listOf(navArgument("track") { type = NavType.StringType })) {
                     CorrectionScreen(session, it.arguments?.getString("track").orEmpty(), onDone = { nav.popBackStack() })

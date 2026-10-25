@@ -342,3 +342,31 @@ func countArtists(e *env) (int, error) {
 	err := e.db.QueryRow("SELECT COUNT(*) FROM artists").Scan(&n)
 	return n, err
 }
+
+func TestQueueShowsTheNewestFirstAndPages(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	add := func(name, artist, title string) int64 {
+		time.Sleep(3 * time.Millisecond) // distinct timestamps
+		return e.add(t, name, artist, title, e.admin.ID)
+	}
+	old := add("a", "skeler", "tides")
+	add("b", "plenka", "glass")
+	newest := add("c", "deadcrow", "hollow")
+
+	page, total, err := e.s.Queue(ctx, e.admin, 2, 0)
+	if err != nil || total != 3 || len(page) != 2 || page[0].TrackID != trackRef(newest) {
+		t.Fatal(page, total, err)
+	}
+	if rest, _, _ := e.s.Queue(ctx, e.admin, 2, 2); len(rest) != 1 || rest[0].TrackID != trackRef(old) {
+		t.Fatal("the oldest is on the next page:", rest)
+	}
+
+	// A new file of an older Track brings that Track back to the top.
+	if again := add("a2", "skeler", "tides"); again != old {
+		t.Fatal("expected a second version of the same track")
+	}
+	if page, _, _ := e.s.Queue(ctx, e.admin, 1, 0); page[0].TrackID != trackRef(old) {
+		t.Fatal(page)
+	}
+}

@@ -120,7 +120,7 @@ func identities(h Hint, r recording) []candidate {
 			break
 		}
 		conf := base - 0.02*float64(i) // alternatives rank just below the preferred release
-		if h.Release != "" && !strings.EqualFold(h.Release, h.Title) && similarity(h.Release, rel.Title) >= 0.8 {
+		if named(h, rel) && !compiled(rel) {
 			conf += 0.05 // the album we were told about
 		}
 		out = append(out, candidate{finish(h, r, rel, conf), releaseRank(h, r, rel)})
@@ -243,6 +243,17 @@ func compilation(rel release) bool {
 	return slices.Contains(st, "Compilation") || slices.Contains(st, "DJ-mix")
 }
 
+// compiled reports whether a release gathers tracks from other releases: a
+// compilation or DJ mix, or anything credited to Various Artists.
+func compiled(rel release) bool {
+	return compilation(rel) || strings.EqualFold(rel.ArtistCredit.String(), "Various Artists")
+}
+
+// named reports whether the file names this release as its album.
+func named(h Hint, rel release) bool {
+	return h.Release != "" && !strings.EqualFold(h.Release, h.Title) && similarity(h.Release, rel.Title) >= 0.8
+}
+
 // rankReleases orders a recording's releases by how canonical they are for
 // this file (releaseRank), earliest first between equals.
 func rankReleases(h Hint, r recording) []release {
@@ -262,10 +273,18 @@ func rankReleases(h Hint, r recording) []release {
 // ever been on an album is filed under the album, then an EP, then its
 // single (the one named after the track, if there are several), and only
 // then a compilation, soundtrack or live album. Official before anything.
+//
+// A compilation the file names is not "the album" in that sense: YouTube
+// credits a video to whichever release claimed it, often a "Hot Party
+// Winter 2018", and a ripped "NOW" CD names one too. It only goes ahead
+// of other compilations; the artist's own release still wins.
 func releaseRank(h Hint, r recording, rel release) int {
 	wantAlbum := h.Release != "" && !strings.EqualFold(h.Release, h.Title)
 	n := 0
-	if wantAlbum && similarity(h.Release, rel.Title) >= 0.8 {
+	switch {
+	case named(h, rel) && compiled(rel):
+		n--
+	case named(h, rel):
 		n -= 100
 	}
 	switch rel.ReleaseGroup.PrimaryType {

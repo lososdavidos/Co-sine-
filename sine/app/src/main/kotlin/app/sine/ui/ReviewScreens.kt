@@ -69,23 +69,44 @@ fun ReviewScreen(session: AccountSession, onOpen: (String) -> Unit) {
     // Loads each time the screen is shown, so a correction made on the next
     // screen has left the list when you come back.
     val load = rememberLoad(session) { Sourced(cosine.reviewQueue(), false) }
+    val scope = rememberCoroutineScope()
 
     LoadContent(load) { queue, _ ->
-        if (queue.items.isEmpty()) ListMessage(Voice.NOTHING_TO_REVIEW)
+        // Most recently added first; a backlog pages in behind. A refresh
+        // starts again from the top.
+        var older by remember(queue) { mutableStateOf(emptyList<ReviewItem>()) }
+        var fetching by remember(queue) { mutableStateOf(false) }
+        var error by remember(queue) { mutableStateOf<String?>(null) }
+        // The queue can shift between pages; a repeated key would crash the list.
+        val shown = (queue.items + older).distinctBy { it.trackId }
+        if (shown.isEmpty()) ListMessage(Voice.NOTHING_TO_REVIEW)
         else LazyColumn(Modifier.fillMaxSize()) {
             item {
                 Text(
-                    if (queue.total == 1) "1 track to review." else "${queue.total} tracks to review.",
+                    if (queue.total == 1) "1 track to review." else "${queue.total} tracks to review, most recently added first.",
                     modifier = Modifier.padding(16.dp),
                 )
             }
-            items(queue.items, key = { it.trackId }) { item ->
+            items(shown, key = { it.trackId }) { item ->
                 ItemRow(
                     title = item.identity.title,
                     subtitle = listOf(item.identity.artist, item.why).joinToString(" · "),
                     art = null,
                     showArt = false,
                 ) { onOpen(item.trackId) }
+            }
+            if (shown.size < queue.total) item {
+                Column(Modifier.padding(16.dp)) {
+                    OutlinedButton(enabled = !fetching, onClick = {
+                        scope.launch {
+                            fetching = true
+                            error = null
+                            cosineCall({ error = it }) { cosine.reviewQueue(offset = shown.size) }?.let { older = older + it.items }
+                            fetching = false
+                        }
+                    }) { Text("Show older (${queue.total - shown.size} more)") }
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
             }
         }
     }

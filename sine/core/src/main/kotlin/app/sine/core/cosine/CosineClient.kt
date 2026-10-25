@@ -30,6 +30,8 @@ data class AddItem(
     val inLibrary: Boolean = false,
     /** Only a short preview is offered (a SoundCloud Go+ track); Cosine refuses to add it. */
     val preview: Boolean = false,
+    /** The song's length as released, when this result is that song and a label's upload of it was found. */
+    val releaseSec: Int = 0,
 )
 
 /** What Add's single field resolved to (§6.10). */

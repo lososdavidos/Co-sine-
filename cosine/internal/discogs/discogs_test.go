@@ -204,3 +204,26 @@ func TestAnAlbumOutranksTheSingle(t *testing.T) {
 		t.Fatalf("%+v %v", r, err)
 	}
 }
+
+func TestANamedCompilationDoesNotBeatTheArtistsAlbum(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/database/search":
+			w.Write([]byte(`{"results":[{"id":1,"type":"master"},{"id":2,"type":"master"}]}`))
+		case "/masters/1": // the compilation YouTube credited, listed first
+			w.Write([]byte(`{"title":"Hot Party Winter 2018","year":2017,"artists":[{"name":"Various"}],
+			 "tracklist":[{"position":"14","title":"Bad At Love","duration":"3:01","artists":[{"name":"Halsey"}]}]}`))
+		case "/masters/2":
+			w.Write([]byte(`{"title":"Hopeless Fountain Kingdom","year":2017,"artists":[{"name":"Halsey"}],
+			 "tracklist":[{"position":"10","title":"Bad At Love","duration":"3:01"}]}`))
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.Client(), nil, "t", nil)
+	c.BaseURL = srv.URL
+	c.Web.Pace = func() time.Duration { return time.Millisecond }
+	r, ok, err := c.Match(context.Background(), resolve.Hint{Artist: "Halsey", Title: "Bad At Love", Release: "Hot Party Winter 2018", DurationSec: 181})
+	if err != nil || !ok || r.Release != "Hopeless Fountain Kingdom" || r.Artist != "Halsey" {
+		t.Fatalf("%+v %v", r, err)
+	}
+}

@@ -3,7 +3,6 @@ package fetch
 import (
 	"context"
 	"errors"
-	"sort"
 	"strings"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
@@ -70,11 +69,11 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 		return Lookup{}, err
 	}
 	l := Lookup{Kind: KindSearch, Backend: backend}
-	for _, r := range res {
+	// The song as released first; videos with intros, extended uploads
+	// and previews (which can't be added) after.
+	for _, r := range search.ByRelease(input, res) {
 		l.Items = append(l.Items, Item{Result: r})
 	}
-	// Previews can't be added; the full versions (often YouTube's) come first.
-	sort.SliceStable(l.Items, func(i, j int) bool { return !l.Items[i].Preview && l.Items[j].Preview })
 	f.markLibrary(ctx, userID, l.Items)
 	return l, nil
 }
