@@ -11,11 +11,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -27,8 +35,10 @@ import app.sine.core.model.Artist
 import app.sine.core.model.Playlist
 import app.sine.core.model.Track
 import app.sine.core.text.Voice
+import app.sine.data.AccountSession
 import app.sine.data.Sourced
 import coil3.compose.AsyncImage
+import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
 /*
@@ -43,27 +53,57 @@ sealed interface Load<out T> {
     data class Failed(val message: String) : Load<Nothing>
 }
 
+/**
+ * A screen's data, and the pull that asks for it again. A refresh keeps what
+ * is on screen until the answer arrives, then shows exactly what a fresh
+ * visit would: the server's answer, or downloads if it can't be reached.
+ */
+@Stable
+class Loader<T> internal constructor() {
+    var load: Load<T> by mutableStateOf(Load.Loading)
+        internal set
+    var refreshing by mutableStateOf(false)
+        internal set
+    internal var pulls by mutableIntStateOf(0)
+
+    fun refresh() {
+        refreshing = true
+        pulls++
+    }
+}
+
+/** Loads for [session], again whenever [keys] change or the list is pulled down. */
 @Composable
-fun <T> rememberLoad(vararg keys: Any?, block: suspend () -> Sourced<T>): Load<T> {
-    val state by produceState<Load<T>>(Load.Loading, *keys) {
-        value = try {
+fun <T> rememberLoad(session: AccountSession, vararg keys: Any?, block: suspend () -> Sourced<T>): Loader<T> {
+    val loader = remember(session, *keys) { Loader<T>() }
+    LaunchedEffect(loader, loader.pulls) {
+        // Asked for by hand, so ask the server even if it failed a moment ago.
+        if (loader.refreshing) session.forceOnlineRetry()
+        loader.load = try {
             val s = block()
             Load.Ready(s.value, s.fromDownloads)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: IOException) {
+            Load.Failed(Voice.serverUnreachable(session.account.isCosine))
         } catch (e: Exception) {
             Load.Failed(e.message ?: e.javaClass.simpleName)
         }
+        loader.refreshing = false
     }
-    return state
+    return loader
 }
 
+/** The loaded content, or why there is none; either way, pulling down refreshes it. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun <T> LoadContent(load: Load<T>, content: @Composable (T, Boolean) -> Unit) {
-    when (load) {
-        Load.Loading -> Message("Loading…")
-        is Load.Failed -> Message(load.message)
-        is Load.Ready -> content(load.value, load.fromDownloads)
+fun <T> LoadContent(loader: Loader<T>, content: @Composable (T, Boolean) -> Unit) {
+    PullToRefreshBox(isRefreshing = loader.refreshing, onRefresh = loader::refresh, modifier = Modifier.fillMaxSize()) {
+        when (val load = loader.load) {
+            Load.Loading -> ListMessage("Loading…")
+            is Load.Failed -> ListMessage(load.message)
+            is Load.Ready -> content(load.value, load.fromDownloads)
+        }
     }
 }
 
@@ -71,6 +111,14 @@ fun <T> LoadContent(load: Load<T>, content: @Composable (T, Boolean) -> Unit) {
 fun Message(text: String, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         Text(text, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** A [Message] in place of a list. It scrolls, so it can be pulled down to refresh like the list. */
+@Composable
+fun ListMessage(text: String) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        item { Message(text, Modifier.fillParentMaxSize()) }
     }
 }
 

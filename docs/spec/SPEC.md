@@ -1258,6 +1258,15 @@ that order is the release. Filters for downloaded and unreviewed. Choices reset
 between visits — no preference state to sync, and no screen that quietly behaves
 differently from the last time you looked at it.
 
+`RESOLVED` **Pulling a list down refreshes it.** Home, the Library segments,
+search results, artist, release and playlist pages, and the review queue all
+reload when pulled down, including while they show a message in place of the
+list ("No albums.", "Cosine unreachable…"). What's on screen stays until the
+answer arrives, and is then replaced with exactly what a fresh visit would show.
+A pull always asks the server, even if it failed a moment ago: it is how you
+retry once the server is back. With the local mirror (G2), a pull runs a delta
+sync instead of reloading the screen.
+
 ### 6.9 Artist and release pages
 
 `RESOLVED` **Artist page: ambient header, then releases.** The artist's name over
