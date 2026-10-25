@@ -16,6 +16,7 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 )
@@ -27,7 +28,8 @@ type API struct {
 	Auth    *auth.Service
 	Fetcher *fetch.Fetcher // nil when yt-dlp is unavailable
 	Review  *review.Service
-	Stats   *stats.Service // nil: no statistics
+	Stats   *stats.Service  // nil: no statistics
+	Mirror  *mirror.Service // nil: no library mirror
 	Version string
 	Log     *slog.Logger
 }
@@ -42,6 +44,9 @@ func (a *API) capabilities() []string {
 	}
 	if a.Stats != nil {
 		caps = append(caps, CapStats)
+	}
+	if a.Mirror != nil {
+		caps = append(caps, CapSync)
 	}
 	return caps
 }
@@ -61,6 +66,9 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Stats != nil {
 		a.registerStats(mux)
+	}
+	if a.Mirror != nil {
+		a.registerSync(mux)
 	}
 }
 

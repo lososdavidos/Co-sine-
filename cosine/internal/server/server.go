@@ -21,6 +21,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/inbox"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/musicbrainz"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/native"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/portraits"
@@ -112,7 +113,7 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 
 	listening := &stats.Service{DB: d}
 	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, Stats: listening, OnInboxChange: s.startInbox, Log: log}
-	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Version: cfg.Version, Log: log}
+	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Mirror: &mirror.Service{DB: d}, Version: cfg.Version, Log: log}
 	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not

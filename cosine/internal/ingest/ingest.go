@@ -279,6 +279,10 @@ func upsertIdentity(ctx context.Context, tx *sql.Tx, res resolve.Result, authori
 			if _, err := tx.ExecContext(ctx, "UPDATE artists SET name = ? WHERE id = ?", name, n); err != nil {
 				return 0, "", err
 			}
+			// Every track and release under the old spelling changes with it.
+			if err := db.LogChange(ctx, tx, 0, "artist", strconv.FormatInt(n, 10), "upsert"); err != nil {
+				return 0, "", err
+			}
 			have = name
 		}
 		return n, have, nil
@@ -472,6 +476,7 @@ func (g *Ingester) saveArtwork(ctx context.Context, releaseID int64, a Art) {
 	}
 	g.DB.ExecContext(ctx, "UPDATE releases SET art_path = ?, art_source = ? WHERE id = ?",
 		filepath.ToSlash(rel), a.Source, releaseID)
+	db.LogChange(ctx, g.DB, 0, "album", strconv.FormatInt(releaseID, 10), "upsert") // a new cover reaches the mirror
 }
 
 func (g *Ingester) startJob(ctx context.Context, req Request) (int64, error) {
