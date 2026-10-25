@@ -9,7 +9,7 @@ import (
 
 // CapSync: the library mirror (§5.2, G2). A client with it keeps the
 // library locally and asks only for what changed.
-const CapSync = "sync"
+const CapSync = "delta-sync"
 
 func (a *API) registerSync(mux *http.ServeMux) {
 	mux.HandleFunc("GET /cosine/v1/sync", a.authed(a.sync))

@@ -45,7 +45,7 @@ func TestSyncAPI(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	_, caps := call(t, srv, "GET", "/cosine/v1/capabilities", "", nil)
-	if c := caps["capabilities"].([]any); len(c) != 1 || c[0] != "sync" {
+	if c := caps["capabilities"].([]any); len(c) != 1 || c[0] != "delta-sync" {
 		t.Fatal(caps)
 	}
 	if code, _ := call(t, srv, "GET", "/cosine/v1/sync", "", nil); code != http.StatusUnauthorized {
