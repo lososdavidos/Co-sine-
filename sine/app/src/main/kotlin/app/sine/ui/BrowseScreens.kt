@@ -63,7 +63,7 @@ fun SectionHeader(text: String) {
 fun HomeScreen(session: AccountSession, nav: NavController) {
     val player = LocalContext.current.graph.player
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
-    val load = rememberLoad(session.account.id) {
+    val load = rememberLoad(session) {
         session.fetch(
             offline = { lib -> listOf("Downloaded" to lib.albums()) },
             remote = { c ->
@@ -110,7 +110,7 @@ fun AlbumRow(session: AccountSession, album: Album, nav: NavController) {
 fun SearchScreen(session: AccountSession, nav: NavController) {
     val player = LocalContext.current.graph.player
     var query by rememberSaveable { mutableStateOf("") }
-    val load = rememberLoad(query, session.account.id) {
+    val load = rememberLoad(session, query) {
         if (query.isBlank()) return@rememberLoad Sourced(emptyList<SearchHit>(), false)
         delay(250) // debounce: a new keystroke cancels this and starts again
         session.fetch(
@@ -129,7 +129,7 @@ fun SearchScreen(session: AccountSession, nav: NavController) {
         if (query.isBlank()) return@Column
         LoadContent(load) { hits, _ ->
             if (hits.isEmpty()) {
-                Message(Voice.NO_SEARCH_RESULTS)
+                ListMessage(Voice.NO_SEARCH_RESULTS)
                 return@LoadContent
             }
             val tracks = hits.filterIsInstance<SearchHit.OfTrack>().map { it.track }
@@ -196,12 +196,12 @@ fun LibraryScreen(session: AccountSession, nav: NavController) {
 
 @Composable
 private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
-    val load = rememberLoad(session.account.id, downloadedOnly) {
+    val load = rememberLoad(session, downloadedOnly) {
         if (downloadedOnly) Sourced(session.offline().artists(), true)
         else session.fetch(offline = { it.artists() }, remote = { it.artists() })
     }
     LoadContent(load) { artists, _ ->
-        if (artists.isEmpty()) Message(if (downloadedOnly) Voice.NO_DOWNLOADS else "No artists.")
+        if (artists.isEmpty()) ListMessage(if (downloadedOnly) Voice.NO_DOWNLOADS else "No artists.")
         else LazyColumn(Modifier.fillMaxSize()) {
             items(artists, key = { it.id }) { a ->
                 ItemRow(a.name, a.subtitle(), session.artwork(a.coverArt, 150)) { nav.navigate(Routes.artist(a.id)) }
@@ -212,11 +212,11 @@ private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: Na
 
 @Composable
 private fun AlbumList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
-    val load = rememberLoad(session.account.id, downloadedOnly) {
+    val load = rememberLoad(session, downloadedOnly) {
         if (downloadedOnly) Sourced(session.offline().albums(), true) else session.allAlbums()
     }
     LoadContent(load) { albums, _ ->
-        if (albums.isEmpty()) Message(if (downloadedOnly) Voice.NO_DOWNLOADS else "No albums.")
+        if (albums.isEmpty()) ListMessage(if (downloadedOnly) Voice.NO_DOWNLOADS else "No albums.")
         else LazyColumn(Modifier.fillMaxSize()) {
             items(albums, key = { it.id }) { AlbumRow(session, it, nav) }
         }
@@ -225,12 +225,12 @@ private fun AlbumList(session: AccountSession, downloadedOnly: Boolean, nav: Nav
 
 @Composable
 private fun PlaylistList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
-    val load = rememberLoad(session.account.id, downloadedOnly) {
+    val load = rememberLoad(session, downloadedOnly) {
         // Compat mode has no local mirror, so playlists need the server (G2 degrades, §2.1).
         session.fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlists() })
     }
     LoadContent(load) { playlists, _ ->
-        if (playlists.isEmpty()) Message("No playlists.")
+        if (playlists.isEmpty()) ListMessage("No playlists.")
         else LazyColumn(Modifier.fillMaxSize()) {
             items(playlists, key = { it.id }) { p ->
                 ItemRow(p.name, p.subtitle(), session.artwork(p.coverArt, 150)) { nav.navigate(Routes.playlist(p.id)) }

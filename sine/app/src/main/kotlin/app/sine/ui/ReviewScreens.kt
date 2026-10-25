@@ -38,6 +38,7 @@ import app.sine.core.cosine.ReviewQuery
 import app.sine.core.cosine.TrackIdentity
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
+import app.sine.data.Sourced
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -65,32 +66,20 @@ fun TrackIdentity.line(): String =
 @Composable
 fun ReviewScreen(session: AccountSession, onOpen: (String) -> Unit) {
     val cosine = session.cosine ?: return Message("Review needs a Cosine server.")
-    var items by remember { mutableStateOf<List<ReviewItem>?>(null) }
-    var total by remember { mutableStateOf(0) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    // Runs each time the screen is shown, so a correction made on the next
+    // Loads each time the screen is shown, so a correction made on the next
     // screen has left the list when you come back.
-    LaunchedEffect(Unit) {
-        cosineCall({ error = it }) { cosine.reviewQueue() }?.let {
-            items = it.items
-            total = it.total
-        }
-    }
+    val load = rememberLoad(session) { Sourced(cosine.reviewQueue(), false) }
 
-    val list = items
-    when {
-        error != null && list == null -> Message(error!!)
-        list == null -> Message("Loading…")
-        list.isEmpty() -> Message(Voice.NOTHING_TO_REVIEW)
-        else -> LazyColumn(Modifier.fillMaxSize()) {
+    LoadContent(load) { queue, _ ->
+        if (queue.items.isEmpty()) ListMessage(Voice.NOTHING_TO_REVIEW)
+        else LazyColumn(Modifier.fillMaxSize()) {
             item {
                 Text(
-                    if (total == 1) "1 track to review." else "$total tracks to review.",
+                    if (queue.total == 1) "1 track to review." else "${queue.total} tracks to review.",
                     modifier = Modifier.padding(16.dp),
                 )
             }
-            items(list, key = { it.trackId }) { item ->
+            items(queue.items, key = { it.trackId }) { item ->
                 ItemRow(
                     title = item.identity.title,
                     subtitle = listOf(item.identity.artist, item.why).joinToString(" · "),

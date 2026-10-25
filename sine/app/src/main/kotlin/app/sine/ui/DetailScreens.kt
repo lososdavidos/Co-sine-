@@ -42,7 +42,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
     val context = LocalContext.current
-    val load = rememberLoad(session.account.id, id) { session.artist(id) }
+    val load = rememberLoad(session, id) { session.artist(id) }
     LoadContent(load) { detail, fromDownloads ->
         LazyColumn(Modifier.fillMaxSize()) {
             item {
@@ -63,7 +63,7 @@ fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
 
 @Composable
 fun AlbumScreen(session: AccountSession, id: String, nav: NavController) {
-    val load = rememberLoad(session.account.id, id) { session.album(id) }
+    val load = rememberLoad(session, id) { session.album(id) }
     LoadContent(load) { detail, fromDownloads ->
         TrackListScreen(
             session = session,
@@ -81,12 +81,12 @@ fun AlbumScreen(session: AccountSession, id: String, nav: NavController) {
 
 @Composable
 fun PlaylistScreen(session: AccountSession, id: String, nav: NavController) {
-    val load = rememberLoad(session.account.id, id) {
+    val load = rememberLoad(session, id) {
         session.fetch(offline = { throw app.sine.data.NotAvailableOffline() }, remote = { it.playlist(id) })
     }
     LoadContent(load) { detail, _ ->
         if (detail.tracks.isEmpty()) {
-            Message(Voice.EMPTY_PLAYLIST)
+            ListMessage(Voice.EMPTY_PLAYLIST)
             return@LoadContent
         }
         TrackListScreen(

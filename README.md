@@ -24,7 +24,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Server address → probe → "Subsonic server · compatibility mode" or "Cosine · full features", shown before login
 - Token + salt login; the password is never stored
 - Several accounts, switched explicitly
-- Browse Artists / Albums / Playlists, search, artist and album pages
+- Browse Artists / Albums / Playlists, search, artist and album pages; pull any list down to refresh it
 - Streaming playback of the original files (`format=raw`, no transcoding), with the media notification, lockscreen, Bluetooth and headset controls from Media3
 - Pinned downloads of a track, album, artist or playlist into a folder you choose (SAF). A `.nomedia` file is written there, the folders follow `Artist/Album/Track`, and downloads wait for an unmetered connection unless you allow mobile data. The download budget is soft: it warns but never refuses.
 - Offline: downloaded music browses, plays and shows artwork with the server gone
