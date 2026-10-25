@@ -1324,6 +1324,15 @@ reads as a body of work, which is how this music is actually made and released;
 sectioning albums above singles would impose a record-industry hierarchy the
 library does not have.
 
+`RESOLVED` **An artist has a picture, shown round.** It comes from Deezer, whose
+artist pictures are square press photos: through MusicBrainz's link to the
+artist's Deezer page when MusicBrainz knows them, else by name, taken only from
+a Deezer artist of that name who has a track or release named like one of
+theirs in the library — two artists can share a name, but rarely a song as well.
+Cosine looks in the background and saves the picture beside release covers; an
+artist without one shows one of their covers until a picture is found, and is
+looked for again a month later. "Various Artists" has none.
+
 `RESOLVED` **A Track with no artwork gets no ambience** — flat `--bg-0`, type
 doing the work. No generated colour: §6.4.3 rules out decorative use of the
 primaries, and a deterministic hue per artist would make red decorative

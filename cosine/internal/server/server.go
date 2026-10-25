@@ -16,12 +16,14 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/bandcamp"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/dashboard"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/deezer"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/discogs"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/inbox"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/musicbrainz"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/native"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/portraits"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
@@ -37,12 +39,13 @@ type Config struct {
 }
 
 type Server struct {
-	cfg      Config
-	log      *slog.Logger
-	db       *db.DB
-	ingester *ingest.Ingester
-	fetcher  *fetch.Fetcher // nil without yt-dlp
-	handler  http.Handler
+	cfg       Config
+	log       *slog.Logger
+	db        *db.DB
+	ingester  *ingest.Ingester
+	fetcher   *fetch.Fetcher // nil without yt-dlp
+	portraits *portraits.Service
+	handler   http.Handler
 
 	inboxMu     sync.Mutex
 	inboxCancel context.CancelFunc
@@ -81,6 +84,8 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	})
 	bc := bandcamp.New(lookups, d, ua)
 	covers := musicbrainz.CoverArt{HTTP: lookups, UserAgent: ua}
+	s.portraits = &portraits.Service{DB: d, DataDir: cfg.DataDir, Deezer: deezer.New(lookups, ua),
+		Links: mb.ArtistLinks, Image: covers.Image, Log: log.With("component", "portraits")}
 	s.ingester = &ingest.Ingester{
 		DB:              d,
 		DataDir:         cfg.DataDir,
@@ -147,6 +152,7 @@ func (s *Server) Run(ctx context.Context) error {
 	defer s.db.Close()
 
 	go s.watchStore(ctx)
+	go s.findPortraits(ctx)
 	if p, _ := s.db.Setting(ctx, db.SettingInboxPath); p != "" {
 		s.startInbox(p)
 	}
@@ -202,6 +208,28 @@ func (s *Server) watchStore(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(storeCheck):
+		}
+	}
+}
+
+// portraitCheck is how often artists are looked over for a missing picture.
+const portraitCheck = 10 * time.Minute
+
+// findPortraits looks for artist pictures in the background (§6.9): new
+// artists within portraitCheck of arriving, the rest as they come due.
+func (s *Server) findPortraits(ctx context.Context) {
+	for {
+		n, err := s.portraits.Run(ctx)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			s.log.Warn("looking for artist pictures", "err", err)
+		case n > 0:
+			s.log.Info("found artist pictures", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(portraitCheck):
 		}
 	}
 }

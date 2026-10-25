@@ -136,7 +136,7 @@ fun SearchScreen(session: AccountSession, nav: NavController) {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(hits) { hit ->
                     when (hit) {
-                        is SearchHit.OfArtist -> ItemRow(hit.name, null, session.artwork(hit.artist.coverArt, 150), trailing = "Artist") {
+                        is SearchHit.OfArtist -> ItemRow(hit.name, null, session.artwork(hit.artist.coverArt, 150), roundArt = true, trailing = "Artist") {
                             nav.navigate(Routes.artist(hit.artist.id))
                         }
                         is SearchHit.OfAlbum -> ItemRow(hit.name, hit.album.artist, session.artwork(hit.album.coverArt, 150), trailing = "Album") {
@@ -204,7 +204,7 @@ private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: Na
         if (artists.isEmpty()) ListMessage(if (downloadedOnly) Voice.NO_DOWNLOADS else "No artists.")
         else LazyColumn(Modifier.fillMaxSize()) {
             items(artists, key = { it.id }) { a ->
-                ItemRow(a.name, a.subtitle(), session.artwork(a.coverArt, 150)) { nav.navigate(Routes.artist(a.id)) }
+                ItemRow(a.name, a.subtitle(), session.artwork(a.coverArt, 150), roundArt = true) { nav.navigate(Routes.artist(a.id)) }
             }
         }
     }

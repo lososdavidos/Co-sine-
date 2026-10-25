@@ -20,9 +20,12 @@ var schemaV2 string
 //go:embed schema_v3.sql
 var schemaV3 string
 
+//go:embed schema_v4.sql
+var schemaV4 string
+
 // migrations are applied in order; the index+1 is the schema version.
 // Additive only, like the wire protocol (§9.3).
-var migrations = []string{schemaV1, schemaV2, schemaV3}
+var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4}
 
 type DB struct {
 	*sql.DB

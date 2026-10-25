@@ -50,6 +50,7 @@ fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
                     art = session.artwork(detail.artist.coverArt),
                     title = detail.artist.name,
                     subtitle = detail.artist.subtitle(),
+                    roundArt = true,
                 ) {
                     if (!fromDownloads) OutlinedButton(onClick = {
                         startDownload(context, session, DownloadNode.OfArtist(detail.artist.id), null, nav)
@@ -218,10 +219,11 @@ private fun Header(
     title: String,
     subtitle: String,
     onTitleClick: (() -> Unit)? = null,
+    roundArt: Boolean = false,
     actions: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Art(art, 160.dp)
+        Art(art, 160.dp, round = roundArt)
         Text(title, style = MaterialTheme.typography.headlineSmall)
         if (subtitle.isNotBlank()) {
             if (onTitleClick != null) {

@@ -272,6 +272,27 @@ func TestStarAndCoverArt(t *testing.T) {
 	if string(b) != "jpegbytes" {
 		t.Fatalf("%q", b)
 	}
+
+	// An artist shows one of their covers until their own picture is found.
+	artist := func() map[string]any {
+		idx := ok(t, e.get(t, "alice", "sesame", "getArtists", nil))["artists"].(map[string]any)["index"].([]any)
+		return idx[0].(map[string]any)["artist"].([]any)[0].(map[string]any)
+	}
+	if a := artist(); a["coverArt"] != song["coverArt"] {
+		t.Fatal(a)
+	}
+	var aid int64
+	e.db.QueryRow("SELECT id FROM artists WHERE name = 'Skeler'").Scan(&aid)
+	os.WriteFile(filepath.Join(e.g.DataDir, "art", "artist-"+itoa(aid)+".jpg"), []byte("portrait"), 0o644)
+	e.db.Exec("UPDATE artists SET art_path = ? WHERE id = ?", "art/artist-"+itoa(aid)+".jpg", aid)
+	a := artist()
+	if a["coverArt"] != "ar-"+itoa(aid) {
+		t.Fatal(a)
+	}
+	res, _ = http.Get(e.url("alice", "sesame", "getCoverArt", url.Values{"id": {a["coverArt"].(string)}}))
+	if b, _ := io.ReadAll(res.Body); string(b) != "portrait" {
+		t.Fatalf("%q", b)
+	}
 }
 
 func TestXMLFormat(t *testing.T) {
