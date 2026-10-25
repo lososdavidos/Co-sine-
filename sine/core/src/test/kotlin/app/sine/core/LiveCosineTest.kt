@@ -5,6 +5,7 @@ import app.sine.core.cosine.CosineException
 import app.sine.core.cosine.ManualIdentity
 import app.sine.core.download.DownloadIndex
 import app.sine.core.download.DownloadPlanner
+import app.sine.core.mirror.LibraryMirror
 import app.sine.core.model.DownloadNode
 import app.sine.core.server.Capability
 import app.sine.core.server.ProbeResult
@@ -112,6 +113,21 @@ class LiveCosineTest {
         assertTrue(cosine.confirm(tidesItem.trackId).identity.reviewed)
         assertEquals(queue.total - 2, cosine.reviewQueue().total)
 
+        // The library mirror (§5.2): all of it once, and what it holds is
+        // exactly what browsing over Subsonic shows.
+        assertTrue(Capability.DELTA_SYNC in kind.capabilities, "$kind")
+        val mirror = LibraryMirror(Files.createTempFile("library", ".json").toFile())
+        val first = cosine.sync(0)
+        assertTrue(first.full)
+        mirror.apply(first)
+        val mirrored = mirror.library.value
+        assertEquals(sub.album(ep.id).tracks, mirrored.album(ep.id)!!.tracks)
+        assertEquals(sub.artists().map { it.id to it.name }.toSet(), mirrored.artists().map { it.id to it.name }.toSet())
+        assertEquals(2, mirrored.artist(fixture.id)!!.albums.single { it.id == ep.id }.trackCount)
+        assertTrue(mirrored.search("surge").tracks.any { it.title == "Surge (VIP)" })
+        val unchanged = cosine.sync(mirror.cursor)
+        assertTrue(!unchanged.full && unchanged.tracks.isEmpty() && unchanged.removedTracks.isEmpty(), "$unchanged")
+
         // The native protocol: adding music from a link.
         val link = System.getenv("FETCH_URL")
         val lookup = cosine.lookup("Listen to this $link")
@@ -132,5 +148,11 @@ class LiveCosineTest {
             s.status
         })
         assertFailsWith<CosineException> { cosine.retry(status.id) } // a finished job can't be retried
+
+        // What was just added reaches the mirror as a change, not a full copy.
+        val delta = cosine.sync(mirror.cursor)
+        assertTrue(!delta.full && delta.tracks.any { it.id == status.trackId }, "$delta")
+        mirror.apply(delta)
+        assertEquals(fetched, mirror.library.value.track(status.trackId!!))
     }
 }

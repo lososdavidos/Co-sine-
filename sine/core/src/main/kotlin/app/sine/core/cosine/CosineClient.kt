@@ -1,5 +1,6 @@
 package app.sine.core.cosine
 
+import app.sine.core.mirror.SyncChanges
 import app.sine.core.server.ServerKind
 import app.sine.core.subsonic.SubsonicCredentials
 import kotlinx.coroutines.Dispatchers
@@ -122,6 +123,10 @@ class CosineClient(
 
     suspend fun correct(trackId: String, identity: ManualIdentity): ReviewItem =
         send(post("review/$trackId/correct", ManualIdentity.serializer(), identity), ReviewItem.serializer())
+
+    /** The library since [after] (0: all of it), for the mirror (§5.2). */
+    suspend fun sync(after: Long): SyncChanges =
+        send(get("sync", "after" to after.toString()), SyncChanges.serializer())
 
     suspend fun confirm(trackId: String): ReviewItem =
         send(Request.Builder().url(url("review/$trackId/confirm")).post(ByteArray(0).toRequestBody(JSON)), ReviewItem.serializer())

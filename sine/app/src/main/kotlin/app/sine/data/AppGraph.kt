@@ -90,6 +90,7 @@ class AppGraph(private val context: Context) {
                     s.forceOnlineRetry()
                     runCatching { s.flushPlays() }
                     refreshCapabilities(s)
+                    s.sync()
                 }
                 flushPendingShares()
             }

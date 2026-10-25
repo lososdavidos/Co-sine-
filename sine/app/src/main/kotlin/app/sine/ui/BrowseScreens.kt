@@ -110,8 +110,15 @@ fun AlbumRow(session: AccountSession, album: Album, nav: NavController) {
 fun SearchScreen(session: AccountSession, nav: NavController) {
     val player = LocalContext.current.graph.player
     var query by rememberSaveable { mutableStateOf("") }
-    val load = rememberLoad(session, query) {
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    // Searching the mirror is instant: one load for every keystroke keeps
+    // the last results up while typing. Searching the server shows it's
+    // working, so each query starts afresh.
+    val local = session.searchMirror("") != null
+    val load = rememberLoad(session, if (local) Unit else query, refreshOn = query to mirrored) {
         if (query.isBlank()) return@rememberLoad Sourced(emptyList<SearchHit>(), false)
+        // The mirror answers as you type (§6.8); the server gets a pause first.
+        session.searchMirror(query)?.let { return@rememberLoad Sourced(SearchRanking.rank(query, it), false) }
         delay(250) // debounce: a new keystroke cancels this and starts again
         session.fetch(
             offline = { lib -> SearchRanking.rank(query, lib.search(query)) },
@@ -196,9 +203,9 @@ fun LibraryScreen(session: AccountSession, nav: NavController) {
 
 @Composable
 private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
-    val load = rememberLoad(session, downloadedOnly) {
-        if (downloadedOnly) Sourced(session.offline().artists(), true)
-        else session.fetch(offline = { it.artists() }, remote = { it.artists() })
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val load = rememberLoad(session, downloadedOnly, refreshOn = mirrored) {
+        if (downloadedOnly) Sourced(session.offline().artists(), true) else session.artists()
     }
     LoadContent(load) { artists, _ ->
         if (artists.isEmpty()) ListMessage(if (downloadedOnly) Voice.NO_DOWNLOADS else "No artists.")
@@ -212,7 +219,8 @@ private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: Na
 
 @Composable
 private fun AlbumList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
-    val load = rememberLoad(session, downloadedOnly) {
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val load = rememberLoad(session, downloadedOnly, refreshOn = mirrored) {
         if (downloadedOnly) Sourced(session.offline().albums(), true) else session.allAlbums()
     }
     LoadContent(load) { albums, _ ->

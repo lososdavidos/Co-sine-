@@ -42,7 +42,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
     val context = LocalContext.current
-    val load = rememberLoad(session, id) { session.artist(id) }
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val load = rememberLoad(session, id, refreshOn = mirrored) { session.artist(id) }
     LoadContent(load) { detail, fromDownloads ->
         LazyColumn(Modifier.fillMaxSize()) {
             item {
@@ -64,7 +65,8 @@ fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
 
 @Composable
 fun AlbumScreen(session: AccountSession, id: String, nav: NavController) {
-    val load = rememberLoad(session, id) { session.album(id) }
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val load = rememberLoad(session, id, refreshOn = mirrored) { session.album(id) }
     LoadContent(load) { detail, fromDownloads ->
         TrackListScreen(
             session = session,

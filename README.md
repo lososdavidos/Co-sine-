@@ -38,7 +38,11 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Listening statistics:** Cosine's dashboard has a Listening page with top artists, albums and tracks, listening over time and a year by year view, for everyone or one account. The same data is in the native API, ready for Sine's statistics screen, Home tiles and smart playlists, which aren't built yet.
 
-**Not yet built:** audio fingerprinting, the local metadata mirror and delta sync (not possible in compat mode), the cache tier, Android Auto browsing, the Home tile canvas, smart playlists and the statistics screen in Sine, Last.fm/ListenBrainz scrobbling, remote control, Jam, and the desktop client.
+**Library mirror:** on a Cosine account, Sine keeps the whole library on the phone and syncs only what changed (on opening, every minute while open, on a pull, and right after you add or correct something). Library, artist and album pages and search read it: instant, searchable as you type, and all there offline, with what isn't downloaded dimmed. Compat mode (a plain Subsonic server) asks per screen as before.
+
+**Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
+
+**Not yet built:** audio fingerprinting, the mirror's live push and offline playlist edits, the cache tier, Android Auto browsing, the Home tile canvas, smart playlists and the statistics screen in Sine, Last.fm/ListenBrainz scrobbling, remote control, Jam, and the desktop client.
 
 ## Design
 

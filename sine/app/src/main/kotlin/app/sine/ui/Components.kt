@@ -68,20 +68,31 @@ class Loader<T> internal constructor() {
     var refreshing by mutableStateOf(false)
         internal set
     internal var pulls by mutableIntStateOf(0)
+    // A pull asks the server once, even if the answer restarts the load.
+    internal var askServer = false
 
     fun refresh() {
         refreshing = true
+        askServer = true
         pulls++
     }
 }
 
-/** Loads for [session], again whenever [keys] change or the list is pulled down. */
+/**
+ * Loads for [session], again whenever [keys] change or the list is pulled
+ * down. A change to [refreshOn] (the mirror, after a sync) reloads in place,
+ * keeping what's shown until the new answer is there.
+ */
 @Composable
-fun <T> rememberLoad(session: AccountSession, vararg keys: Any?, block: suspend () -> Sourced<T>): Loader<T> {
+fun <T> rememberLoad(session: AccountSession, vararg keys: Any?, refreshOn: Any? = null, block: suspend () -> Sourced<T>): Loader<T> {
     val loader = remember(session, *keys) { Loader<T>() }
-    LaunchedEffect(loader, loader.pulls) {
-        // Asked for by hand, so ask the server even if it failed a moment ago.
-        if (loader.refreshing) session.forceOnlineRetry()
+    LaunchedEffect(loader, loader.pulls, refreshOn) {
+        // Asked for by hand: ask the server even if it failed a moment ago,
+        // and catch the mirror up.
+        if (loader.askServer) {
+            loader.askServer = false
+            session.refresh()
+        }
         loader.load = try {
             val s = block()
             Load.Ready(s.value, s.fromDownloads)

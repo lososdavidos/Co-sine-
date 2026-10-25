@@ -825,6 +825,18 @@ both keep their changes.
 the client keeps an operation log going up. Same idea in both directions, and
 neither side ever has to guess what the other meant.
 
+`NOTE` Built so far (capability `delta-sync`): `GET /cosine/v1/sync?after=<cursor>`
+answers `after=0` with the account's whole library and otherwise with what
+changed — tracks to add or update, tracks to remove, and their albums and
+artists. A changed track brings its whole release and a changed artist
+everything of theirs, so a rename or a new cover reaches every track it touches.
+Counts are worked out on the client, so they can't go stale. A cursor the
+server never issued (a restored database) or more than 2000 changes gets the
+whole library again. Sine syncs on opening, on reconnecting, every minute while
+on screen, on a pull, and straight after an add or a correction; Library,
+artist and album pages and search read the mirror. Still to come: the WebSocket
+push, the playlist operation log, and Home and playlists from the mirror.
+
 ### 5.2a Client
 
 `RESOLVED` **Kotlin + Jetpack Compose, Android-first.** Sine is built as a
@@ -841,6 +853,10 @@ full library metadata, so search is instant and works offline. Cosine only
 searches on behalf of non-native clients.
 
 `NOTE` Local storage is Room over SQLite, mirroring Cosine's own choice.
+`REVISED`: the mirror starts as one JSON file per account in `sine/core`, like
+the downloads index, held in memory while the app runs. The library is curated
+rather than accumulated (NG8), so it stays small; plain Kotlin keeps it
+testable on the JVM and portable (G8). Room is the move if it outgrows memory.
 
 #### Why native, and what it unlocks
 
