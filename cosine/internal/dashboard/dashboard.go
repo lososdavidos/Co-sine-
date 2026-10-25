@@ -763,16 +763,31 @@ type reviewData struct {
 	Items    []review.Item
 	Total    int
 	Progress review.Progress
+	// This page is items First..Last of Total; Newer and Older are the
+	// neighbouring pages, 0 when there is none.
+	First, Last, Newer, Older int
 }
 
+// reviewPage is how many queued tracks one page of the review list shows.
+var reviewPage = 200
+
 func (d *Dashboard) reviewList(w http.ResponseWriter, r *http.Request, u auth.User) {
-	items, total, err := d.Review.Queue(r.Context(), u, 200, 0)
+	n, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	n = max(n, 1)
+	items, total, err := d.Review.Queue(r.Context(), u, reviewPage, (n-1)*reviewPage)
 	if err != nil {
 		http.Error(w, "Database error.", http.StatusInternalServerError)
 		return
 	}
-	d.render(w, "review", page{Title: "Review", User: &u, Done: r.URL.Query().Get("done"),
-		Data: reviewData{Items: items, Total: total, Progress: d.Review.Progress()}})
+	data := reviewData{Items: items, Total: total, Progress: d.Review.Progress(), First: (n-1)*reviewPage + 1}
+	data.Last = data.First + len(items) - 1
+	if n > 1 {
+		data.Newer = n - 1
+	}
+	if data.Last < total {
+		data.Older = n + 1
+	}
+	d.render(w, "review", page{Title: "Review", User: &u, Done: r.URL.Query().Get("done"), Data: data})
 }
 
 func (d *Dashboard) reviewBulk(w http.ResponseWriter, r *http.Request, u auth.User) {

@@ -65,7 +65,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
 - All three are scored the same way (title, artist, length), so their confidences compare. Every answer is cached forever, and a catalogue that stops answering is skipped for five minutes.
 - **Covers:** in the order of §3.2a. The matched release's cover (Cover Art Archive, Discogs or Bandcamp) comes first, then art embedded in the file, then the source site's thumbnail. A better source replaces a worse one.
 - **Review queue (§5.3, §6.12):** anything not confidently matched, which includes everything identified only from its own metadata.
-  - In Sine it's under Library → Review. In the dashboard it's under Review, with bulk confirm.
+  - In Sine it's under Library → Review. In the dashboard it's under Review, with bulk confirm. Most recently added first; older items page in behind.
   - Anything already filed, confidently or not, can be corrected from where it was added: "Correct" on a finished item in Sine's Add screen, or on the dashboard's Recent ingests.
   - The correction screen shows candidates from all three catalogues at once, ranked together and labelled by source (you can search again with other terms), "It's right as it is", and typing the details yourself.
   - A correction applies for everyone and moves the files. If the corrected identity already exists, the two become versions of one Track, and plays, stars and playlists follow.

@@ -237,6 +237,26 @@ func TestReviewAndRevertInTheDashboard(t *testing.T) {
 	if !strings.Contains(body, "Corrected: Skeler / Tides") {
 		t.Fatal(body)
 	}
+	// One per page: the newest first, the rest a click away.
+	var newest ingest.Outcome
+	for _, f := range []testutil.MP3{{Title: "glass", Artist: "plenka", Body: "y"}, {Title: "hollow", Artist: "deadcrow", Body: "z"}} {
+		time.Sleep(3 * time.Millisecond) // distinct timestamps
+		if newest, err = g.Ingest(context.Background(), ingest.Request{Path: f.Write(t, filepath.Join(drop, f.Title+".mp3")), Source: "inbox"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func(n int) { reviewPage = n }(reviewPage)
+	reviewPage = 1
+	_, body = e.get(t, "/review")
+	if !strings.Contains(body, "/review/tr-"+itoa(newest.TrackID)) || !strings.Contains(body, "Showing 1–1 of 2") ||
+		!strings.Contains(body, `href="/review?page=2">Older`) || strings.Contains(body, ">Newer<") {
+		t.Fatal(body)
+	}
+	_, body = e.get(t, "/review?page=2")
+	if !strings.Contains(body, "Showing 2–2 of 2") || !strings.Contains(body, `href="/review?page=1">Newer`) || strings.Contains(body, ">Older<") {
+		t.Fatal(body)
+	}
+
 	_, body = e.get(t, "/corrections")
 	if !strings.Contains(body, "skeler / tides / tides") || !strings.Contains(body, "Revert") {
 		t.Fatal(body)

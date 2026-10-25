@@ -18,7 +18,9 @@
 <button name="action" value="reresolve">Re-resolve selected</button>
 <button name="action" value="reresolve-all">Re-resolve all {{.Total}}</button>
 </form>
-{{if gt .Total (len .Items)}}<p>Showing the first {{len .Items}}. Work through these to see more.</p>{{end}}
+{{if or .Newer .Older}}<p>Showing {{.First}}–{{.Last}} of {{.Total}}, most recently added first.
+{{if .Newer}}<a href="/review?page={{.Newer}}">Newer</a>{{end}}
+{{if .Older}}<a href="/review?page={{.Older}}">Older</a>{{end}}</p>{{end}}
 {{else}}<p>Nothing to review.</p>{{end}}
 {{end}}
 {{end}}

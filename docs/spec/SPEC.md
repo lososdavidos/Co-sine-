@@ -1370,6 +1370,8 @@ global; those two are about the library specifically.
 guess and where it came from; tapping opens a correction screen carrying
 candidate matches and a search field. It scales to a backlog, which a
 one-at-a-time flow does not — and after a bulk ingest there will be a backlog.
+Most recently added first, so a backlog never hides what you just added; the
+rest pages in behind it.
 
 The queue is reachable from the Library header beside Add, and from its Home
 tile. Its count is the yellow plane; zero is a resting state, not an empty
