@@ -1,0 +1,17 @@
+{{define "content"}}
+{{with .Data}}
+<p>Songs that every account has removed from its library. Their files are still in the Store, taking up space. Nothing deletes them on its own: an account can add a song back, and then its file is used again.</p>
+{{if .Files}}
+<table>
+<tr><th>Artist</th><th>Title</th><th>File</th><th>Size</th><th></th></tr>
+{{range .Files}}<tr><td>{{.Artist}}</td><td>{{.Title}}</td><td>{{.RelPath}}</td><td>{{size .Size}}</td>
+<td><form method="post" action="/unused/delete"><input type="hidden" name="hash" value="{{.Hash}}"><button class="destroy">Delete</button></form></td></tr>
+{{end}}</table>
+<p>Deleting removes the files from the Store for good. The songs' plays, stars and playlist places are kept out of sight, and come back if the same song is added again.</p>
+<form method="post" action="/unused/delete" class="apart">
+{{range .Files}}<input type="hidden" name="hash" value="{{.Hash}}">{{end}}
+<button class="destroy">Delete {{len .Files}} unused file{{if ne (len .Files) 1}}s{{end}} ({{size .Total}})</button>
+</form>
+{{else}}<p>No unused files.</p>{{end}}
+{{end}}
+{{end}}

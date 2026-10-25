@@ -335,3 +335,64 @@ func TestAddingADeletedFileAgainPutsItBack(t *testing.T) {
 		t.Fatal("the duplicate copy was kept")
 	}
 }
+
+func TestRemovedSongsStayRemovedAndUnusedFilesCanGo(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	alice, bob := f.users[0], f.users[1]
+	first, err := f.g.Ingest(ctx, Request{Path: testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "a"}.
+		Write(t, filepath.Join(f.drop, "a.mp3")), Source: "inbox"}) // every account gets it
+	if err != nil {
+		t.Fatal(err)
+	}
+	has := func(user int64) bool {
+		return count(t, f.db, "SELECT COUNT(*) FROM pointers WHERE user_id = ? AND track_id = ?", user, first.TrackID) == 1
+	}
+
+	if n, err := f.g.Dismiss(ctx, alice, []int64{first.TrackID, 999}); n != 1 || err != nil {
+		t.Fatal(n, err)
+	}
+	if has(alice) || !has(bob) {
+		t.Fatal("removed from alice's library only")
+	}
+	if count(t, f.db, "SELECT COUNT(*) FROM changes WHERE entity = 'pointer' AND op = 'remove' AND user_id = ?", alice) != 1 {
+		t.Fatal("the removal reaches alice's mirror")
+	}
+	// Another copy dropped into the Inbox doesn't bring it back to alice.
+	second, _ := f.g.Ingest(ctx, Request{Path: testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "b"}.
+		Write(t, filepath.Join(f.drop, "b.mp3")), Source: "inbox"})
+	if second.TrackID != first.TrackID || has(alice) {
+		t.Fatal("a removed song came back from the Inbox")
+	}
+
+	// Bob still has it: nothing is unused.
+	if o, _ := f.g.Orphans(ctx); len(o) != 0 {
+		t.Fatal(o)
+	}
+	f.g.Dismiss(ctx, bob, []int64{first.TrackID})
+	unused, err := f.g.Orphans(ctx)
+	if err != nil || len(unused) != 2 || unused[0].Artist != "Skeler" || unused[0].Title != "Tides" {
+		t.Fatal(unused, err)
+	}
+
+	// Deleting one: its file and record go, the track and its history stay.
+	if n, err := f.g.DeleteOrphans(ctx, []string{first.Hash}); n != 1 || err != nil {
+		t.Fatal(n, err)
+	}
+	if _, err := os.Stat(filepath.Join(f.root, first.RelPath)); !os.IsNotExist(err) {
+		t.Fatal("the file is still in the Store")
+	}
+	if count(t, f.db, "SELECT COUNT(*) FROM objects WHERE hash = ?", first.Hash) != 0 ||
+		count(t, f.db, "SELECT COUNT(*) FROM tracks WHERE id = ?", first.TrackID) != 1 {
+		t.Fatal("the record should go and the track stay")
+	}
+	// Someone adds it back meanwhile: the other file isn't unused any more.
+	f.g.Undismiss(ctx, first.TrackID, []int64{bob})
+	f.g.GrantPointers(ctx, first.TrackID, []int64{bob})
+	if n, _ := f.g.DeleteOrphans(ctx, []string{second.Hash}); n != 0 {
+		t.Fatal("deleted a file someone has")
+	}
+	if _, err := os.Stat(filepath.Join(f.root, second.RelPath)); err != nil {
+		t.Fatal(err)
+	}
+}

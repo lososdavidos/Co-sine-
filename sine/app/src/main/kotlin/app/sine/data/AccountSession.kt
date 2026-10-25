@@ -6,17 +6,30 @@ import app.sine.core.account.Account
 import app.sine.core.cosine.CosineClient
 import app.sine.core.download.DownloadIndex
 import app.sine.core.download.DownloadLayout
+import app.sine.core.cosine.CosineException
 import app.sine.core.download.OfflineLibrary
+import app.sine.core.mirror.LibraryMirror
+import app.sine.core.mirror.MirrorLibrary
+import app.sine.core.model.Album
 import app.sine.core.model.AlbumDetail
+import app.sine.core.model.Artist
 import app.sine.core.model.ArtistDetail
 import app.sine.core.model.Track
 import app.sine.core.play.PlayLog
 import app.sine.core.play.PlaySource
+import app.sine.core.server.Capability
 import app.sine.core.subsonic.AlbumListType
 import app.sine.core.subsonic.SubsonicClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
 import java.io.IOException
@@ -49,6 +62,21 @@ class AccountSession(
     val downloads = DownloadIndex(File(dir, "downloads.json"))
     val plays = PlayLog(File(dir, "plays.json"))
     private val coversDir = File(dir, "covers")
+
+    /**
+     * Cosine's library kept on the phone (G2, §5.2). A plain Subsonic server
+     * keeps no change log, so compat mode has none and asks per screen (§2.1).
+     */
+    private val mirror: LibraryMirror? = if (initial.isCosine) LibraryMirror(File(dir, "library.json")) else null
+    private val syncing = Mutex()
+    private val noMirror = MutableStateFlow<MirrorLibrary?>(null)
+
+    /** The mirrored library while it's in use, else null; a new value whenever a sync changes it. */
+    val mirrored: StateFlow<MirrorLibrary?> = mirror?.library ?: noMirror
+
+    /** The mirror, once a sync has filled it, on a server that keeps one. */
+    private fun library(): MirrorLibrary? =
+        mirror?.takeIf { it.synced && can(Capability.DELTA_SYNC) }?.library?.value
 
     private val _reachable = MutableStateFlow(true)
     /** False after a request failed with the network up: the server itself is down. */
@@ -89,7 +117,68 @@ class AccountSession(
         lastFailureAt = 0
     }
 
-    suspend fun album(id: String): Sourced<AlbumDetail> = fetch(
+    /**
+     * Brings the mirror up to date with what changed on the server. Quietly
+     * does nothing offline, on a server without a mirror, or while another
+     * sync is under way.
+     */
+    suspend fun sync() {
+        val m = mirror ?: return
+        val c = cosine ?: return
+        if (!can(Capability.DELTA_SYNC) || !network.state.value.connected || syncing.isLocked) return
+        syncing.withLock {
+            try {
+                val changes = c.sync(m.cursor)
+                withContext(Dispatchers.IO) { m.apply(changes) }
+                _reachable.value = true
+            } catch (e: IOException) {
+                _reachable.value = false
+                lastFailureAt = System.currentTimeMillis()
+            } catch (e: CosineException) {
+                // Signed out or refused: the copy stays as it is.
+            }
+        }
+    }
+
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Syncs without waiting: after an add or a correction, so it shows at once. */
+    fun syncSoon() {
+        background.launch { sync() }
+    }
+
+    /** A pull to refresh: ask the server again now, and catch the mirror up. */
+    suspend fun refresh() {
+        forceOnlineRetry()
+        sync()
+    }
+
+    /** The Library's artists: from the mirror when there is one (instant, and all of them offline). */
+    suspend fun artists(): Sourced<List<Artist>> =
+        library()?.let { Sourced(it.artists(), false) } ?: fetch(offline = { it.artists() }, remote = { it.artists() })
+
+    /**
+     * A release's tracks when they're known here without asking: the
+     * mirror's, or offline the downloaded ones. Null means ask the server.
+     */
+    fun knownTracks(album: Album, fromDownloads: Boolean): List<Track>? =
+        library()?.album(album.id)?.tracks ?: if (fromDownloads) offline().albumTracks(album.id) else null
+
+    /**
+     * Takes tracks out of this account's library (§4.1) and catches the
+     * mirror up, so they're gone from every screen. Returns how many were in it.
+     */
+    suspend fun remove(trackIds: List<String>): Int {
+        val c = cosine ?: throw CosineException(400, "Removing songs needs a Cosine server.")
+        val n = c.remove(trackIds)
+        sync()
+        return n
+    }
+
+    /** Searches the mirror, or null when there is none and the server must be asked. */
+    fun searchMirror(query: String) = library()?.search(query)
+
+    suspend fun album(id: String): Sourced<AlbumDetail> = library()?.album(id)?.let { Sourced(it, false) } ?: fetch(
         offline = { lib ->
             val album = lib.albums().firstOrNull { it.id == id } ?: throw NotAvailableOffline()
             AlbumDetail(album, lib.albumTracks(id))
@@ -97,7 +186,7 @@ class AccountSession(
         remote = { it.album(id) },
     )
 
-    suspend fun artist(id: String): Sourced<ArtistDetail> = fetch(
+    suspend fun artist(id: String): Sourced<ArtistDetail> = library()?.artist(id)?.let { Sourced(it, false) } ?: fetch(
         offline = { lib ->
             val artist = lib.artists().firstOrNull { it.id == id } ?: throw NotAvailableOffline()
             ArtistDetail(artist, lib.albums(id))
@@ -105,7 +194,7 @@ class AccountSession(
         remote = { it.artist(id) },
     )
 
-    suspend fun allAlbums() = fetch(
+    suspend fun allAlbums(): Sourced<List<Album>> = library()?.let { Sourced(it.albums(), false) } ?: fetch(
         offline = { it.albums() },
         remote = { client ->
             val page = 500

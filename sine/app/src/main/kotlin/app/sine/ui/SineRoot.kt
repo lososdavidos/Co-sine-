@@ -43,7 +43,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -56,6 +59,7 @@ import app.sine.core.server.Capability
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.graph
+import kotlinx.coroutines.delay
 
 object Routes {
     const val HOME = "home"
@@ -136,6 +140,19 @@ private fun MainScaffold(session: AccountSession) {
     val canIngest = session.cosine != null && Capability.INGEST in account.kind.capabilities
     val canReview = session.cosine != null && Capability.REVIEW in account.kind.capabilities
     val share by graph.incomingShare.collectAsStateWithLifecycle()
+
+    // The mirror (§5.2) catches up every minute while Sine is on screen, and
+    // straight away when it comes back on screen.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(session, network.connected) {
+        if (!network.connected) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                session.sync()
+                delay(60_000)
+            }
+        }
+    }
 
     // Open Add with the shared text once this is the share target's scaffold.
     LaunchedEffect(share, account.id) {

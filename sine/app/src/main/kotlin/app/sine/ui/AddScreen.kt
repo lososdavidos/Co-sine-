@@ -152,7 +152,12 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
     // Poll the queue while this screen is open: quickly while something is moving.
     LaunchedEffect(refreshJobs) {
         while (true) {
-            if (session.isOnline) runCatching { jobs = cosine.jobs(30) }
+            if (session.isOnline) runCatching {
+                val before = jobs.filter { it.isActive }.map { it.id }.toSet()
+                jobs = cosine.jobs(30)
+                // Something just landed: bring it into the library now.
+                if (jobs.any { it.id in before && !it.isActive }) session.syncSoon()
+            }
             delay(if (jobs.any { it.isActive }) 1_500 else 6_000)
         }
     }

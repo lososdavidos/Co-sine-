@@ -279,6 +279,10 @@ func upsertIdentity(ctx context.Context, tx *sql.Tx, res resolve.Result, authori
 			if _, err := tx.ExecContext(ctx, "UPDATE artists SET name = ? WHERE id = ?", name, n); err != nil {
 				return 0, "", err
 			}
+			// Every track and release under the old spelling changes with it.
+			if err := db.LogChange(ctx, tx, 0, "artist", strconv.FormatInt(n, 10), "upsert"); err != nil {
+				return 0, "", err
+			}
 			have = name
 		}
 		return n, have, nil
@@ -344,6 +348,37 @@ func sameArtist(ctx context.Context, tx *sql.Tx, name string) (id int64, stored 
 		}
 	}
 	return 0, "", false, rows.Err()
+}
+
+// Dismiss takes Tracks out of an account's Library (§4.1): the Pointer goes
+// and a dismissed marker stays, so nothing removed comes back on its own,
+// from the Inbox or anywhere else. Adding it again on purpose lifts the
+// marker (Undismiss). The files stay in the Store; a Track no account has
+// left is an orphan, deleted from the dashboard when you choose (§2.3).
+func (g *Ingester) Dismiss(ctx context.Context, userID int64, trackIDs []int64) (removed int, err error) {
+	tx, err := g.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, id := range trackIDs {
+		res, err := tx.ExecContext(ctx, "DELETE FROM pointers WHERE user_id = ? AND track_id = ?", userID, id)
+		if err != nil {
+			return 0, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			continue // not in this Library
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO dismissed(user_id, track_id, dismissed_at) VALUES(?, ?, ?)",
+			userID, id, db.Now()); err != nil {
+			return 0, err
+		}
+		if err := db.LogChange(ctx, tx, userID, "pointer", strconv.FormatInt(id, 10), "remove"); err != nil {
+			return 0, err
+		}
+		removed++
+	}
+	return removed, tx.Commit()
 }
 
 // Undismiss lifts the dismissed marker for users who explicitly asked for a Track again.
@@ -472,6 +507,7 @@ func (g *Ingester) saveArtwork(ctx context.Context, releaseID int64, a Art) {
 	}
 	g.DB.ExecContext(ctx, "UPDATE releases SET art_path = ?, art_source = ? WHERE id = ?",
 		filepath.ToSlash(rel), a.Source, releaseID)
+	db.LogChange(ctx, g.DB, 0, "album", strconv.FormatInt(releaseID, 10), "upsert") // a new cover reaches the mirror
 }
 
 func (g *Ingester) startJob(ctx context.Context, req Request) (int64, error) {

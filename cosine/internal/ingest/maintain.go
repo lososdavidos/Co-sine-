@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -184,4 +185,82 @@ func (g *Ingester) Relocate(ctx context.Context, newRoot string) (moved int, err
 	}
 	store.PruneEmptyDirs(oldRoot)
 	return moved, nil
+}
+
+// Orphan is a file in the Store whose Track is in no account's Library
+// (§2.3): everyone who had it removed it.
+type Orphan struct {
+	Hash, RelPath, Artist, Title string
+	Size                         int64
+}
+
+// Orphans lists the Store's orphaned files, largest first.
+func (g *Ingester) Orphans(ctx context.Context) ([]Orphan, error) {
+	rows, err := g.DB.QueryContext(ctx, `
+		SELECT o.hash, o.rel_path, o.size, a.name, t.title
+		FROM objects o JOIN tracks t ON t.id = o.track_id JOIN artists a ON a.id = t.artist_id
+		WHERE NOT EXISTS (SELECT 1 FROM pointers p WHERE p.track_id = o.track_id)
+		ORDER BY o.size DESC, o.rel_path`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Orphan
+	for rows.Next() {
+		var o Orphan
+		if err := rows.Scan(&o.Hash, &o.RelPath, &o.Size, &o.Artist, &o.Title); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// DeleteOrphans deletes orphaned files from the Store: each of hashes that
+// is still an orphan (nobody has added it back meanwhile). The Track and its
+// history stay, out of sight, for the same song added again, as with a
+// forgotten file. A file that can't be deleted keeps its record.
+func (g *Ingester) DeleteOrphans(ctx context.Context, hashes []string) (deleted int, err error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	root, err := g.DB.Setting(ctx, db.SettingStorePath)
+	if err != nil || root == "" {
+		return 0, err
+	}
+	tx, err := g.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, h := range hashes {
+		var rel string
+		var track int64
+		err := tx.QueryRowContext(ctx, `SELECT o.rel_path, o.track_id FROM objects o WHERE o.hash = ?
+			AND NOT EXISTS (SELECT 1 FROM pointers p WHERE p.track_id = o.track_id)`, h).Scan(&rel, &track)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return deleted, err
+		}
+		// The file goes first: the Store never holds a file the database
+		// doesn't know about, and a record left without its file is only
+		// a missing file, which the next check notices.
+		if err := os.Remove(filepath.Join(root, filepath.FromSlash(rel))); err != nil && !errors.Is(err, os.ErrNotExist) {
+			g.Log.Warn("could not delete an orphaned file", "path", rel, "err", err)
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM objects WHERE hash = ?", h); err != nil {
+			return deleted, err
+		}
+		if err := db.LogChange(ctx, tx, 0, "track", strconv.FormatInt(track, 10), "upsert"); err != nil {
+			return deleted, err
+		}
+		deleted++
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	store.PruneEmptyDirs(root)
+	return deleted, nil
 }

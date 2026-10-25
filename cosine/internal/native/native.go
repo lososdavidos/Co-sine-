@@ -16,6 +16,8 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 )
@@ -27,9 +29,12 @@ type API struct {
 	Auth    *auth.Service
 	Fetcher *fetch.Fetcher // nil when yt-dlp is unavailable
 	Review  *review.Service
-	Stats   *stats.Service // nil: no statistics
-	Version string
-	Log     *slog.Logger
+	Stats   *stats.Service  // nil: no statistics
+	Mirror  *mirror.Service // nil: no library mirror
+	// Ingester takes tracks out of Libraries; nil: no removing.
+	Ingester *ingest.Ingester
+	Version  string
+	Log      *slog.Logger
 }
 
 func (a *API) capabilities() []string {
@@ -42,6 +47,12 @@ func (a *API) capabilities() []string {
 	}
 	if a.Stats != nil {
 		caps = append(caps, CapStats)
+	}
+	if a.Mirror != nil {
+		caps = append(caps, CapSync)
+	}
+	if a.Ingester != nil {
+		caps = append(caps, CapRemove)
 	}
 	return caps
 }
@@ -61,6 +72,12 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Stats != nil {
 		a.registerStats(mux)
+	}
+	if a.Mirror != nil {
+		a.registerSync(mux)
+	}
+	if a.Ingester != nil {
+		a.registerLibrary(mux)
 	}
 }
 

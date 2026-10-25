@@ -301,6 +301,53 @@ func TestMissingFilesPage(t *testing.T) {
 	}
 }
 
+func TestUnusedFilesPage(t *testing.T) {
+	e := setup(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	g := &ingest.Ingester{DB: e.db, DataDir: e.dir, ReviewThreshold: 0.8, Log: log,
+		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}}
+	e.dash.Ingester = g
+	store := filepath.Join(e.dir, "s")
+	e.post(t, "/setup", e.setupForm(store, filepath.Join(e.dir, "i")))
+	drop := t.TempDir()
+	var outs []ingest.Outcome
+	for _, title := range []string{"Tides", "Hollow", "Glass"} {
+		out, err := g.Ingest(context.Background(), ingest.Request{Path: testutil.MP3{Title: title, Artist: "Skeler", Body: title}.
+			Write(t, filepath.Join(drop, title+".mp3")), Source: "inbox"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		outs = append(outs, out)
+	}
+	if _, body := e.get(t, "/unused"); !strings.Contains(body, "No unused files.") {
+		t.Fatal(body)
+	}
+	// The only account removes two of them.
+	var admin int64
+	e.db.QueryRow("SELECT id FROM users").Scan(&admin)
+	g.Dismiss(context.Background(), admin, []int64{outs[0].TrackID, outs[1].TrackID})
+	if _, body := e.get(t, "/"); !strings.Contains(body, `<a href="/unused">2 (`) {
+		t.Fatal("status should link to the unused files:", body)
+	}
+	_, body := e.get(t, "/unused")
+	if !strings.Contains(body, "Tides") || !strings.Contains(body, "Hollow") || strings.Contains(body, "Glass") ||
+		!strings.Contains(body, `<button class="destroy">Delete 2 unused files (`) {
+		t.Fatal(body)
+	}
+	// One at a time, then the rest.
+	if _, body := e.post(t, "/unused/delete", url.Values{"hash": {outs[0].Hash}}); !strings.Contains(body, "Deleted 1 file.") ||
+		!strings.Contains(body, "Delete 1 unused file (") {
+		t.Fatal(body)
+	}
+	if _, body := e.post(t, "/unused/delete", url.Values{"hash": {outs[1].Hash, outs[2].Hash}}); !strings.Contains(body, "Deleted 1 file.") ||
+		!strings.Contains(body, "No unused files.") {
+		t.Fatal("only unused files are deleted:", body)
+	}
+	if _, err := os.Stat(filepath.Join(store, outs[2].RelPath)); err != nil {
+		t.Fatal("a file in use was deleted")
+	}
+}
+
 func TestListeningPage(t *testing.T) {
 	e := setup(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))

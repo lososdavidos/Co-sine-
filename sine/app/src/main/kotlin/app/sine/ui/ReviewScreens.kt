@@ -132,6 +132,7 @@ fun CorrectionScreen(session: AccountSession, trackId: String, onDone: () -> Uni
 
     fun finish(result: ReviewItem?, what: String) {
         if (result == null) return
+        session.syncSoon() // the correction moved it: the library should show where to
         Toast.makeText(context, "$what: ${result.identity.line()}.", Toast.LENGTH_SHORT).show()
         onDone()
     }

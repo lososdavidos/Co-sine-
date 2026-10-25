@@ -115,7 +115,7 @@ const trackOrder = "COALESCE(t.disc_no, 1), COALESCE(t.track_no, 9999), t.title"
 
 func (l library) artists(ctx context.Context, user int64, where string, limit, offset int, args ...any) ([]Artist, error) {
 	q := `
-SELECT a.id, a.name, COUNT(DISTINCT r.id),
+SELECT a.id, a.name, COUNT(DISTINCT r.id), a.art_path IS NOT NULL,
        (SELECT r2.id FROM releases r2 WHERE r2.artist_id = a.id AND r2.art_path IS NOT NULL LIMIT 1)
 FROM pointers p
 JOIN tracks t ON t.id = p.track_id
@@ -131,15 +131,19 @@ GROUP BY a.id ORDER BY a.name LIMIT ? OFFSET ?`
 	var out []Artist
 	for rows.Next() {
 		var (
-			a      Artist
-			id     int64
-			artRel sql.NullInt64
+			a       Artist
+			id      int64
+			picture bool
+			artRel  sql.NullInt64
 		)
-		if err := rows.Scan(&id, &a.Name, &a.AlbumCount, &artRel); err != nil {
+		if err := rows.Scan(&id, &a.Name, &a.AlbumCount, &picture, &artRel); err != nil {
 			return nil, err
 		}
 		a.ID = artistID(id)
-		if artRel.Valid {
+		switch {
+		case picture: // their own picture (§6.9), else one of their covers
+			a.CoverArt = artistID(id)
+		case artRel.Valid:
 			a.CoverArt = albumID(artRel.Int64)
 		}
 		out = append(out, a)
@@ -341,8 +345,9 @@ func (l library) releaseArt(ctx context.Context, id string) (string, error) {
 			"SELECT r.art_path FROM tracks t JOIN releases r ON r.id = t.release_id WHERE t.id = ?", n).Scan(&art)
 	case strings.HasPrefix(id, "ar-"):
 		n, _ := parseID(id, "ar-")
-		err = l.db.QueryRowContext(ctx,
-			"SELECT art_path FROM releases WHERE artist_id = ? AND art_path IS NOT NULL LIMIT 1", n).Scan(&art)
+		err = l.db.QueryRowContext(ctx, `SELECT COALESCE(a.art_path,
+			(SELECT r.art_path FROM releases r WHERE r.artist_id = a.id AND r.art_path IS NOT NULL LIMIT 1))
+			FROM artists a WHERE a.id = ?`, n).Scan(&art)
 	default:
 		return "", errNotFound
 	}

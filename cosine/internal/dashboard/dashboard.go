@@ -72,6 +72,7 @@ func (d *Dashboard) Handler() http.Handler {
 		"sourceName": resolve.SourceName,
 		"hours":      listeningTime,
 		"lengthNote": search.LengthNote,
+		"size":       humanBytes,
 		"date":       func(t time.Time) string { return t.Format("2 Jan 2006") },
 		"inc":        func(i int) int { return i + 1 },
 		"bar": func(n, top int) int {
@@ -81,7 +82,7 @@ func (d *Dashboard) Handler() http.Handler {
 			return max(1, n*300/top) // a bar always shows for a day with plays
 		},
 	}
-	for _, name := range []string{"setup", "login", "status", "users", "settings", "add", "review", "correct", "corrections", "missing", "listening"} {
+	for _, name := range []string{"setup", "login", "status", "users", "settings", "add", "review", "correct", "corrections", "missing", "unused", "listening"} {
 		d.pages[name] = template.Must(template.New(name).Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
 	}
 	mux := http.NewServeMux()
@@ -106,6 +107,8 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /missing", d.admin(d.missing))
 	mux.HandleFunc("POST /missing/check", d.admin(d.checkStore))
 	mux.HandleFunc("POST /missing/forget", d.admin(d.forgetMissing))
+	mux.HandleFunc("GET /unused", d.admin(d.unused))
+	mux.HandleFunc("POST /unused/delete", d.admin(d.deleteUnused))
 	if d.Review != nil {
 		mux.HandleFunc("GET /review", d.admin(d.reviewList))
 		mux.HandleFunc("POST /review/bulk", d.admin(d.reviewBulk))
@@ -340,6 +343,8 @@ type statusData struct {
 	Store, Inbox                            string
 	Tracks, Objects, Review, Missing, Users int
 	Size                                    string
+	Unused                                  int
+	UnusedSize                              string
 	Jobs                                    []job
 	Ingest, Active                          bool
 }
@@ -358,6 +363,10 @@ func (d *Dashboard) status(w http.ResponseWriter, r *http.Request, u auth.User) 
 		(SELECT COUNT(*) FROM objects WHERE missing = 1),
 		(SELECT COUNT(*) FROM users)`).Scan(&s.Tracks, &s.Objects, &bytes, &s.Review, &s.Missing, &s.Users)
 	s.Size = humanBytes(bytes)
+	var unusedBytes int64
+	d.DB.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(o.size), 0) FROM objects o
+		WHERE NOT EXISTS (SELECT 1 FROM pointers p WHERE p.track_id = o.track_id)`).Scan(&s.Unused, &unusedBytes)
+	s.UnusedSize = humanBytes(unusedBytes)
 
 	s.Ingest = d.Fetcher != nil
 	rows, err := d.DB.QueryContext(ctx, `
@@ -665,6 +674,38 @@ func (d *Dashboard) missing(w http.ResponseWriter, r *http.Request, u auth.User)
 	}
 	d.render(w, "missing", page{Title: "Missing from the Store", User: &u, Done: r.URL.Query().Get("done"),
 		Data: struct{ Files []missingFile }{files}})
+}
+
+// unused lists files no account has any more (§2.3, orphaned Objects).
+func (d *Dashboard) unused(w http.ResponseWriter, r *http.Request, u auth.User) {
+	files, err := d.Ingester.Orphans(r.Context())
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	var total int64
+	for _, f := range files {
+		total += f.Size
+	}
+	d.render(w, "unused", page{Title: "Unused files", User: &u, Done: r.URL.Query().Get("done"),
+		Data: struct {
+			Files []ingest.Orphan
+			Total int64
+		}{files, total}})
+}
+
+func (d *Dashboard) deleteUnused(w http.ResponseWriter, r *http.Request, u auth.User) {
+	r.ParseForm()
+	n, err := d.Ingester.DeleteOrphans(r.Context(), r.Form["hash"])
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if n == 1 {
+		done(w, r, "/unused", "Deleted 1 file.")
+		return
+	}
+	done(w, r, "/unused", fmt.Sprintf("Deleted %d files.", n))
 }
 
 func (d *Dashboard) checkStore(w http.ResponseWriter, r *http.Request, u auth.User) {

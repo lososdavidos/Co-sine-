@@ -272,6 +272,12 @@ Automatic collection after a configurable grace period can be switched on if
 you'd rather not think about it. Manual is the default because an automatic
 sweep will eventually delete something you meant to keep.
 
+`NOTE` Built (manual only): the dashboard's **Unused files** page, linked from
+Status, lists the files whose song every account has removed, largest first,
+with a Delete per file and a separate "Delete N unused files (size)". A file
+someone has added back meanwhile is never deleted. The song's history stays, as
+with a forgotten missing file.
+
 `NOTE` Because the Store is shared, library privacy is enforced only in the
 server's query layer. Anyone with shell or file access to the box sees every
 user's files. Acceptable at this scale, but stated rather than discovered.
@@ -567,6 +573,12 @@ your Library records "this account does not want this Track", not just an
 absence. One consistent rule, applied to manual removals, Inbox drops and shared
 playlist adds alike, so nothing you have rejected can ever come back on its own.
 
+`NOTE` Built: "Remove from library" in Sine, on a release's selected tracks
+or the whole release (not in a playlist, where "remove" would mean the
+playlist). It asks first, naming the count, and deletes the songs' downloads on
+the phone too. Adding a removed song again on purpose (Add, "Add anyway") lifts
+the marker; an Inbox drop does not.
+
 Consequence to accept: a shared playlist that auto-adds Tracks (§2.3) will skip
 anything you previously dismissed, so that playlist plays with a hole in it. The
 alternative — letting a share silently override your removal — is worse. The
@@ -825,6 +837,18 @@ both keep their changes.
 the client keeps an operation log going up. Same idea in both directions, and
 neither side ever has to guess what the other meant.
 
+`NOTE` Built so far (capability `delta-sync`): `GET /cosine/v1/sync?after=<cursor>`
+answers `after=0` with the account's whole library and otherwise with what
+changed — tracks to add or update, tracks to remove, and their albums and
+artists. A changed track brings its whole release and a changed artist
+everything of theirs, so a rename or a new cover reaches every track it touches.
+Counts are worked out on the client, so they can't go stale. A cursor the
+server never issued (a restored database) or more than 2000 changes gets the
+whole library again. Sine syncs on opening, on reconnecting, every minute while
+on screen, on a pull, and straight after an add or a correction; Library,
+artist and album pages and search read the mirror. Still to come: the WebSocket
+push, the playlist operation log, and Home and playlists from the mirror.
+
 ### 5.2a Client
 
 `RESOLVED` **Kotlin + Jetpack Compose, Android-first.** Sine is built as a
@@ -841,6 +865,10 @@ full library metadata, so search is instant and works offline. Cosine only
 searches on behalf of non-native clients.
 
 `NOTE` Local storage is Room over SQLite, mirroring Cosine's own choice.
+`REVISED`: the mirror starts as one JSON file per account in `sine/core`, like
+the downloads index, held in memory while the app runs. The library is curated
+rather than accumulated (NG8), so it stays small; plain Kotlin keeps it
+testable on the JVM and portable (G8). Room is the move if it outgrows memory.
 
 #### Why native, and what it unlocks
 
@@ -1323,6 +1351,20 @@ artist released — albums as release rows, singles as track rows, together. It
 reads as a body of work, which is how this music is actually made and released;
 sectioning albums above singles would impose a record-industry hierarchy the
 library does not have.
+
+`NOTE` Built with the mirror: oldest first by year, releases without a year
+last. A single row plays that song and the artist's singles after it, and a long
+press selects it as on a release. Without the mirror (compat mode) the tracks of
+each release aren't known up front, so every release shows as a release.
+
+`RESOLVED` **An artist has a picture, shown round.** It comes from Deezer, whose
+artist pictures are square press photos: through MusicBrainz's link to the
+artist's Deezer page when MusicBrainz knows them, else by name, taken only from
+a Deezer artist of that name who has a track or release named like one of
+theirs in the library — two artists can share a name, but rarely a song as well.
+Cosine looks in the background and saves the picture beside release covers; an
+artist without one shows one of their covers until a picture is found, and is
+looked for again a month later. "Various Artists" has none.
 
 `RESOLVED` **A Track with no artwork gets no ambience** — flat `--bg-0`, type
 doing the work. No generated colour: §6.4.3 rules out decorative use of the

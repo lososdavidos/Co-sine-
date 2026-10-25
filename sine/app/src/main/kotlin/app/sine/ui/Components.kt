@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -65,20 +68,31 @@ class Loader<T> internal constructor() {
     var refreshing by mutableStateOf(false)
         internal set
     internal var pulls by mutableIntStateOf(0)
+    // A pull asks the server once, even if the answer restarts the load.
+    internal var askServer = false
 
     fun refresh() {
         refreshing = true
+        askServer = true
         pulls++
     }
 }
 
-/** Loads for [session], again whenever [keys] change or the list is pulled down. */
+/**
+ * Loads for [session], again whenever [keys] change or the list is pulled
+ * down. A change to [refreshOn] (the mirror, after a sync) reloads in place,
+ * keeping what's shown until the new answer is there.
+ */
 @Composable
-fun <T> rememberLoad(session: AccountSession, vararg keys: Any?, block: suspend () -> Sourced<T>): Loader<T> {
+fun <T> rememberLoad(session: AccountSession, vararg keys: Any?, refreshOn: Any? = null, block: suspend () -> Sourced<T>): Loader<T> {
     val loader = remember(session, *keys) { Loader<T>() }
-    LaunchedEffect(loader, loader.pulls) {
-        // Asked for by hand, so ask the server even if it failed a moment ago.
-        if (loader.refreshing) session.forceOnlineRetry()
+    LaunchedEffect(loader, loader.pulls, refreshOn) {
+        // Asked for by hand: ask the server even if it failed a moment ago,
+        // and catch the mirror up.
+        if (loader.askServer) {
+            loader.askServer = false
+            session.refresh()
+        }
         loader.load = try {
             val s = block()
             Load.Ready(s.value, s.fromDownloads)
@@ -122,9 +136,11 @@ fun ListMessage(text: String) {
     }
 }
 
+/** Artwork, or a plain plane where there is none. An artist's picture is [round] (§6.9). */
 @Composable
-fun Art(model: Any?, size: Dp, modifier: Modifier = Modifier) {
-    Box(modifier.size(size).background(MaterialTheme.colorScheme.surfaceVariant)) {
+fun Art(model: Any?, size: Dp, modifier: Modifier = Modifier, round: Boolean = false) {
+    val shape = if (round) CircleShape else RectangleShape
+    Box(modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)) {
         if (model != null) {
             AsyncImage(
                 model = model,
@@ -144,6 +160,7 @@ fun ItemRow(
     art: Any?,
     modifier: Modifier = Modifier,
     showArt: Boolean = true,
+    roundArt: Boolean = false,
     trailing: String? = null,
     selected: Boolean = false,
     dimmed: Boolean = false,
@@ -160,7 +177,7 @@ fun ItemRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (showArt) Art(art, 48.dp)
+        if (showArt) Art(art, 48.dp, round = roundArt)
         Column(Modifier.weight(1f)) {
             val ink = if (dimmed) colors.onBackground.copy(alpha = 0.4f) else colors.onBackground
             Text(title, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)

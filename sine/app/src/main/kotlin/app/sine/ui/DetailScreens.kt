@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -29,41 +31,99 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import app.sine.core.cosine.CosineException
 import app.sine.core.download.PinnedBudget
+import app.sine.core.model.ArtistEntry
+import app.sine.core.model.ArtistPage
 import app.sine.core.model.DownloadNode
 import app.sine.core.model.Track
 import app.sine.core.play.PlaySource
+import app.sine.core.server.Capability
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
+import app.sine.data.Sourced
 import app.sine.download.Downloads
 import app.sine.graph
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 
+/**
+ * An artist and everything of theirs, in one list (§6.9). A single shows as
+ * the song it is: tapping plays it and the singles after it, and a long
+ * press selects, as on a release.
+ */
 @Composable
 fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
     val context = LocalContext.current
-    val load = rememberLoad(session, id) { session.artist(id) }
-    LoadContent(load) { detail, fromDownloads ->
-        LazyColumn(Modifier.fillMaxSize()) {
-            item {
-                Header(
-                    art = session.artwork(detail.artist.coverArt),
-                    title = detail.artist.name,
-                    subtitle = detail.artist.subtitle(),
-                ) {
-                    if (!fromDownloads) OutlinedButton(onClick = {
-                        startDownload(context, session, DownloadNode.OfArtist(detail.artist.id), null, nav)
-                    }) { Text("Download all") }
+    val player = context.graph.player
+    val scope = rememberCoroutineScope()
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
+    val load = rememberLoad(session, id, refreshOn = mirrored) {
+        session.artist(id).let { s ->
+            Sourced(s.value to ArtistPage.entries(s.value.albums) { session.knownTracks(it, s.fromDownloads) }, s.fromDownloads)
+        }
+    }
+    LoadContent(load) { (detail, entries), fromDownloads ->
+        val singles = entries.filterIsInstance<ArtistEntry.Single>().map { it.track }
+        var selected by remember(singles) { mutableStateOf(setOf<String>()) }
+        var removing by remember { mutableStateOf<List<Track>?>(null) }
+        Column(Modifier.fillMaxSize()) {
+            if (selected.isNotEmpty()) {
+                val chosen = singles.filter { it.id in selected }
+                TrackSelectionBar(session, chosen, nav, onRemoveFromLibrary = { removing = chosen }) { selected = emptySet() }
+            }
+            LazyColumn(Modifier.fillMaxSize()) {
+                item {
+                    Header(
+                        art = session.artwork(detail.artist.coverArt),
+                        title = detail.artist.name,
+                        subtitle = detail.artist.subtitle(),
+                        roundArt = true,
+                    ) {
+                        if (!fromDownloads) OutlinedButton(onClick = {
+                            startDownload(context, session, DownloadNode.OfArtist(detail.artist.id), null, nav)
+                        }) { Text("Download all") }
+                    }
+                }
+                items(entries, key = { it.album.id }) { entry ->
+                    when (entry) {
+                        is ArtistEntry.Release -> AlbumRow(session, entry.album, nav)
+                        is ArtistEntry.Single -> {
+                            val track = entry.track
+                            val playable = session.playSource(track) != PlaySource.Unavailable
+                            ItemRow(
+                                title = track.title,
+                                subtitle = listOfNotNull("Single", entry.album.year?.toString()).joinToString(" · "),
+                                art = session.artwork(entry.album.coverArt, 150),
+                                trailing = (if (track.id in downloads) "↓ " else "") + track.durationText(),
+                                selected = track.id in selected,
+                                dimmed = !playable,
+                                onLongClick = { selected = selected.toggle(track.id) },
+                            ) {
+                                when {
+                                    selected.isNotEmpty() -> selected = selected.toggle(track.id)
+                                    playable -> player.play(session, singles, singles.indexOf(track))
+                                    else -> Toast.makeText(context, Voice.TRACK_UNAVAILABLE, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            itemsIndexed(detail.albums, key = { _, a -> a.id }) { _, album -> AlbumRow(session, album, nav) }
         }
+        RemoveConfirmation(session, removing, scope, onDismiss = { removing = null }) { selected = emptySet() }
     }
 }
 
 @Composable
 fun AlbumScreen(session: AccountSession, id: String, nav: NavController) {
-    val load = rememberLoad(session, id) { session.album(id) }
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val load = rememberLoad(session, id, refreshOn = mirrored) { session.album(id) }
     LoadContent(load) { detail, fromDownloads ->
         TrackListScreen(
             session = session,
@@ -74,6 +134,7 @@ fun AlbumScreen(session: AccountSession, id: String, nav: NavController) {
             node = if (fromDownloads) null else DownloadNode.OfAlbum(detail.album.id),
             showTrackArtist = false,
             nav = nav,
+            removable = true,
             onTitleClick = detail.album.artistId?.let { artistId -> { nav.navigate(Routes.artist(artistId)) } },
         )
     }
@@ -117,33 +178,25 @@ private fun TrackListScreen(
     showTrackArtist: Boolean,
     nav: NavController,
     onTitleClick: (() -> Unit)? = null,
+    // A release's songs can be taken out of the library; a playlist's are
+    // the playlist's, where "remove" would mean something else.
+    removable: Boolean = false,
 ) {
     val context = LocalContext.current
     val player = context.graph.player
     val scope = rememberCoroutineScope()
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
     var selected by remember(tracks) { mutableStateOf(setOf<String>()) }
+    var removing by remember { mutableStateOf<List<Track>?>(null) }
+    val canRemove = removable && session.can(Capability.REMOVE)
     val downloadedHere = tracks.count { it.id in downloads }
 
     Column(Modifier.fillMaxSize()) {
         if (selected.isNotEmpty()) {
             val chosen = tracks.filter { it.id in selected }
-            SelectionBar(
-                count = selected.size,
-                onPlay = { player.play(session, chosen); selected = emptySet() },
-                onDownload = {
-                    chosen.filterNot { it.id in downloads }.forEach {
-                        startDownload(context, session, DownloadNode.OfTrack(it.id), chosen, nav, quiet = true)
-                    }
-                    Toast.makeText(context, Voice.downloadQueued(chosen.size), Toast.LENGTH_SHORT).show()
-                    selected = emptySet()
-                },
-                onRemove = {
-                    scope.launch { Downloads.remove(context, session, chosen.map { it.id }) }
-                    selected = emptySet()
-                },
-                onClear = { selected = emptySet() },
-            )
+            TrackSelectionBar(session, chosen, nav, onRemoveFromLibrary = if (canRemove) ({ removing = chosen }) else null) {
+                selected = emptySet()
+            }
         }
         LazyColumn(Modifier.fillMaxSize()) {
             item {
@@ -158,6 +211,8 @@ private fun TrackListScreen(
                             scope.launch { Downloads.remove(context, session, tracks.map { it.id }) }
                         }) { Text("Remove download") }
                     }
+                    // Last in the row, away from Play (§6.18's rule for destructive actions).
+                    if (canRemove) TextButton(onClick = { removing = tracks }) { Text("Remove from library") }
                 }
             }
             itemsIndexed(tracks, key = { i, t -> "$i:${t.id}" }) { i, track ->
@@ -184,18 +239,26 @@ private fun TrackListScreen(
             }
         }
     }
+    RemoveConfirmation(session, removing, scope, onDismiss = { removing = null }) { removed ->
+        selected = emptySet()
+        if (removed.size == tracks.size) nav.popBackStack() // nothing left here
+    }
 }
 
 private fun Set<String>.toggle(id: String) = if (id in this) this - id else this + id
 
+/** The actions on selected tracks (§6.5), the whole row changed to show them. */
 @Composable
-private fun SelectionBar(
-    count: Int,
-    onPlay: () -> Unit,
-    onDownload: () -> Unit,
-    onRemove: () -> Unit,
+private fun TrackSelectionBar(
+    session: AccountSession,
+    chosen: List<Track>,
+    nav: NavController,
+    onRemoveFromLibrary: (() -> Unit)?,
     onClear: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val player = context.graph.player
+    val scope = rememberCoroutineScope()
     Row(
         Modifier
             .fillMaxWidth()
@@ -204,12 +267,67 @@ private fun SelectionBar(
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("$count selected", Modifier.padding(horizontal = 8.dp))
-        TextButton(onClick = onPlay) { Text("Play") }
-        TextButton(onClick = onDownload) { Text("Download") }
-        TextButton(onClick = onRemove) { Text("Remove download") }
+        Text("${chosen.size} selected", Modifier.padding(horizontal = 8.dp))
+        TextButton(onClick = { player.play(session, chosen); onClear() }) { Text("Play") }
+        TextButton(onClick = {
+            chosen.filterNot { it.id in session.downloads }.forEach {
+                startDownload(context, session, DownloadNode.OfTrack(it.id), chosen, nav, quiet = true)
+            }
+            Toast.makeText(context, Voice.downloadQueued(chosen.size), Toast.LENGTH_SHORT).show()
+            onClear()
+        }) { Text("Download") }
+        TextButton(onClick = {
+            scope.launch { Downloads.remove(context, session, chosen.map { it.id }) }
+            onClear()
+        }) { Text("Remove download") }
         TextButton(onClick = onClear) { Text("Clear") }
+        // Last, apart from Play (§6.18).
+        if (onRemoveFromLibrary != null) TextButton(onClick = onRemoveFromLibrary) { Text("Remove from library") }
     }
+}
+
+/**
+ * Asks before taking songs out of the library, then does it (§4.1): the
+ * server first, then their downloads here. [scope] is the screen's, so the
+ * work outlives the dialog.
+ */
+@Composable
+private fun RemoveConfirmation(
+    session: AccountSession,
+    tracks: List<Track>?,
+    scope: CoroutineScope,
+    onDismiss: () -> Unit,
+    onRemoved: (List<Track>) -> Unit,
+) {
+    if (tracks.isNullOrEmpty()) return
+    val context = LocalContext.current.applicationContext
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(Voice.removeQuestion(tracks.size)) },
+        text = { Text(Voice.removeExplained(tracks.size)) },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                scope.launch {
+                    val ids = tracks.map { it.id }
+                    val said = try {
+                        val n = session.remove(ids)
+                        Downloads.remove(context, session, ids)
+                        onRemoved(tracks)
+                        Voice.removed(n)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: CosineException) {
+                        e.message ?: "Cosine refused that."
+                    } catch (e: IOException) {
+                        Voice.serverUnreachable(isCosine = true)
+                    }
+                    withContext(Dispatchers.Main) { Toast.makeText(context, said, Toast.LENGTH_SHORT).show() }
+                }
+            }) { Text(Voice.removeAction(tracks.size)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Keep") } },
+    )
 }
 
 @Composable
@@ -218,10 +336,11 @@ private fun Header(
     title: String,
     subtitle: String,
     onTitleClick: (() -> Unit)? = null,
+    roundArt: Boolean = false,
     actions: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Art(art, 160.dp)
+        Art(art, 160.dp, round = roundArt)
         Text(title, style = MaterialTheme.typography.headlineSmall)
         if (subtitle.isNotBlank()) {
             if (onTitleClick != null) {
