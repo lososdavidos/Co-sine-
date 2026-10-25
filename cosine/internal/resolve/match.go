@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -79,12 +80,41 @@ func Score(h Hint, title string, artists []string, lengthSec int) float64 {
 	a := ArtistSimilarity(h.Artist, artists...)
 	dur, contradicted := DurationFit(h.DurationSec, lengthSec)
 	s := 0.45*t + 0.35*a + 0.20*dur
+	if anotherVersion(h, title) {
+		// A remix or cover shares the song's name and often its length,
+		// but it's another track: only a title that asks for it matches.
+		s -= 0.25
+	}
 	if contradicted {
 		// Same name, very different length: a mix, an extended cut or a
 		// different piece. Never confident enough to skip review.
 		s = math.Min(s, 0.6)
 	}
 	return s
+}
+
+// versionWords mark a reworking of a song rather than the song: "Bad at
+// Love (Autograf remix)" is not "Bad at Love". "Edit", "mix" and "extended"
+// aren't among them, because the same take often carries them ("Radio
+// Edit", "Original Mix"); length tells those apart.
+var versionWords = []string{
+	"remix", "rmx", "rework", "bootleg", "flip", "vip", "cover", "karaoke",
+	"instrumental", "acapella", "acoustic", "live", "nightcore", "slowed", "sped",
+}
+
+// anotherVersion reports whether a catalogue title names a version that
+// the hinted title and album don't ask for.
+func anotherVersion(h Hint, title string) bool {
+	want := strings.Fields(Normalise(h.Title + " " + h.Release))
+	asked := func(w string) bool { // "(Remixes)" asks for a remix
+		return slices.Contains(want, w) || slices.Contains(want, w+"s") || slices.Contains(want, w+"es")
+	}
+	for _, w := range strings.Fields(Normalise(title)) {
+		if slices.Contains(versionWords, w) && !asked(w) {
+			return true
+		}
+	}
+	return false
 }
 
 // DurationFit scores agreement in length. Unknown on either side neither

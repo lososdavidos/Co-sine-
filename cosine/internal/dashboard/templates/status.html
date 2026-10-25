@@ -18,7 +18,8 @@
 <td>{{.Status}}{{if eq .Status "running"}} {{.Percent}}%{{end}}</td>
 <td>{{if eq .Status "failed"}}Couldn't fetch — {{end}}{{.Detail}}</td>
 <td>{{if .Mine}}{{if eq .Status "failed"}}<form method="post" action="/jobs/{{.ID}}/retry"><button>Retry</button></form>{{end}}
-{{if eq .Status "known"}}<form method="post" action="/jobs/{{.ID}}/retry"><input type="hidden" name="force" value="1"><button>Add anyway</button></form>{{end}}{{end}}</td></tr>
+{{if eq .Status "known"}}<form method="post" action="/jobs/{{.ID}}/retry"><input type="hidden" name="force" value="1"><button>Add anyway</button></form>{{end}}{{end}}
+{{if .Track}}<a href="/review/{{.Track}}">Correct</a>{{end}}</td></tr>
 {{end}}</table>
 {{if .Data.Active}}<p><a href="/">Refresh</a> to update progress.</p>{{end}}
 {{else}}<p>Nothing ingested yet.</p>{{end}}

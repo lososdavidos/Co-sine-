@@ -219,7 +219,13 @@ func TestReviewAndRevertInTheDashboard(t *testing.T) {
 	}
 	track := "tr-" + itoa(out.TrackID)
 
-	_, body := e.get(t, "/review")
+	// Anything ingested can be corrected from the list of recent ingests,
+	// not only what the review queue holds.
+	_, body := e.get(t, "/")
+	if !strings.Contains(body, `<a href="/review/`+track+`">Correct</a>`) {
+		t.Fatal(body)
+	}
+	_, body = e.get(t, "/review")
 	if !strings.Contains(body, "1 track to review") || !strings.Contains(body, "Read from the file") {
 		t.Fatal(body)
 	}

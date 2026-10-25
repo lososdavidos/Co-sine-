@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -146,7 +147,10 @@ const rankAlbum = -30
 // formats only on releases; a master is judged by its length.
 func releaseRank(h resolve.Hint, e entry) int {
 	n := 0
-	if h.Release != "" && !strings.EqualFold(h.Release, h.Title) && resolve.Similarity(h.Release, e.Title) >= 0.8 {
+	switch {
+	case named(h, e) && e.compiled():
+		n-- // ahead of other compilations, never of the artist's own (as MusicBrainz)
+	case named(h, e):
 		n -= 100
 	}
 	kind := ""
@@ -183,6 +187,24 @@ func releaseRank(h resolve.Hint, e entry) int {
 		n += 25
 	}
 	return n
+}
+
+// named reports whether the file names this master or release as its album.
+func named(h resolve.Hint, e entry) bool {
+	return h.Release != "" && !strings.EqualFold(h.Release, h.Title) && resolve.Similarity(h.Release, e.Title) >= 0.8
+}
+
+// compiled reports whether an entry gathers other releases' tracks.
+func (e entry) compiled() bool {
+	if credit(e.Artists) == "Various Artists" {
+		return true
+	}
+	for _, f := range e.Formats {
+		if slices.Contains(f.Descriptions, "Compilation") {
+			return true
+		}
+	}
+	return false
 }
 
 func (e entry) tracks() int {
@@ -300,7 +322,7 @@ func identity(h resolve.Hint, path string, e entry) (resolve.Result, bool) {
 	}
 	t := e.Tracklist[best]
 	conf := bestScore
-	if h.Release != "" && !strings.EqualFold(h.Release, h.Title) && resolve.Similarity(h.Release, e.Title) >= 0.8 {
+	if named(h, e) && !e.compiled() {
 		conf += 0.05 // the album we were told about
 	}
 	if _, contradicted := resolve.DurationFit(h.DurationSec, seconds(t.Duration)); contradicted {

@@ -54,9 +54,10 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
 - **Title cleaning:** before anything is looked up, what uploaders add is stripped: bracketed noise ("[HD Upgrade]", "(Official Music Video)", "[Free DL]", "(Out Now!)", "[Monstercat Release]"), "PREMIERE:" prefixes, "| Label" tails, hashtags, and YouTube's "Artist - Topic" channels. What names the piece stays: "(VIP)", "(Extended Mix)", "(feat. X)".
 - **MusicBrainz (§3.2, tier 1):** every file is looked up by the artist and title its tags, filename or source page suggest, with the length as evidence.
   - A confident match files it under MusicBrainz's canonical artist, release and track number, and stores the MusicBrainz IDs.
-  - A song that has ever been on an album is filed under the album, even when it arrived as a single; otherwise its EP, then its single. Compilations, soundtracks and live albums come last. An album the file itself names wins over all of these. Discogs ranks the same way.
+  - A song that has ever been on an album is filed under the album, even when it arrived as a single; otherwise its EP, then its single. Compilations, soundtracks and live albums come last. An album the file itself names wins over all of these, unless it's a compilation: YouTube credits videos to whatever compilation claimed them, so a named compilation only beats other compilations, never the artist's own release. Discogs ranks the same way.
   - A compilation is filed under Various Artists and keeps each track's own artist (Q74).
   - A file with the right name but the wrong length (a mix, an extended cut) is never confident.
+  - A remix, cover, live, acoustic or instrumental version only matches a title that asks for it, so "Bad at Love" never becomes "Bad at Love (Autograf remix)". This applies to all three catalogues.
   - The studio recording is preferred: official, non-video, non-live recordings are searched first, and a live version, music video or bootleg is scored below review unless the file's own title says "Live". A compilation, live album or DJ mix ranks below the original release, and between equals the earliest release wins.
   - Lookups are held to one per second and cached forever (Q15). If MusicBrainz can't be reached, Cosine backs off for five minutes and files things from their own metadata in the meantime.
 - **Discogs (tier 2):** asked when MusicBrainz isn't confident. Searches masters and releases by artist and track, reads the tracklist for the track's length and position (vinyl sides too), and keeps each track's own artist on a Various compilation. Works without an account at 25 lookups a minute; a personal access token in Settings raises that to 60.
@@ -65,6 +66,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
 - **Covers:** in the order of §3.2a. The matched release's cover (Cover Art Archive, Discogs or Bandcamp) comes first, then art embedded in the file, then the source site's thumbnail. A better source replaces a worse one.
 - **Review queue (§5.3, §6.12):** anything not confidently matched, which includes everything identified only from its own metadata.
   - In Sine it's under Library → Review. In the dashboard it's under Review, with bulk confirm.
+  - Anything already filed, confidently or not, can be corrected from where it was added: "Correct" on a finished item in Sine's Add screen, or on the dashboard's Recent ingests.
   - The correction screen shows candidates from all three catalogues at once, ranked together and labelled by source (you can search again with other terms), "It's right as it is", and typing the details yourself.
   - A correction applies for everyone and moves the files. If the corrected identity already exists, the two become versions of one Track, and plays, stars and playlists follow.
   - Every change is logged under Corrections, and the latest change to a track can be reverted with one click. A merge can't be undone automatically.

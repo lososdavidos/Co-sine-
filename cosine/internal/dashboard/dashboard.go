@@ -332,6 +332,7 @@ type job struct {
 	When, Who, Source, Title, URL, Status, Detail string
 	Percent                                       int
 	Mine                                          bool
+	Track                                         string // where it was filed, to correct; "" if it wasn't
 }
 
 type statusData struct {
@@ -360,17 +361,21 @@ func (d *Dashboard) status(w http.ResponseWriter, r *http.Request, u auth.User) 
 	s.Ingest = d.Fetcher != nil
 	rows, err := d.DB.QueryContext(ctx, `
 		SELECT j.id, j.created_at, COALESCE(u.name, 'everyone'), j.source, COALESCE(j.title, j.input),
-		       COALESCE(j.url, ''), j.status, COALESCE(j.error, ''), j.progress, COALESCE(j.user_id, 0) = ?
+		       COALESCE(j.url, ''), j.status, COALESCE(j.error, ''), j.progress, COALESCE(j.user_id, 0) = ?,
+		       COALESCE((SELECT t.id FROM tracks t WHERE t.id = j.track_id), 0)
 		FROM ingest_jobs j LEFT JOIN users u ON u.id = j.user_id
 		ORDER BY j.id DESC LIMIT 50`, u.ID)
 	if err == nil {
 		for rows.Next() {
 			var j job
-			var at int64
+			var at, track int64
 			var progress float64
-			if rows.Scan(&j.ID, &at, &j.Who, &j.Source, &j.Title, &j.URL, &j.Status, &j.Detail, &progress, &j.Mine) == nil {
+			if rows.Scan(&j.ID, &at, &j.Who, &j.Source, &j.Title, &j.URL, &j.Status, &j.Detail, &progress, &j.Mine, &track) == nil {
 				j.When = time.UnixMilli(at).Format("2006-01-02 15:04")
 				j.Percent = int(progress * 100)
+				if track != 0 && d.Review != nil {
+					j.Track = "tr-" + strconv.FormatInt(track, 10)
+				}
 				s.Active = s.Active || j.Status == "queued" || j.Status == "running"
 				s.Jobs = append(s.Jobs, j)
 			}

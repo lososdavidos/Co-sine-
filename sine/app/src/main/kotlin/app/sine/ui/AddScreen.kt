@@ -58,19 +58,19 @@ import java.io.IOException
  * shown here too, because getting music in has visible state (G4, Q13).
  */
 @Composable
-fun AddScreen(session: AccountSession, initialText: String) {
+fun AddScreen(session: AccountSession, initialText: String, onCorrect: (trackId: String) -> Unit) {
     val account by session.accountFlow.collectAsStateWithLifecycle()
     val cosine = session.cosine
     when {
         cosine == null -> Message("Adding music needs a Cosine server.")
         Capability.INGEST !in account.kind.capabilities ->
             Message("This Cosine can't add music yet: yt-dlp is not installed on the server.")
-        else -> AddContent(session, cosine, initialText)
+        else -> AddContent(session, cosine, initialText, onCorrect.takeIf { Capability.REVIEW in account.kind.capabilities })
     }
 }
 
 @Composable
-private fun AddContent(session: AccountSession, cosine: CosineClient, initialText: String) {
+private fun AddContent(session: AccountSession, cosine: CosineClient, initialText: String, onCorrect: ((String) -> Unit)?) {
     val graph = LocalContext.current.graph
     val scope = rememberCoroutineScope()
     var input by rememberSaveable { mutableStateOf(initialText) }
@@ -211,7 +211,17 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
 
         if (jobs.isNotEmpty()) {
             item { SectionHeader("Fetching") }
-            items(jobs, key = { "j:" + it.id }) { job -> JobRow(job, onRetry = { retry(job, false) }, onForce = { retry(job, true) }) }
+            items(jobs, key = { "j:" + it.id }) { job ->
+                // Anything added can be corrected where it was filed, not
+                // only what lands in the review queue (§6.12).
+                val trackId = job.trackId
+                JobRow(
+                    job,
+                    onRetry = { retry(job, false) },
+                    onForce = { retry(job, true) },
+                    onCorrect = if (trackId != null && onCorrect != null) ({ onCorrect(trackId) }) else null,
+                )
+            }
         }
     }
 }
@@ -240,7 +250,7 @@ private fun ResultRow(item: AddItem, checked: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-private fun JobRow(job: IngestJob, onRetry: () -> Unit, onForce: () -> Unit) {
+private fun JobRow(job: IngestJob, onRetry: () -> Unit, onForce: () -> Unit, onCorrect: (() -> Unit)?) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -253,6 +263,7 @@ private fun JobRow(job: IngestJob, onRetry: () -> Unit, onForce: () -> Unit) {
             job.isFailed -> TextButton(onClick = onRetry) { Text("Retry") }
             job.isKnown -> TextButton(onClick = onForce) { Text("Add anyway") }
         }
+        if (onCorrect != null) TextButton(onClick = onCorrect) { Text("Correct") }
     }
 }
 

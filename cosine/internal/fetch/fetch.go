@@ -165,7 +165,7 @@ func (f *Fetcher) Jobs(ctx context.Context, userID int64, limit int) ([]Job, err
 func (f *Fetcher) jobs(ctx context.Context, where string, args ...any) ([]Job, error) {
 	rows, err := f.DB.QueryContext(ctx, `
 		SELECT j.id, COALESCE(j.url, j.input), COALESCE(j.title, j.input), j.status, j.progress,
-		       COALESCE(j.error, ''), COALESCE(j.track_id, 0), j.created_at, j.updated_at
+		       COALESCE(j.error, ''), COALESCE((SELECT t.id FROM tracks t WHERE t.id = j.track_id), 0), j.created_at, j.updated_at
 		FROM ingest_jobs j `+where, args...)
 	if err != nil {
 		return nil, err

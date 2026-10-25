@@ -86,10 +86,86 @@ func TestSingleIsFiledAsTheSingle(t *testing.T) {
 	}
 }
 
-func TestNamedAlbumWinsAndCompilationsKeepTheTrackArtist(t *testing.T) {
+func TestANamedCompilationDoesNotBeatTheArtistsOwnRelease(t *testing.T) {
 	c := client(t, newFake(t, tidesSearch), false)
-	r, _, _ := c.Match(context.Background(), Hint{Artist: "Skeler", Title: "Tides", Release: "Wave Vol 1"})
-	if r.Release != "Wave Vol. 1" || r.Artist != "Various Artists" || r.TrackArtist != "Skeler" || r.TrackNo != 7 {
+	ctx := context.Background()
+	// The file names the compilation, but the song has a release of its own.
+	h := Hint{Artist: "Skeler", Title: "Tides", Release: "Wave Vol 1"}
+	r, _, _ := c.Match(ctx, h)
+	if r.IDs.MBRelease != "rel-single" || r.Artist != "Skeler" || r.Confidence < 0.8 {
+		t.Fatalf("%+v", r)
+	}
+	// The compilation is still offered, under Various Artists with the
+	// track's own credit (Q74).
+	cands, _ := c.Candidates(ctx, h, 3)
+	for _, cand := range cands {
+		if cand.IDs.MBRelease == "rel-comp" {
+			if cand.Artist != "Various Artists" || cand.TrackArtist != "Skeler" || cand.TrackNo != 7 {
+				t.Fatalf("%+v", cand)
+			}
+			return
+		}
+	}
+	t.Fatal("the compilation isn't offered")
+}
+
+func TestASongOnlyOnCompilationsGoesUnderTheNamedOne(t *testing.T) {
+	comp := func(id, title string) string {
+		return `{"id":"` + id + `","title":"` + title + `","status":"Official","date":"2018",
+   "artist-credit":[{"name":"Various Artists","artist":{"id":"art-va","name":"Various Artists"}}],
+   "release-group":{"id":"rg-` + id + `","primary-type":"Album","secondary-types":["Compilation"]}}`
+	}
+	body := `{"recordings":[{"id":"rec","score":100,"title":"Hollow","length":241000,
+  "artist-credit":[{"name":"Deadcrow","artist":{"id":"art-d","name":"Deadcrow"}}],
+  "releases":[` + comp("rel-a", "Wave Vol. 1") + `,` + comp("rel-b", "Wave Vol. 2") + `]}]}`
+	c := client(t, newFake(t, body), false)
+	r, ok, _ := c.Match(context.Background(), Hint{Artist: "Deadcrow", Title: "Hollow", Release: "Wave Vol. 2", DurationSec: 241})
+	if !ok || r.IDs.MBRelease != "rel-b" || r.Artist != "Various Artists" || r.TrackArtist != "Deadcrow" {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestAYouTubeCompilationCreditDoesNotWin(t *testing.T) {
+	// YouTube credits the "Bad at Love" video to a compilation: the album
+	// it was released on still wins.
+	body := `{"recordings":[{"id":"rec","score":100,"title":"Bad at Love","length":181279,
+  "artist-credit":[{"name":"Halsey","artist":{"id":"art-h","name":"Halsey"}}],
+  "releases":[
+   {"id":"rel-party","title":"Hot Party Winter 2018","status":"Official","date":"2017-11-17",
+    "artist-credit":[{"name":"Various Artists","artist":{"id":"art-va","name":"Various Artists"}}],
+    "release-group":{"id":"rg-p","primary-type":"Album","secondary-types":["Compilation"]}},
+   {"id":"rel-hfk","title":"hopeless fountain kingdom","status":"Official","date":"2017-06-02",
+    "release-group":{"id":"rg-a","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"10"}]}]}]}]}`
+	c := client(t, newFake(t, body), false)
+	for _, d := range []int{0, 181} {
+		r, ok, _ := c.Match(context.Background(), Hint{Artist: "Halsey", Title: "Bad At Love", Release: "Hot Party Winter 2018", DurationSec: d})
+		if !ok || r.Release != "hopeless fountain kingdom" || r.Artist != "Halsey" || r.TrackNo != 10 {
+			t.Fatalf("%ds: %+v", d, r)
+		}
+	}
+}
+
+func TestARemixIsNotTheSong(t *testing.T) {
+	// A music video runs longer than the song, and a remix of the same
+	// length fit it better by length alone.
+	body := `{"recordings":[
+ {"id":"rec-remix","score":100,"title":"Bad at Love (Autograf remix)","length":205000,
+  "artist-credit":[{"name":"Halsey","artist":{"id":"art-h","name":"Halsey"}}],
+  "releases":[{"id":"rel-remixes","title":"Bad at Love (remixes)","status":"Official","date":"2017",
+   "release-group":{"id":"rg-r","primary-type":"EP"}}]},
+ {"id":"rec-album","score":97,"title":"Bad at Love","length":181000,
+  "artist-credit":[{"name":"Halsey","artist":{"id":"art-h","name":"Halsey"}}],
+  "releases":[{"id":"rel-hfk","title":"hopeless fountain kingdom","status":"Official","date":"2017-06-02",
+   "release-group":{"id":"rg-a","primary-type":"Album"}}]}]}`
+	c := client(t, newFake(t, body), false)
+	ctx := context.Background()
+	r, _, _ := c.Match(ctx, Hint{Artist: "Halsey", Title: "Bad At Love", Release: "Bad At Love", DurationSec: 205})
+	if r.IDs.MBRecording != "rec-album" || r.Confidence < 0.8 {
+		t.Fatalf("%+v", r)
+	}
+	// Asked for by name, the remix is the match.
+	r, _, _ = c.Match(ctx, Hint{Artist: "Halsey", Title: "Bad At Love (Autograf Remix)", DurationSec: 205})
+	if r.IDs.MBRecording != "rec-remix" || r.Confidence < 0.8 {
 		t.Fatalf("%+v", r)
 	}
 }

@@ -448,6 +448,19 @@ Every resolved track records **which source identified it** and a **confidence**
 so low-confidence entries are visible and correctable rather than silently
 wrong. `OPEN` — how confidence is expressed in the UI.
 
+`RESOLVED` **The artist's own release, not a compilation the source names.** A
+song is filed under the album it has been on, else its EP, else its single;
+compilations, soundtracks and live albums come last, and an album the file
+itself names goes first. A named compilation is the exception: YouTube credits a
+video to whichever release claimed it ("Hot Party Winter 2018") and a ripped
+"NOW" CD names one too, so it only goes ahead of other compilations. A song that
+was only ever on compilations is filed under Various Artists (Q74).
+
+`RESOLVED` **A remix is another track.** A catalogue title that names a version
+— remix, rework, VIP, cover, live, acoustic, instrumental, karaoke, nightcore,
+slowed or sped up — only matches a file whose title or album asks for it. By
+name and often by length it is otherwise as good a fit as the song.
+
 `RESOLVED` **Corrections are global.** The Store is canonical, so fixing a bad
 match refiles the Object for everyone. Because identity is the content hash,
 this is a move, not a rebuild — nothing else breaks.
@@ -1361,6 +1374,10 @@ one-at-a-time flow does not — and after a bulk ingest there will be a backlog.
 The queue is reachable from the Library header beside Add, and from its Home
 tile. Its count is the yellow plane; zero is a resting state, not an empty
 screen.
+
+`RESOLVED` **Anything filed can be corrected, not only what is queued.** A
+confident match never enters the queue, so a wrong one would have no way back:
+every finished item in Add's list of recent adds opens its correction screen.
 
 `RESOLVED` **The correction screen shows all sources at once, ranked, with each
 candidate labelled by origin** — MusicBrainz, Discogs, Bandcamp — so you can see
