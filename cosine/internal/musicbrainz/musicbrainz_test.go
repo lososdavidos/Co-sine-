@@ -23,7 +23,7 @@ const tidesSearch = `{"count":2,"recordings":[
   "releases":[
    {"id":"rel-comp","title":"Wave Vol. 1","status":"Official","date":"2018-05-01",
     "artist-credit":[{"name":"Various Artists","artist":{"id":"art-va","name":"Various Artists"}}],
-    "release-group":{"id":"rg-comp","primary-type":"Album"},
+    "release-group":{"id":"rg-comp","primary-type":"Album","secondary-types":["Compilation"]},
     "media":[{"position":1,"track":[{"number":"7","position":7}]}]},
    {"id":"rel-single","title":"Tides","status":"Official","date":"2019-02-03",
     "release-group":{"id":"rg-single","primary-type":"Single"},
@@ -306,5 +306,37 @@ func TestOnlyALiveVersionKnownIsAGuess(t *testing.T) {
 	r, ok, _ := c.Match(context.Background(), Hint{Artist: "Skeler", Title: "Tides", DurationSec: 201})
 	if !ok || r.Confidence >= 0.8 {
 		t.Fatalf("filed a live version of a plain title without review: %+v", r)
+	}
+}
+
+func TestAnAlbumOutranksTheSingle(t *testing.T) {
+	// "Around the World": the single's recording and the album's are
+	// separate in MusicBrainz, the single is a year older than the reissue
+	// the search returns, and the album must still win.
+	body := `{"recordings":[
+ {"id":"rec-single","score":100,"title":"Around the World","length":239000,
+  "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
+  "releases":[
+   {"id":"rel-single","title":"Around the World","status":"Official","date":"1999-05-01",
+    "release-group":{"id":"rg-s","primary-type":"Single"},"media":[{"position":1,"track":[{"number":"1"}]}]},
+   {"id":"rel-hits","title":"Greatest Hits","status":"Official","date":"2003",
+    "release-group":{"id":"rg-h","primary-type":"Album","secondary-types":["Compilation"]}}]},
+ {"id":"rec-album","score":100,"title":"Around the World","length":239000,
+  "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
+  "releases":[
+   {"id":"rel-ep","title":"Around the World EP","status":"Official","date":"1999",
+    "release-group":{"id":"rg-e","primary-type":"EP"}},
+   {"id":"rel-album","title":"Californication","status":"Official","date":"2000",
+    "release-group":{"id":"rg-a","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"1"}]}]}]}
+]}`
+	c := client(t, newFake(t, body), false)
+	r, ok, _ := c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Around the World", DurationSec: 239})
+	if !ok || r.Release != "Californication" || r.TrackNo != 1 || r.Confidence < 0.8 {
+		t.Fatalf("%+v", r)
+	}
+	// Named by the file, the single is chosen after all.
+	r, _, _ = c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Around the World (Single)", DurationSec: 239})
+	if r.IDs.MBRelease != "rel-single" {
+		t.Fatalf("%+v", r)
 	}
 }

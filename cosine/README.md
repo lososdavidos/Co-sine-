@@ -53,7 +53,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
 - **Title cleaning:** before anything is looked up, what uploaders add is stripped: bracketed noise ("[HD Upgrade]", "(Official Music Video)", "[Free DL]", "(Out Now!)", "[Monstercat Release]"), "PREMIERE:" prefixes, "| Label" tails, hashtags, and YouTube's "Artist - Topic" channels. What names the piece stays: "(VIP)", "(Extended Mix)", "(feat. X)".
 - **MusicBrainz (§3.2, tier 1):** every file is looked up by the artist and title its tags, filename or source page suggest, with the length as evidence.
   - A confident match files it under MusicBrainz's canonical artist, release and track number, and stores the MusicBrainz IDs.
-  - Something that arrived as a single is filed as the single, not the compilation it also appears on.
+  - A song that has ever been on an album is filed under the album, even when it arrived as a single; otherwise its EP, then its single. Compilations, soundtracks and live albums come last. An album the file itself names wins over all of these. Discogs ranks the same way.
   - A compilation is filed under Various Artists and keeps each track's own artist (Q74).
   - A file with the right name but the wrong length (a mix, an extended cut) is never confident.
   - The studio recording is preferred: official, non-video, non-live recordings are searched first, and a live version, music video or bootleg is scored below review unless the file's own title says "Live". A compilation, live album or DJ mix ranks below the original release, and between equals the earliest release wins.

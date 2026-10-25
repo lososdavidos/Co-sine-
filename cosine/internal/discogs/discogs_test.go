@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -166,5 +167,40 @@ func TestPositions(t *testing.T) {
 	}
 	if seconds("3:14") != 194 || seconds("1:02:03") != 3723 || seconds("") != 0 {
 		t.Fatal("seconds")
+	}
+}
+
+func TestAnAlbumOutranksTheSingle(t *testing.T) {
+	tracks := func(n int) string {
+		var b strings.Builder
+		for i := 1; i <= n; i++ {
+			title := "Filler"
+			if i == 1 {
+				title = "Around the World"
+			}
+			if i > 1 {
+				b.WriteString(",")
+			}
+			b.WriteString(`{"position":"` + strconv.Itoa(i) + `","type_":"track","title":"` + title + `","duration":"3:58"}`)
+		}
+		return b.String()
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/database/search":
+			w.Write([]byte(`{"results":[{"id":1,"type":"master"},{"id":2,"type":"master"}]}`))
+		case "/masters/1": // the single, listed first
+			w.Write([]byte(`{"title":"Around the World","year":1999,"artists":[{"name":"Red Hot Chili Peppers"}],"tracklist":[` + tracks(2) + `]}`))
+		case "/masters/2":
+			w.Write([]byte(`{"title":"Californication","year":1999,"artists":[{"name":"Red Hot Chili Peppers"}],"tracklist":[` + tracks(15) + `]}`))
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.Client(), nil, "t", nil)
+	c.BaseURL = srv.URL
+	c.Web.Pace = func() time.Duration { return time.Millisecond }
+	r, ok, err := c.Match(context.Background(), resolve.Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Around the World", DurationSec: 238})
+	if err != nil || !ok || r.Release != "Californication" || r.IDs.Discogs != "master/2" {
+		t.Fatalf("%+v %v", r, err)
 	}
 }
