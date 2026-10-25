@@ -208,8 +208,9 @@ type release struct {
 	Date         string  `json:"date"`
 	ArtistCredit credits `json:"artist-credit"`
 	ReleaseGroup struct {
-		ID          string `json:"id"`
-		PrimaryType string `json:"primary-type"`
+		ID             string   `json:"id"`
+		PrimaryType    string   `json:"primary-type"`
+		SecondaryTypes []string `json:"secondary-types"` // Live, Compilation, DJ-mix…
 	} `json:"release-group"`
 	Media []struct {
 		Position int `json:"position"`
@@ -227,6 +228,9 @@ type recording struct {
 	Length       int       `json:"length"` // ms
 	ArtistCredit credits   `json:"artist-credit"`
 	Releases     []release `json:"releases"`
+	// Disambiguation tells versions apart: "live, 1999-07-25: Woodstock '99".
+	Disambiguation string `json:"disambiguation"`
+	Video          bool   `json:"video"`
 }
 
 type recordingSearch struct {

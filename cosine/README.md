@@ -56,6 +56,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
   - Something that arrived as a single is filed as the single, not the compilation it also appears on.
   - A compilation is filed under Various Artists and keeps each track's own artist (Q74).
   - A file with the right name but the wrong length (a mix, an extended cut) is never confident.
+  - The studio recording is preferred: official, non-video, non-live recordings are searched first, and a live version, music video or bootleg is scored below review unless the file's own title says "Live". A compilation, live album or DJ mix ranks below the original release, and between equals the earliest release wins.
   - Lookups are held to one per second and cached forever (Q15). If MusicBrainz can't be reached, Cosine backs off for five minutes and files things from their own metadata in the meantime.
 - **Discogs (tier 2):** asked when MusicBrainz isn't confident. Searches masters and releases by artist and track, reads the tracklist for the track's length and position (vinyl sides too), and keeps each track's own artist on a Various compilation. Works without an account at 25 lookups a minute; a personal access token in Settings raises that to 60.
 - **Bandcamp (tier 3):** asked when neither is confident, through the search Bandcamp's own site uses, then the best hits' track pages for length, album and track number. Bandcamp has no public API, so this can break when Bandcamp changes; it then reads as "Bandcamp is unavailable" and nothing else is affected.
