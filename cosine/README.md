@@ -45,6 +45,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
   - Any site yt-dlp supports. Short and share links are resolved on the server.
   - The best audio stream is stored exactly as downloaded: no conversion, no remux, no fixups.
   - A set, album or channel is either queued whole or opened as a list to pick from first.
+  - A SoundCloud track that only offers a 30-second preview (Go+, which much popular music there is) is refused before downloading, with a message to look for it on YouTube instead. Search marks such previews and lists them after everything else.
   - A link fetched before is refused with "Already in your library." until you choose "Add anyway" (Q12). If another account fetched it, adding it just gives you a Pointer, with no second download.
   - Jobs survive restarts, run two at a time, report progress, and show yt-dlp's own reason when they fail, with a Retry.
   - The source's metadata feeds the resolver: yt-dlp's artist/track/album fields when the site has them, otherwise "Artist - Title" read from the title, otherwise the uploader. The source's cover becomes the artwork when the file has none.

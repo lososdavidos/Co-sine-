@@ -27,6 +27,10 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
 )
 
+// ErrPreviewOnly refuses a track the source only offers a preview of,
+// rather than filing a 30-second clip as the song.
+var ErrPreviewOnly = errors.New("SoundCloud only offers a 30-second preview of this track; search for it on YouTube instead")
+
 // Job statuses. "known" is Q12's refusal: a URL already in the library.
 const (
 	StatusQueued    = "queued"
@@ -260,6 +264,9 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 		return err
 	}
 
+	if info.PreviewOnly() {
+		return ErrPreviewOnly
+	}
 	if info.IsCollection() {
 		// Queue everything (§3.1a): each item becomes its own job. "Review
 		// first" never gets here — the client submits the items it picked.

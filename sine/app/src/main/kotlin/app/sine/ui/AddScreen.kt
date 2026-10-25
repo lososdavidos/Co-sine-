@@ -232,6 +232,7 @@ private fun ResultRow(item: AddItem, checked: Boolean, onToggle: () -> Unit) {
                 item.plays.takeIf { it > 0 }?.let { "$it plays" },
                 item.source.ifBlank { null },
                 if (item.inLibrary) "In your library" else null,
+                if (item.preview) "30-second preview only" else null,
             ).joinToString(" · ")
             if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall)
         }

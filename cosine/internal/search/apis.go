@@ -79,6 +79,7 @@ func (a *SoundCloudAPI) Search(ctx context.Context, q string, n int) ([]Result, 
 			PermalinkURL  string `json:"permalink_url"`
 			Duration      int64  `json:"duration"` // ms
 			PlaybackCount int64  `json:"playback_count"`
+			Policy        string `json:"policy"` // SNIP: only a preview can be played
 			ArtworkURL    string `json:"artwork_url"`
 			User          struct {
 				Username  string `json:"username"`
@@ -99,6 +100,7 @@ func (a *SoundCloudAPI) Search(ctx context.Context, q string, n int) ([]Result, 
 			Title: t.Title, Uploader: t.User.Username, URL: t.PermalinkURL,
 			Thumbnail: strings.Replace(art, "-large.", "-t500x500.", 1), Source: "soundcloud",
 			DurationSec: int((t.Duration + 500) / 1000), Plays: t.PlaybackCount,
+			Preview: t.Policy == "SNIP",
 		})
 	}
 	return out, nil

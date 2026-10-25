@@ -28,6 +28,8 @@ data class AddItem(
     val durationSec: Int = 0,
     val plays: Long = 0,
     val inLibrary: Boolean = false,
+    /** Only a short preview is offered (a SoundCloud Go+ track); Cosine refuses to add it. */
+    val preview: Boolean = false,
 )
 
 /** What Add's single field resolved to (§6.10). */

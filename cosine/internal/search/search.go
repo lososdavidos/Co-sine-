@@ -25,6 +25,15 @@ type Result struct {
 	Source      string `json:"source"` // "soundcloud", "youtube"
 	DurationSec int    `json:"durationSec"`
 	Plays       int64  `json:"plays"`
+	// Preview: the source only offers a short preview (a SoundCloud Go+
+	// track), and adding it will be refused.
+	Preview bool `json:"preview,omitempty"`
+}
+
+// LooksLikePreview is what a search result can tell without fetching the
+// track: SoundCloud reports a preview's length as exactly 30 seconds.
+func LooksLikePreview(source string, durationSec float64) bool {
+	return source == "soundcloud" && durationSec == 30
 }
 
 type Backend interface {
@@ -107,6 +116,7 @@ func (y YtDlpSearch) Search(ctx context.Context, query string, n int) ([]Result,
 			out = append(out, Result{
 				Title: e.Title, Uploader: e.Poster(), URL: e.Link(), Thumbnail: e.CoverURL(),
 				Source: source, DurationSec: int(e.Duration + 0.5), Plays: e.ViewCount,
+				Preview: LooksLikePreview(source, e.Duration),
 			})
 		}
 		return part{out, err}

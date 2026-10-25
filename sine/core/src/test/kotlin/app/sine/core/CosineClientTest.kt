@@ -48,7 +48,7 @@ class CosineClientTest {
                     "/cosine/v1/lookup" -> json(
                         """{"kind":"collection","title":"Tides","items":[
                            {"title":"One","uploader":"Skeler","url":"https://sc/one","source":"soundcloud","durationSec":125,"inLibrary":true},
-                           {"title":"Two","url":"https://sc/two","newField":1}]}"""
+                           {"title":"Two","url":"https://sc/two","newField":1,"preview":true}]}"""
                     )
                     "/cosine/v1/ingest" -> json("""{"jobs":[{"id":7,"url":"https://sc/two","title":"https://sc/two","status":"queued"}]}""", 202)
                     "/cosine/v1/ingest/jobs" -> json(
@@ -79,6 +79,7 @@ class CosineClientTest {
         val lookup = c.lookup("https://sc/set")
         assertTrue(lookup.isCollection)
         assertEquals(listOf(true, false), lookup.items.map { it.inLibrary })
+        assertEquals(listOf(false, true), lookup.items.map { it.preview })
         assertEquals(125, lookup.items[0].durationSec)
         c.submit(listOf("https://sc/two"))
         val jobs = c.jobs()

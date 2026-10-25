@@ -36,7 +36,8 @@ func TestSoundCloudAndYouTubeAPIs(t *testing.T) {
 				w.WriteHeader(401)
 				return
 			}
-			w.Write([]byte(`{"collection":[{"title":"Tides","permalink_url":"https://soundcloud.com/skeler/tides","duration":201400,"playback_count":5000,"artwork_url":"https://i1.sndcdn.com/a-large.jpg","user":{"username":"Skeler"}}]}`))
+			w.Write([]byte(`{"collection":[{"title":"Tides","permalink_url":"https://soundcloud.com/skeler/tides","duration":201400,"playback_count":5000,"artwork_url":"https://i1.sndcdn.com/a-large.jpg","user":{"username":"Skeler"}},
+				{"title":"Bad At Love","permalink_url":"https://soundcloud.com/halseymusic/bad-at-love","duration":30000,"policy":"SNIP","user":{"username":"HalseyMusic"}}]}`))
 		case r.URL.Path == "/search":
 			w.Write([]byte(`{"items":[{"id":{"videoId":"abc"},"snippet":{"title":"Skeler - Tides","channelTitle":"wave","thumbnails":{"high":{"url":"https://i.ytimg.com/hq.jpg"}}}}]}`))
 		case r.URL.Path == "/videos":
@@ -51,10 +52,13 @@ func TestSoundCloudAndYouTubeAPIs(t *testing.T) {
 		YouTube:    &YouTubeAPI{Key: "k", HTTP: srv.Client(), BaseURL: srv.URL},
 	}
 	res, err := api.Search(context.Background(), "tides", 5)
-	if err != nil || len(res) != 2 {
+	if err != nil || len(res) != 3 {
 		t.Fatal(res, err)
 	}
 	sc, yt := res[0], res[1]
+	if sc.Preview || !res[2].Preview {
+		t.Errorf("a SNIP track is a preview, nothing else is: %+v", res)
+	}
 	if sc.Source != "soundcloud" || sc.DurationSec != 201 || sc.Plays != 5000 || !strings.Contains(sc.Thumbnail, "t500x500") {
 		t.Errorf("%+v", sc)
 	}
