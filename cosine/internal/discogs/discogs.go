@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -91,7 +92,11 @@ func (c *Client) Candidates(ctx context.Context, h resolve.Hint, n int) ([]resol
 		return nil, err
 	}
 
-	var out []resolve.Result
+	type candidate struct {
+		resolve.Result
+		rank int
+	}
+	var out []candidate
 	for i, path := range pick(found.Results) {
 		if i == maxLookups {
 			break
@@ -107,17 +112,87 @@ func (c *Client) Candidates(ctx context.Context, h resolve.Hint, n int) ([]resol
 			return nil, err
 		}
 		if r, ok := identity(h, path, e); ok {
-			out = append(out, r)
-			if r.Confidence >= 0.9 {
-				break // confident: the remaining lookups would only cost time
+			rank := releaseRank(h, e)
+			out = append(out, candidate{r, rank})
+			if r.Confidence >= 0.9 && rank <= rankAlbum {
+				break // confident, on an album: the remaining lookups would only cost time
 			}
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Confidence > out[j].Confidence })
-	if len(out) > n {
-		out = out[:n]
+	// Between equals, the better home for the track: the album it has been
+	// on over its single (as MusicBrainz ranks them), then the earliest.
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if math.Abs(a.Confidence-b.Confidence) > 1e-9 {
+			return a.Confidence > b.Confidence
+		}
+		if a.rank != b.rank {
+			return a.rank < b.rank
+		}
+		return a.Year != 0 && (b.Year == 0 || a.Year < b.Year)
+	})
+	results := make([]resolve.Result, 0, min(n, len(out)))
+	for _, c := range out[:min(n, len(out))] {
+		results = append(results, c.Result)
 	}
-	return out, nil
+	return results, nil
+}
+
+const rankAlbum = -30
+
+// releaseRank says how good a home a master or release is; lower is
+// better, on the same scale as MusicBrainz's: the album the file names,
+// else an album, an EP, a single, and a compilation last. Discogs gives
+// formats only on releases; a master is judged by its length.
+func releaseRank(h resolve.Hint, e entry) int {
+	n := 0
+	if h.Release != "" && !strings.EqualFold(h.Release, h.Title) && resolve.Similarity(h.Release, e.Title) >= 0.8 {
+		n -= 100
+	}
+	kind := ""
+	for _, f := range e.Formats {
+		for _, d := range f.Descriptions {
+			switch d {
+			case "Album", "LP", "Mini-Album":
+				kind = "album"
+			case "EP":
+				if kind == "" || kind == "single" {
+					kind = "ep"
+				}
+			case "Single", "Maxi-Single", "Single Sided":
+				if kind == "" {
+					kind = "single"
+				}
+			case "Compilation":
+				n += 25
+			}
+		}
+	}
+	if kind == "" {
+		switch tracks := e.tracks(); {
+		case tracks >= 7:
+			kind = "album"
+		case tracks >= 4:
+			kind = "ep"
+		default:
+			kind = "single"
+		}
+	}
+	n += map[string]int{"album": rankAlbum, "ep": -20, "single": -10}[kind]
+	if credit(e.Artists) == "Various Artists" {
+		n += 25
+	}
+	return n
+}
+
+func (e entry) tracks() int {
+	n := 0
+	for _, t := range e.Tracklist {
+		if t.Type == "" || t.Type == "track" {
+			n++
+		}
+	}
+	return n
 }
 
 func (c *Client) get(ctx context.Context, path string, v any) error {
@@ -163,7 +238,11 @@ type entry struct {
 	Year      int      `json:"year"`
 	Artists   []artist `json:"artists"`
 	Tracklist []track  `json:"tracklist"`
-	Images    []struct {
+	Formats   []struct {
+		Name         string   `json:"name"`
+		Descriptions []string `json:"descriptions"`
+	} `json:"formats"` // releases only
+	Images []struct {
 		Type string `json:"type"`
 		URI  string `json:"uri"`
 	} `json:"images"`
@@ -221,12 +300,8 @@ func identity(h resolve.Hint, path string, e entry) (resolve.Result, bool) {
 	}
 	t := e.Tracklist[best]
 	conf := bestScore
-	wantAlbum := h.Release != "" && !strings.EqualFold(h.Release, h.Title)
-	switch {
-	case wantAlbum && resolve.Similarity(h.Release, e.Title) >= 0.8:
+	if h.Release != "" && !strings.EqualFold(h.Release, h.Title) && resolve.Similarity(h.Release, e.Title) >= 0.8 {
 		conf += 0.05 // the album we were told about
-	case !wantAlbum && resolve.Similarity(e.Title, t.Title) >= 0.9:
-		conf += 0.02 // arrived as a single, and this is the single
 	}
 	if _, contradicted := resolve.DurationFit(h.DurationSec, seconds(t.Duration)); contradicted {
 		conf = min(conf, 0.6) // the bonus never lifts a wrong length past review

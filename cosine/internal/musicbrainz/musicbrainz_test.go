@@ -23,7 +23,7 @@ const tidesSearch = `{"count":2,"recordings":[
   "releases":[
    {"id":"rel-comp","title":"Wave Vol. 1","status":"Official","date":"2018-05-01",
     "artist-credit":[{"name":"Various Artists","artist":{"id":"art-va","name":"Various Artists"}}],
-    "release-group":{"id":"rg-comp","primary-type":"Album"},
+    "release-group":{"id":"rg-comp","primary-type":"Album","secondary-types":["Compilation"]},
     "media":[{"position":1,"track":[{"number":"7","position":7}]}]},
    {"id":"rel-single","title":"Tides","status":"Official","date":"2019-02-03",
     "release-group":{"id":"rg-single","primary-type":"Single"},
@@ -149,8 +149,10 @@ func TestCachedForeverAndRateLimited(t *testing.T) {
 	c.Match(ctx, Hint{Artist: "Skeler", Title: "Tides"})
 	c.Match(ctx, Hint{Artist: "Skeler", Title: "Tides"})
 	c.Match(ctx, Hint{Artist: "Skeler", Title: "Other"})
-	if n := f.calls.Load(); n != 2 {
-		t.Fatalf("expected 2 requests (one cached), got %d", n)
+	// Tides: one search, confident at once; again: cached; Other: the
+	// filtered search finds nothing confident, so the full one runs too.
+	if n := f.calls.Load(); n != 3 {
+		t.Fatalf("expected 3 requests (one lookup cached), got %d", n)
 	}
 	if time.Since(start) < 150*time.Millisecond {
 		t.Fatal("requests were not spaced")
@@ -189,7 +191,7 @@ func TestResolverUsesTheTier4ReadingAsItsHint(t *testing.T) {
 	if err != nil || !ok || res.IDs.MBRecording != "rec-tides" {
 		t.Fatal(res, ok, err)
 	}
-	if q := f.lastQuery.Load().(string); q != `recording:"Tides" AND artist:"Skeler"` {
+	if q := f.lastQuery.Load().(string); q != `recording:"Tides" AND artist:"Skeler" AND status:official AND video:false AND NOT secondarytype:live` {
 		t.Fatal(q)
 	}
 }
@@ -235,5 +237,106 @@ func TestSimilarity(t *testing.T) {
 		if s := similarity(c.a, c.b); s < c.min || s > c.max {
 			t.Errorf("similarity(%q, %q) = %v", c.a, c.b, s)
 		}
+	}
+}
+
+// The shape MusicBrainz returns for a well-known song, trimmed from
+// "Californication" by Red Hot Chili Peppers: a live bootleg of the same
+// length first, a music video, a compilation, and the studio recording on
+// the album last.
+const californication = `{"recordings":[
+ {"id":"rec-woodstock","score":100,"title":"Californication","length":320000,"disambiguation":"live, 1999-07-25: Woodstock '99",
+  "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
+  "releases":[{"id":"rel-woodstock","title":"1999-07-25: Live in New York","status":"Bootleg",
+   "release-group":{"id":"rg-w","primary-type":"Album","secondary-types":["Live"]}}]},
+ {"id":"rec-video","score":100,"title":"Californication","length":320000,"video":true,
+  "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
+  "releases":[{"id":"rel-videos","title":"Greatest Hits and Videos","status":"Official","date":"2003",
+   "release-group":{"id":"rg-v","primary-type":"Album","secondary-types":["Compilation"]}}]},
+ {"id":"rec-studio","score":100,"title":"Californication","length":321000,
+  "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
+  "releases":[
+   {"id":"rel-hits","title":"Greatest Hits","status":"Official","date":"2003-11-17",
+    "release-group":{"id":"rg-h","primary-type":"Album","secondary-types":["Compilation"]}},
+   {"id":"rel-album","title":"Californication","status":"Official","date":"1999-06-08",
+    "release-group":{"id":"rg-album","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"6"}]}]}]}
+]}`
+
+func TestStudioRecordingOnItsAlbumBeatsLiveVideoAndCompilations(t *testing.T) {
+	f := newFake(t, californication)
+	c := client(t, f, false)
+	for _, h := range []Hint{
+		{Artist: "Red Hot Chili Peppers", Title: "Californication", Release: "Californication", DurationSec: 321},
+		{Artist: "Red Hot Chili Peppers", Title: "Californication", Release: "Californication"}, // length unknown
+	} {
+		r, ok, err := c.Match(context.Background(), h)
+		if err != nil || !ok || r.IDs.MBRecording != "rec-studio" || r.Release != "Californication" || r.TrackNo != 6 || r.Confidence < 0.8 {
+			t.Fatalf("%+v → %+v", h, r)
+		}
+	}
+	// Even named after the album, the compilation ranks below the original.
+	cands, _ := c.Candidates(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Californication", DurationSec: 321}, 10)
+	for _, cand := range cands {
+		if cand.IDs.MBRecording == "rec-woodstock" || cand.IDs.MBRecording == "rec-video" {
+			if cand.Confidence >= 0.8 {
+				t.Fatalf("a live or video version is confident: %+v", cand)
+			}
+		}
+	}
+}
+
+func TestLiveIsChosenWhenTheFileSaysSo(t *testing.T) {
+	f := newFake(t, californication)
+	c := client(t, f, false)
+	r, ok, _ := c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Californication (Live)", DurationSec: 320})
+	if !ok || r.IDs.MBRecording != "rec-woodstock" {
+		t.Fatalf("%+v", r)
+	}
+	if q := f.lastQuery.Load().(string); strings.Contains(q, "secondarytype") {
+		t.Fatal("asked to leave out live recordings for a live file:", q)
+	}
+}
+
+func TestOnlyALiveVersionKnownIsAGuess(t *testing.T) {
+	only := `{"recordings":[{"id":"rec-live","score":100,"title":"Tides","length":201000,"disambiguation":"live",
+	 "artist-credit":[{"name":"Skeler","artist":{"id":"art-skeler","name":"Skeler"}}],
+	 "releases":[{"id":"rel","title":"Live","status":"Official","release-group":{"id":"rg","primary-type":"Album","secondary-types":["Live"]}}]}]}`
+	f := newFake(t, only)
+	c := client(t, f, false)
+	r, ok, _ := c.Match(context.Background(), Hint{Artist: "Skeler", Title: "Tides", DurationSec: 201})
+	if !ok || r.Confidence >= 0.8 {
+		t.Fatalf("filed a live version of a plain title without review: %+v", r)
+	}
+}
+
+func TestAnAlbumOutranksTheSingle(t *testing.T) {
+	// "Around the World": the single's recording and the album's are
+	// separate in MusicBrainz, the single is a year older than the reissue
+	// the search returns, and the album must still win.
+	body := `{"recordings":[
+ {"id":"rec-single","score":100,"title":"Around the World","length":239000,
+  "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
+  "releases":[
+   {"id":"rel-single","title":"Around the World","status":"Official","date":"1999-05-01",
+    "release-group":{"id":"rg-s","primary-type":"Single"},"media":[{"position":1,"track":[{"number":"1"}]}]},
+   {"id":"rel-hits","title":"Greatest Hits","status":"Official","date":"2003",
+    "release-group":{"id":"rg-h","primary-type":"Album","secondary-types":["Compilation"]}}]},
+ {"id":"rec-album","score":100,"title":"Around the World","length":239000,
+  "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
+  "releases":[
+   {"id":"rel-ep","title":"Around the World EP","status":"Official","date":"1999",
+    "release-group":{"id":"rg-e","primary-type":"EP"}},
+   {"id":"rel-album","title":"Californication","status":"Official","date":"2000",
+    "release-group":{"id":"rg-a","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"1"}]}]}]}
+]}`
+	c := client(t, newFake(t, body), false)
+	r, ok, _ := c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Around the World", DurationSec: 239})
+	if !ok || r.Release != "Californication" || r.TrackNo != 1 || r.Confidence < 0.8 {
+		t.Fatalf("%+v", r)
+	}
+	// Named by the file, the single is chosen after all.
+	r, _, _ = c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Around the World (Single)", DurationSec: 239})
+	if r.IDs.MBRelease != "rel-single" {
+		t.Fatalf("%+v", r)
 	}
 }
