@@ -65,8 +65,9 @@ func (d *Dashboard) Handler() http.Handler {
 			}
 			return fmt.Sprintf("%d:%02d", sec/60, sec%60)
 		},
-		"percent": func(f float64) string { return fmt.Sprintf("%d%%", int(f*100+0.5)) },
-		"key":     review.CandidateKey,
+		"percent":    func(f float64) string { return fmt.Sprintf("%d%%", int(f*100+0.5)) },
+		"key":        review.CandidateKey,
+		"sourceName": resolve.SourceName,
 	}
 	for _, name := range []string{"setup", "login", "status", "users", "settings", "add", "review", "correct", "corrections"} {
 		d.pages[name] = template.Must(template.New(name).Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+name+".html"))
@@ -85,6 +86,7 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("POST /settings/store", d.admin(d.moveStore))
 	mux.HandleFunc("POST /settings/inbox", d.admin(d.changeInbox))
 	mux.HandleFunc("POST /settings/search", d.admin(d.saveSearch))
+	mux.HandleFunc("POST /settings/catalogues", d.admin(d.saveCatalogues))
 	mux.HandleFunc("GET /add", d.admin(d.addForm))
 	mux.HandleFunc("POST /add", d.admin(d.add))
 	mux.HandleFunc("POST /jobs/{id}/retry", d.admin(d.retry))
@@ -436,6 +438,7 @@ func (d *Dashboard) deleteUser(w http.ResponseWriter, r *http.Request, u auth.Us
 type settingsData struct {
 	Store, Inbox                                           string
 	YtDlp, Backend, SoundCloudID, YouTubeKey, SearchStatus string
+	DiscogsToken                                           string
 }
 
 func (d *Dashboard) settings(w http.ResponseWriter, r *http.Request, u auth.User) {
@@ -449,6 +452,7 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, u aut
 	s.Backend, _ = d.DB.Setting(r.Context(), db.SettingSearchBackend)
 	s.SoundCloudID, _ = d.DB.Setting(r.Context(), db.SettingSoundCloudID)
 	s.YouTubeKey, _ = d.DB.Setting(r.Context(), db.SettingYouTubeKey)
+	s.DiscogsToken, _ = d.DB.Setting(r.Context(), db.SettingDiscogsToken)
 	if d.Fetcher != nil {
 		s.YtDlp = "yt-dlp " + d.YtDlpVersion
 	}
@@ -518,6 +522,14 @@ func (d *Dashboard) saveSearch(w http.ResponseWriter, r *http.Request, u auth.Us
 		}
 	}
 	done(w, r, "/settings", "Search settings saved.")
+}
+
+func (d *Dashboard) saveCatalogues(w http.ResponseWriter, r *http.Request, u auth.User) {
+	if err := d.DB.SetSetting(r.Context(), db.SettingDiscogsToken, strings.TrimSpace(r.FormValue("discogs"))); err != nil {
+		d.renderSettings(w, r, u, err.Error())
+		return
+	}
+	done(w, r, "/settings", "Saved.")
 }
 
 // ---------------------------------------------------------------- adding music
@@ -669,7 +681,7 @@ func (d *Dashboard) renderCorrect(w http.ResponseWriter, r *http.Request, u auth
 	}
 	data.Candidates, err = d.Review.Candidates(r.Context(), u, id, q)
 	if err != nil {
-		data.CandidateError = "MusicBrainz is unavailable (" + err.Error() + "). You can still type the details yourself."
+		data.CandidateError = "No catalogue answered (" + err.Error() + "). You can still type the details yourself."
 	}
 	d.render(w, "correct", page{Title: item.Identity.Artist + " / " + item.Identity.Title, User: &u,
 		Error: errMsg, Done: qv.Get("done"), Data: data})

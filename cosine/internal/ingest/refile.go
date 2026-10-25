@@ -65,6 +65,18 @@ func readIdentity(ctx context.Context, q querier, trackID int64) (Identity, erro
 // Track and every account's state moves across. The surviving Track's id
 // is returned with merged=true.
 func (g *Ingester) Refile(ctx context.Context, trackID int64, to Identity) (finalID int64, merged bool, err error) {
+	// MusicBrainz and a name a person typed set an artist's spelling; other
+	// catalogues and guesses adopt the library's ("skeler." stays "Skeler").
+	return g.refile(ctx, trackID, to, to.Source == "musicbrainz" || to.Source == "manual")
+}
+
+// Restore puts back an identity exactly as it was, spelling included: how
+// a revert undoes a change.
+func (g *Ingester) Restore(ctx context.Context, trackID int64, to Identity) (finalID int64, merged bool, err error) {
+	return g.refile(ctx, trackID, to, true)
+}
+
+func (g *Ingester) refile(ctx context.Context, trackID int64, to Identity, authoritative bool) (finalID int64, merged bool, err error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if strings.TrimSpace(to.Artist) == "" || strings.TrimSpace(to.Title) == "" {
@@ -91,9 +103,13 @@ func (g *Ingester) Refile(ctx context.Context, trackID int64, to Identity) (fina
 		}
 		return 0, false, err
 	}
-	ids, err := upsertIdentity(ctx, tx, to.Result, true)
+	ids, err := upsertIdentity(ctx, tx, to.Result, authoritative)
 	if err != nil {
 		return 0, false, err
+	}
+	to.Artist = ids.artistName
+	if to.TrackArtist != "" {
+		to.TrackArtist = ids.trackArtistName
 	}
 
 	finalID = trackID
@@ -154,7 +170,7 @@ func (g *Ingester) Refile(ctx context.Context, trackID int64, to Identity) (fina
 	for _, a := range orphanArt {
 		os.Remove(filepath.Join(g.DataDir, filepath.FromSlash(a)))
 	}
-	g.offerArtwork(ctx, ids.release, to.IDs)
+	g.offerArtwork(ctx, ids.release, to.Result)
 	return finalID, merged, nil
 }
 

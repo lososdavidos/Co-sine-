@@ -166,7 +166,9 @@ class ReviewClientTest {
                         "identity":{"artist":"skeler","release":"tides","title":"tides","source":"filename","tier":4,"confidence":0.2,"reviewed":false},
                         "files":[{"path":"skeler/tides/tides.mp3","source":"inbox","sizeBytes":10,"durationSec":201}]}]}"""
                     "/cosine/v1/review/tr-1/candidates" -> """{"candidates":[{"key":"rec/rel","artist":"Skeler","release":"Tides","title":"Tides",
-                        "year":2019,"source":"musicbrainz","tier":1,"confidence":0.92,"ids":{"mbRecording":"rec","mbRelease":"rel"}}]}"""
+                        "year":2019,"source":"musicbrainz","tier":1,"confidence":0.92,"ids":{"mbRecording":"rec","mbRelease":"rel"}},
+                        {"key":"discogs:release/1","artist":"skeler.","release":"Tides","title":"Tides","source":"discogs","tier":2,
+                        "confidence":0.9,"ids":{"discogs":"release/1"},"cover":"https://i.discogs.com/x.jpeg"}]}"""
                     else -> """{"trackId":"tr-1","why":"","identity":{"artist":"Skeler","release":"Tides","title":"Tides","reviewed":true},"files":[]}"""
                 }
                 return MockResponse.Builder().body(body).build()
@@ -183,6 +185,8 @@ class ReviewClientTest {
         val cands = c.candidates("tr-1", app.sine.core.cosine.ReviewQuery(album = "Tides EP"))
         assertEquals("rec", cands[0].ids.mbRecording)
         assertEquals(0.92, cands[0].confidence)
+        assertEquals("release/1", cands[1].ids.discogs)
+        assertEquals("Discogs", app.sine.core.text.Voice.sourceName(cands[1].source))
 
         assertTrue(c.choose("tr-1", app.sine.core.cosine.ReviewQuery(), cands[0].key).identity.reviewed)
         c.correct("tr-1", app.sine.core.cosine.ManualIdentity(artist = "Skeler", title = "Tides (VIP)"))

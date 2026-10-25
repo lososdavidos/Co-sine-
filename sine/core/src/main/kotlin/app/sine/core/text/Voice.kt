@@ -32,6 +32,14 @@ object Voice {
         return if (i == 0) "$bytes B" else String.format(Locale.ROOT, "%.1f %s", v, units[i])
     }
 
+    /** How a resolver source is named to people (§3.2). */
+    fun sourceName(source: String): String = when (source) {
+        "musicbrainz" -> "MusicBrainz"
+        "discogs" -> "Discogs"
+        "bandcamp" -> "Bandcamp"
+        else -> source
+    }
+
     fun formatDuration(seconds: Int): String {
         val h = seconds / 3600
         val m = (seconds % 3600) / 60

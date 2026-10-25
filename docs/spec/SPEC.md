@@ -403,6 +403,13 @@ This is the only choice consistent with §2.2: the hash is the file you actually
 received, and nothing ever rewrites it. Re-encoding an already-lossy source
 would cost quality for nothing.
 
+`NOTE` HLS is the one exception. An HLS source (SoundCloud, now that it offers
+nothing else) sends no file at all, only a playlist of ~10-second segments.
+Concatenated as received they form a fragmented MP4 whose header says nothing
+of its length, and players read it as one segment long. Those segments are
+joined by ffmpeg into a single plain file instead: the audio is copied
+untouched, only the container around it is written once rather than 22 times.
+
 `RESOLVED` **Bulk ingest is offered, and you choose the mode** per operation:
 
 - **Queue everything** — paste a set, album or channel URL and take the lot.

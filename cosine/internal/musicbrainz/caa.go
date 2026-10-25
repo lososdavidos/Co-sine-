@@ -37,6 +37,15 @@ func (c CoverArt) Front(ctx context.Context, releaseID, releaseGroupID string) (
 	return nil, ""
 }
 
+// Image fetches any cover by URL, under the same limits: how Discogs and
+// Bandcamp covers are downloaded.
+func (c CoverArt) Image(ctx context.Context, u string) ([]byte, string) {
+	if !strings.HasPrefix(u, "https://") {
+		return nil, "" // catalogue covers are only ever fetched over HTTPS
+	}
+	return c.get(ctx, u)
+}
+
 func (c CoverArt) get(ctx context.Context, u string) ([]byte, string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {

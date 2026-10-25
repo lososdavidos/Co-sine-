@@ -122,3 +122,26 @@ func TestCoverArchiveOutranksEmbeddedArt(t *testing.T) {
 		t.Fatal(src, string(b))
 	}
 }
+
+func TestCatalogueCoverOutranksEmbeddedArt(t *testing.T) {
+	f := setup(t)
+	f.g.Images = func(_ context.Context, url string) ([]byte, string) {
+		if url == "https://i.discogs.com/plume.jpeg" {
+			return []byte("discogs"), "jpeg"
+		}
+		return nil, ""
+	}
+	ctx := context.Background()
+	out, _ := f.g.Ingest(ctx, Request{Path: testutil.MP3{Title: "Plume", Artist: "Skeler", Picture: []byte("embedded"), Body: "1"}.
+		Write(t, filepath.Join(f.drop, "a.mp3")), Source: "inbox"})
+	to := Identity{Result: resolve.Result{Artist: "skeler.", Release: "Plume", Title: "Plume", Source: "discogs",
+		Tier: resolve.TierDiscogs, Confidence: 1, IDs: resolve.IDs{Discogs: "release/1"}, Cover: "https://i.discogs.com/plume.jpeg"}, Reviewed: true}
+	if _, _, err := f.g.Refile(ctx, out.TrackID, to); err != nil {
+		t.Fatal(err)
+	}
+	var src, art string
+	f.db.QueryRow("SELECT art_source, art_path FROM releases").Scan(&src, &art)
+	if b, _ := os.ReadFile(filepath.Join(f.g.DataDir, art)); src != ArtDiscogs || string(b) != "discogs" || filepath.Ext(art) != ".jpg" {
+		t.Fatal(src, art, string(b))
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +19,6 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
-	"github.com/lososdavidos/Co-sine-/cosine/internal/musicbrainz"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 )
 
@@ -27,10 +27,17 @@ var (
 	ErrForbidden = errors.New("only an admin or the person who made a correction can revert it")
 )
 
+// Source is a catalogue the correction screen and re-resolve can ask.
+type Source interface {
+	Candidates(ctx context.Context, h resolve.Hint, n int) ([]resolve.Result, error)
+}
+
 type Service struct {
-	DB        *db.DB
-	Ingester  *ingest.Ingester
-	MB        *musicbrainz.Client // nil: candidates unavailable, manual entry still works
+	DB       *db.DB
+	Ingester *ingest.Ingester
+	// Sources are asked in tier order (§3.2): MusicBrainz, Discogs,
+	// Bandcamp. None means no candidates; manual entry still works.
+	Sources   []Source
 	Threshold float64
 	Log       *slog.Logger
 
@@ -73,6 +80,10 @@ func why(id ingest.Identity) string {
 		return "Guessed from the file name."
 	case "musicbrainz":
 		return fmt.Sprintf("MusicBrainz match, %d%% sure.", int(id.Confidence*100))
+	case "discogs":
+		return fmt.Sprintf("Discogs match, %d%% sure.", int(id.Confidence*100))
+	case "bandcamp":
+		return fmt.Sprintf("Bandcamp match, %d%% sure.", int(id.Confidence*100))
 	default:
 		return "Unconfirmed."
 	}
@@ -163,16 +174,19 @@ type Query struct {
 }
 
 // Candidates searches every source for what a Track might be, ranked and
-// labelled by origin (§6.12). Only MusicBrainz exists so far.
+// labelled by origin so a person can see when two sources agree (§6.12).
+// The catalogues are asked at once: each has its own pace, and the slowest
+// (Discogs without a token) shouldn't hold up the rest. A catalogue that
+// doesn't answer is left out; only when none answers is that an error.
 func (s *Service) Candidates(ctx context.Context, u auth.User, trackID int64, q Query) ([]resolve.Result, error) {
 	it, err := s.Item(ctx, u, trackID)
 	if err != nil {
 		return nil, err
 	}
-	if s.MB == nil {
-		return nil, musicbrainz.ErrUnavailable
+	if len(s.Sources) == 0 {
+		return nil, ErrNoSources
 	}
-	hint := musicbrainz.HintFrom(it.Identity.Result, longest(it.Files))
+	hint := resolve.HintFrom(it.Identity.Result, longest(it.Files))
 	if q.Artist != "" {
 		hint.Artist = q.Artist
 	}
@@ -182,12 +196,43 @@ func (s *Service) Candidates(ctx context.Context, u auth.User, trackID int64, q 
 	if q.Album != "" {
 		hint.Release = q.Album
 	}
-	c, err := s.MB.Candidates(ctx, hint, 10)
-	if c == nil {
-		c = []resolve.Result{}
+
+	found := make([][]resolve.Result, len(s.Sources))
+	errs := make([]error, len(s.Sources))
+	var wg sync.WaitGroup
+	for i, src := range s.Sources {
+		wg.Go(func() { found[i], errs[i] = src.Candidates(ctx, hint, 10) })
 	}
-	return c, err
+	wg.Wait()
+
+	out := []resolve.Result{}
+	seen := map[string]bool{}
+	failed := 0
+	for i := range s.Sources {
+		if errs[i] != nil {
+			failed++
+			s.Log.Warn("candidates", "track", trackID, "err", errs[i])
+		}
+		for _, c := range found[i] {
+			if k := CandidateKey(c); !seen[k] {
+				seen[k] = true
+				out = append(out, c)
+			}
+		}
+	}
+	if failed == len(s.Sources) {
+		return out, errors.Join(errs...)
+	}
+	// Stable: equal confidence keeps tier order.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Confidence > out[j].Confidence })
+	if len(out) > 10 {
+		out = out[:10]
+	}
+	return out, nil
 }
+
+// ErrNoSources means no catalogue is configured.
+var ErrNoSources = fmt.Errorf("no catalogue to search: %w", resolve.ErrUnavailable)
 
 func longest(files []File) int {
 	d := 0
@@ -198,7 +243,7 @@ func longest(files []File) int {
 }
 
 // CandidateKey identifies a candidate within a search's results.
-func CandidateKey(r resolve.Result) string { return r.IDs.MBRecording + "/" + r.IDs.MBRelease }
+func CandidateKey(r resolve.Result) string { return r.IDs.Key() }
 
 // Choose applies one of the candidates for q, named by its key. The server
 // runs the search again (a cache hit) rather than trusting an identity sent
@@ -271,7 +316,11 @@ func (s *Service) apply(ctx context.Context, u *auth.User, trackID int64, kind s
 	if err != nil {
 		return 0, 0, err
 	}
-	final, merged, err := s.Ingester.Refile(ctx, trackID, to)
+	refile := s.Ingester.Refile
+	if kind == "revert" {
+		refile = s.Ingester.Restore
+	}
+	final, merged, err := refile(ctx, trackID, to)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -423,13 +472,14 @@ func (s *Service) Progress() Progress {
 	return s.progress
 }
 
-// Reresolve runs Tracks back through MusicBrainz in the background, at its
-// 1 req/s. A confident match is applied and logged (revertible like any
-// correction); anything else stays in the queue. nil means every
+// Reresolve runs Tracks back through the catalogues in the background, at
+// their pace. A confident match is applied and logged (revertible like any
+// correction); anything else stays in the queue, with its guess cleaned
+// again if the title cleaner has learned something since. nil means every
 // unreviewed Track.
 func (s *Service) Reresolve(trackIDs []int64) error {
-	if s.MB == nil {
-		return musicbrainz.ErrUnavailable
+	if len(s.Sources) == 0 {
+		return ErrNoSources
 	}
 	s.mu.Lock()
 	if s.progress.Running {
@@ -466,8 +516,8 @@ func (s *Service) Reresolve(trackIDs []int64) error {
 			if improved {
 				s.progress.Improved++
 			}
-			if errors.Is(err, musicbrainz.ErrUnavailable) {
-				s.progress.Error = "MusicBrainz is unavailable; stopped. Run again to continue."
+			if errors.Is(err, errAllUnavailable) {
+				s.progress.Error = "No catalogue is answering; stopped. Run again to continue."
 				s.mu.Unlock()
 				return
 			}
@@ -480,6 +530,8 @@ func (s *Service) Reresolve(trackIDs []int64) error {
 	return nil
 }
 
+var errAllUnavailable = fmt.Errorf("every catalogue: %w", resolve.ErrUnavailable)
+
 func (s *Service) reresolveOne(ctx context.Context, trackID int64) (bool, error) {
 	it, err := s.item(ctx, trackID)
 	if err != nil {
@@ -488,10 +540,38 @@ func (s *Service) reresolveOne(ctx context.Context, trackID int64) (bool, error)
 	if it.Identity.Reviewed {
 		return false, nil // someone got there first
 	}
-	res, ok, err := s.MB.Match(ctx, musicbrainz.HintFrom(it.Identity.Result, longest(it.Files)))
-	if err != nil || !ok || res.Confidence < s.Threshold {
-		return false, err
+	hint := resolve.HintFrom(it.Identity.Result, longest(it.Files))
+	unavailable := 0
+	for _, src := range s.Sources {
+		cands, err := src.Candidates(ctx, hint, 1)
+		if err != nil {
+			if !errors.Is(err, resolve.ErrUnavailable) {
+				return false, err
+			}
+			unavailable++
+			continue
+		}
+		if len(cands) > 0 && cands[0].Confidence >= s.Threshold {
+			res := cands[0]
+			_, _, err = s.apply(ctx, nil, trackID, "reresolve", ingest.Identity{Result: res, Reviewed: !resolve.NeedsReview(res, s.Threshold)})
+			return err == nil, err
+		}
 	}
-	_, _, err = s.apply(ctx, nil, trackID, "reresolve", ingest.Identity{Result: res, Reviewed: !resolve.NeedsReview(res, s.Threshold)})
+	if unavailable == len(s.Sources) {
+		return false, errAllUnavailable
+	}
+	// No catalogue knows it. The guess may still have been filed under a
+	// title the cleaner now cleans: "Tides [HD Upgrade]" becomes "Tides".
+	cleaned := it.Identity
+	cleaned.Artist = resolve.CleanArtist(cleaned.Artist)
+	cleaned.Title = resolve.CleanTitle(cleaned.Title)
+	cleaned.Release = resolve.CleanTitle(cleaned.Release)
+	if cleaned.TrackArtist != "" {
+		cleaned.TrackArtist = resolve.CleanArtist(cleaned.TrackArtist)
+	}
+	if cleaned.Result == it.Identity.Result {
+		return false, nil
+	}
+	_, _, err = s.apply(ctx, nil, trackID, "reresolve", cleaned)
 	return err == nil, err
 }

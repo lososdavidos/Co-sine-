@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
-	"github.com/lososdavidos/Co-sine-/cosine/internal/musicbrainz"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 )
@@ -47,8 +46,8 @@ func (a *API) reviewErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, review.ErrNotFound):
 		writeError(w, http.StatusNotFound, "No such track in your library.")
-	case errors.Is(err, musicbrainz.ErrUnavailable):
-		writeError(w, http.StatusBadGateway, "MusicBrainz is unavailable. You can still type the details yourself.")
+	case errors.Is(err, resolve.ErrUnavailable):
+		writeError(w, http.StatusBadGateway, "No catalogue answered. You can still type the details yourself.")
 	default:
 		writeError(w, http.StatusBadRequest, err.Error())
 	}

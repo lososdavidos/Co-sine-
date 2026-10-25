@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -205,5 +206,35 @@ func TestRelocateAndVerify(t *testing.T) {
 	}
 	if c := count(t, f.db, "SELECT COUNT(*) FROM objects WHERE missing = 1"); c != 0 {
 		t.Fatal(c)
+	}
+}
+
+func TestOneArtistAcrossSpellings(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	for i, artist := range []string{"Skeler", "skeler.", "SKELER"} {
+		name := filepath.Join(f.drop, fmt.Sprintf("%d.mp3", i))
+		if _, err := f.g.Ingest(ctx, Request{Path: testutil.MP3{Title: fmt.Sprintf("t%d", i), Artist: artist, Body: name}.Write(t, name), Source: "inbox"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := count(t, f.db, "SELECT COUNT(*) FROM artists"); n != 1 {
+		t.Fatalf("%d artists for one", n)
+	}
+	entries, _ := os.ReadDir(f.root)
+	if len(entries) != 1 || entries[0].Name() != "Skeler" {
+		t.Fatalf("one folder, spelled as first seen: %v", entries)
+	}
+	// A name that is only symbols matches only itself. (Given as source
+	// metadata: the fixture's ID3 tags are Latin-1.)
+	for i, artist := range []string{"✝✝✝", "†††"} {
+		name := filepath.Join(f.drop, fmt.Sprintf("s%d.mp3", i))
+		if _, err := f.g.Ingest(ctx, Request{Path: testutil.MP3{Body: name}.Write(t, name), Source: "url",
+			SourceInfo: &resolve.SourceInfo{Title: "x", Uploader: artist}}); err != nil {
+			t.Fatal(artist, err)
+		}
+	}
+	if n := count(t, f.db, "SELECT COUNT(*) FROM artists"); n != 3 {
+		t.Fatalf("%d artists; symbol-only names must not merge", n)
 	}
 }

@@ -81,6 +81,7 @@ const (
 	SettingSearchBackend = "search_backend" // "ytdlp" or "api"
 	SettingSoundCloudID  = "soundcloud_client_id"
 	SettingYouTubeKey    = "youtube_api_key"
+	SettingDiscogsToken  = "discogs_token" // optional: raises Discogs's limit from 25 to 60 a minute
 )
 
 func (d *DB) Setting(ctx context.Context, key string) (string, error) {

@@ -17,20 +17,8 @@ type Resolver struct {
 }
 
 func (r Resolver) Resolve(ctx context.Context, in resolve.Input) (resolve.Result, bool, error) {
-	guess, ok, _ := resolve.SourceMetadata{}.Resolve(ctx, in)
-	if !ok {
-		return resolve.Result{}, false, nil
-	}
-	timeout := r.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	return r.Client.Match(ctx, HintFrom(guess, in.DurationSec))
+	return resolve.Lookup{Matcher: r.Client, Timeout: r.Timeout}.Resolve(ctx, in)
 }
 
 // HintFrom turns an identity into a search hint.
-func HintFrom(r resolve.Result, durationSec int) Hint {
-	return Hint{Artist: r.ArtistOfTrack(), Title: r.Title, Release: r.Release, DurationSec: durationSec}
-}
+func HintFrom(r resolve.Result, durationSec int) Hint { return resolve.HintFrom(r, durationSec) }

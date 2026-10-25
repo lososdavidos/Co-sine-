@@ -16,7 +16,7 @@
 <label>Artist <input name="artist" value="{{.Query.Artist}}"></label>
 <label>Title <input name="title" value="{{.Query.Title}}"></label>
 <label>Album <input name="album" value="{{.Query.Album}}"></label>
-<button>Search MusicBrainz</button>
+<button>Search the catalogues</button>
 </form>
 {{if .CandidateError}}<p>{{.CandidateError}}</p>{{end}}
 {{if .Candidates}}
@@ -25,7 +25,7 @@
 {{range .Candidates}}<tr>
 <td>{{.Artist}}{{if .TrackArtist}} ({{.TrackArtist}}){{end}}</td><td>{{.Release}}</td><td>{{if .TrackNo}}{{.TrackNo}}{{end}}</td>
 <td>{{.Title}}</td><td>{{if .Year}}{{.Year}}{{end}}</td><td>{{percent .Confidence}}</td>
-<td><a href="https://musicbrainz.org/release/{{.IDs.MBRelease}}" rel="noreferrer">MusicBrainz</a></td>
+<td>{{$from := sourceName .Source}}{{with .IDs.URL}}<a href="{{.}}" rel="noreferrer">{{$from}}</a>{{else}}{{$from}}{{end}}</td>
 <td><form method="post" action="/review/{{$.Data.Item.TrackID}}/choose">
 <input type="hidden" name="key" value="{{key .}}">
 <input type="hidden" name="artist" value="{{$.Data.Query.Artist}}"><input type="hidden" name="title" value="{{$.Data.Query.Title}}"><input type="hidden" name="album" value="{{$.Data.Query.Album}}">
