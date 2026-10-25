@@ -460,7 +460,10 @@ start_services() {
 	systemctl restart cosine.service
 	sleep 2
 	if ! systemctl is-active --quiet cosine.service; then
-		if systemctl status cosine.service 2>/dev/null | grep -q 'NAMESPACE'; then
+		# 226 is systemd's EXIT_NAMESPACE. Not grepping `systemctl status`:
+		# it exits 3 for a unit that isn't running, which pipefail turns
+		# into a failed test.
+		if [[ "$(systemctl show -p ExecMainStatus --value cosine.service)" == 226 ]]; then
 			warn "This container can't sandbox services (enable 'nesting' in its Options to allow it). Starting without the sandbox."
 			rm -f "$UNIT_DIR/cosine.service.d/hardening.conf"
 			systemctl daemon-reload
