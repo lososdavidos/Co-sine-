@@ -49,8 +49,7 @@ func (g *Ingester) verify(ctx context.Context) (missing int, err error) {
 	}
 	rows.Close()
 	for _, o := range all {
-		_, statErr := os.Stat(filepath.Join(root, filepath.FromSlash(o.rel)))
-		gone := errors.Is(statErr, os.ErrNotExist)
+		gone := !store.Present(root, o.rel)
 		if gone {
 			missing++
 		}

@@ -15,6 +15,14 @@ import (
 	"unicode/utf8"
 )
 
+// Present reports whether a Store file is on disk. Only "does not exist"
+// counts as gone: a file that can't be read for another reason (a
+// permission problem) was not deleted.
+func Present(root, rel string) bool {
+	_, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+	return !errors.Is(err, os.ErrNotExist)
+}
+
 // Hash returns the hex SHA-256 of the file at path.
 func Hash(path string) (string, int64, error) {
 	f, err := os.Open(path)
