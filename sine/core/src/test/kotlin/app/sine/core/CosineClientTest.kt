@@ -26,6 +26,7 @@ class CosineClientTest {
     private var sessionsIssued = 0
     private var validSession = ""
     private val requests = mutableListOf<String>()
+    private val bodies = mutableListOf<String>()
 
     @AfterTest
     fun tearDown() = server.close()
@@ -51,7 +52,20 @@ class CosineClientTest {
                            {"title":"One","uploader":"Skeler","url":"https://sc/one","source":"soundcloud","durationSec":125,"inLibrary":true,"releaseSec":124},
                            {"title":"Two","url":"https://sc/two","newField":1,"preview":true}]}"""
                     )
-                    "/cosine/v1/ingest" -> json("""{"jobs":[{"id":7,"url":"https://sc/two","title":"https://sc/two","status":"queued"}]}""", 202)
+                    "/cosine/v1/ingest" -> {
+                        bodies += request.body?.utf8() ?: ""
+                        json("""{"jobs":[{"id":7,"url":"https://sc/two","title":"https://sc/two","status":"queued"}]}""", 202)
+                    }
+                    "/cosine/v1/smart" -> if (request.method == "GET") json(
+                        """{"playlists":[{"id":"sp-1","name":"Recently added","rule":"added","days":30,"size":100,"description":"Added in the last 30 days"}],"rules":["added"]}"""
+                    ) else {
+                        bodies += request.body?.utf8() ?: ""
+                        json("""{"id":"sp-9","name":"Heavy","rule":"most-played","span":"30d","size":100,"description":"Most played in the last 30 days"}""", 201)
+                    }
+                    "/cosine/v1/smart/sp-9" -> {
+                        bodies += "${request.method} " + (request.body?.utf8() ?: "")
+                        json("""{"id":"sp-9","name":"Dust","rule":"forgotten","months":12,"size":100,"description":"x"}""")
+                    }
                     "/cosine/v1/ingest/jobs" -> json(
                         """{"jobs":[{"id":7,"url":"u","title":"Two","status":"running","progress":0.42},
                                     {"id":6,"url":"u","title":"One","status":"known","error":"Already in your library.","trackId":"tr-1"}]}"""
@@ -92,6 +106,31 @@ class CosineClientTest {
         assertTrue(jobs[0].isActive)
         assertTrue(jobs[1].isKnown)
         assertEquals(0.42, jobs[0].progress)
+    }
+
+    @Test
+    fun `songs picked from a playlist name it, and whether to keep it`() = runTest {
+        val c = client()
+        c.submit(listOf("https://sc/two"))
+        c.submit(listOf("https://sc/two"), from = "https://sc/set")
+        c.submit(listOf("https://sc/two"), from = "https://sc/set", keepPlaylist = false)
+        assertTrue("from" !in bodies[0] && "playlist" !in bodies[0], bodies[0])
+        assertTrue(bodies[1].contains("\"from\":\"https://sc/set\"") && bodies[1].contains("\"playlist\":true"), bodies[1])
+        assertTrue(bodies[2].contains("\"playlist\":false"), bodies[2])
+    }
+
+    @Test
+    fun `smart playlists' rules`() = runTest {
+        val c = client()
+        val lists = c.smartPlaylists()
+        assertEquals("Added in the last 30 days", lists.single().description)
+        assertEquals(30, lists.single().days)
+        val made = c.saveSmart(app.sine.core.model.SmartRules.starting("most-played", "Heavy").copy(span = "30d"))
+        assertEquals("sp-9", made.id)
+        assertTrue(bodies.last().contains("\"span\":\"30d\"") && !bodies.last().contains("months"), bodies.last())
+        val changed = c.saveSmart(app.sine.core.model.SmartRules.withSetting(made.copy(name = "Dust", rule = "forgotten", span = null)))
+        assertEquals(12, changed.months)
+        assertTrue(bodies.last().startsWith("PUT ") && bodies.last().contains("\"months\":6"), bodies.last())
     }
 
     @Test

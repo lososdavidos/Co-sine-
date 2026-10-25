@@ -14,6 +14,7 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/testutil"
@@ -53,6 +54,7 @@ func setup(t *testing.T, fixtures map[string]any) *env {
 		Search: &search.Service{DB: d, YtDlp: search.YtDlpSearch{Runner: runner}, NewAPI: func(string, string) search.Backend { return nil }},
 		Ingester: &ingest.Ingester{DB: d, DataDir: dir, ReviewThreshold: 0.8, Log: log,
 			Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}, MinConfidence: 0.8}},
+		Playlists: &playlists.Service{DB: d},
 	}
 	e := &env{f: f, db: d, alice: user("alice"), bob: user("bob"), counter: counter}
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -107,7 +109,7 @@ func TestSingleURLEndToEnd(t *testing.T) {
 			map[string]any{"thumbnails": []map[string]any{{"url": art.URL + "/t500x500.jpg", "width": 500, "height": 500}}}),
 	})
 	ctx := context.Background()
-	jobs, err := e.f.Submit(ctx, e.alice, []string{"Listen on SoundCloud " + url}, false)
+	jobs, err := e.f.Submit(ctx, e.alice, []string{"Listen on SoundCloud " + url}, false, nil)
 	if err != nil || len(jobs) != 1 {
 		t.Fatal(jobs, err)
 	}
@@ -145,17 +147,17 @@ func TestKnownURLIsRefusedThenForced(t *testing.T) {
 	url := "https://soundcloud.com/deadcrow/hollow"
 	e := setup(t, map[string]any{url: track(url, "222", "Hollow", "Deadcrow", "hollow", nil)})
 	ctx := context.Background()
-	first, _ := e.f.Submit(ctx, e.alice, []string{url}, false)
+	first, _ := e.f.Submit(ctx, e.alice, []string{url}, false, nil)
 	e.wait(t, first[0].ID, StatusDone)
 
-	again, _ := e.f.Submit(ctx, e.alice, []string{url}, false)
+	again, _ := e.f.Submit(ctx, e.alice, []string{url}, false, nil)
 	j := e.wait(t, again[0].ID, StatusKnown)
 	if j.Error != "Already in your library." || e.downloads() != 1 {
 		t.Fatalf("%+v, downloads %d", j, e.downloads())
 	}
 
 	// Someone else asking for it gets a Pointer, not a second download.
-	bobs, _ := e.f.Submit(ctx, e.bob, []string{url}, false)
+	bobs, _ := e.f.Submit(ctx, e.bob, []string{url}, false, nil)
 	if j := e.wait(t, bobs[0].ID, StatusDuplicate); j.TrackID == "" || e.downloads() != 1 {
 		t.Fatalf("%+v, downloads %d", j, e.downloads())
 	}
@@ -179,7 +181,7 @@ func TestDeletedFileIsNotInTheLibrary(t *testing.T) {
 	url := "https://www.youtube.com/watch?v=bad"
 	e := setup(t, map[string]any{url: track(url, "333", "Halsey - Bad at Love", "Halsey", "bad-at-love", nil)})
 	ctx := context.Background()
-	first, _ := e.f.Submit(ctx, e.alice, []string{url}, false)
+	first, _ := e.f.Submit(ctx, e.alice, []string{url}, false, nil)
 	e.wait(t, first[0].ID, StatusDone)
 	if l, err := e.f.Lookup(ctx, e.alice, url); err != nil || !l.Items[0].InLibrary {
 		t.Fatal(l, err)
@@ -197,7 +199,7 @@ func TestDeletedFileIsNotInTheLibrary(t *testing.T) {
 	}
 
 	// Adding it again downloads it and puts it back.
-	again, _ := e.f.Submit(ctx, e.alice, []string{url}, false)
+	again, _ := e.f.Submit(ctx, e.alice, []string{url}, false, nil)
 	if j := e.wait(t, again[0].ID, StatusDone, StatusKnown, StatusDuplicate, StatusFailed); j.Status != StatusDone || e.downloads() != 2 {
 		t.Fatalf("%+v, downloads %d", j, e.downloads())
 	}
@@ -219,7 +221,7 @@ func TestCollectionQueuesEverything(t *testing.T) {
 		b: track(b, "2", "Two", "Skeler", "two", nil),
 	})
 	ctx := context.Background()
-	jobs, _ := e.f.Submit(ctx, e.alice, []string{set}, false)
+	jobs, _ := e.f.Submit(ctx, e.alice, []string{set}, false, nil)
 	j := e.wait(t, jobs[0].ID, StatusExpanded)
 	if !strings.Contains(j.Title, "2 tracks queued") {
 		t.Fatal(j.Title)
@@ -238,7 +240,7 @@ func TestFailureCarriesYtDlpsReasonAndRetries(t *testing.T) {
 	url := "https://soundcloud.com/gone/track"
 	e := setup(t, map[string]any{url: map[string]any{"error": "HTTP Error 404: Not Found"}})
 	ctx := context.Background()
-	jobs, _ := e.f.Submit(ctx, e.alice, []string{url}, false)
+	jobs, _ := e.f.Submit(ctx, e.alice, []string{url}, false, nil)
 	j := e.wait(t, jobs[0].ID, StatusFailed)
 	if j.Error != "HTTP Error 404: Not Found" {
 		t.Fatalf("%q", j.Error)
@@ -254,7 +256,7 @@ func TestFailureCarriesYtDlpsReasonAndRetries(t *testing.T) {
 
 func TestSubmitRejectsNonLinks(t *testing.T) {
 	e := setup(t, nil)
-	if _, err := e.f.Submit(context.Background(), e.alice, []string{"skeler tides"}, false); err == nil {
+	if _, err := e.f.Submit(context.Background(), e.alice, []string{"skeler tides"}, false, nil); err == nil {
 		t.Fatal("a query is not a link")
 	}
 }
@@ -272,7 +274,7 @@ func TestLookup(t *testing.T) {
 		"ytsearch": map[string]any{"_type": "playlist", "entries": []map[string]any{{"url": "https://www.youtube.com/watch?v=x", "title": "One (YT)"}}},
 	})
 	ctx := context.Background()
-	jobs, _ := e.f.Submit(ctx, e.alice, []string{one}, false)
+	jobs, _ := e.f.Submit(ctx, e.alice, []string{one}, false, nil)
 	e.wait(t, jobs[0].ID, StatusDone)
 
 	l, err := e.f.Lookup(ctx, e.alice, set)
@@ -309,7 +311,7 @@ func TestPreviewOnlyTrackIsRefused(t *testing.T) {
 			{"url": full, "title": "Halsey - Bad At Love (Audio)", "uploader": "Halsey", "duration": 182.0}}},
 	})
 	ctx := context.Background()
-	jobs, _ := e.f.Submit(ctx, e.alice, []string{snip}, false)
+	jobs, _ := e.f.Submit(ctx, e.alice, []string{snip}, false, nil)
 	j := e.wait(t, jobs[0].ID, StatusFailed)
 	if !strings.Contains(j.Error, "30-second preview") || e.downloads() != 0 {
 		t.Fatalf("%q, %d downloads", j.Error, e.downloads())

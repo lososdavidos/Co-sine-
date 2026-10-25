@@ -65,7 +65,7 @@ done
 	echo "Inbox ingest did not finish"
 	exit 1
 }
-# Cosine can't create playlists yet; seed one directly.
+# A playlist made before Sine connects, as another client would have.
 sqlite3 "$WORK/data/cosine.db" <<'SQL'
 .timeout 5000
 INSERT INTO playlists(id, owner_id, name, created_at, updated_at) VALUES(1, 1, 'Fixture list', 0, 0);

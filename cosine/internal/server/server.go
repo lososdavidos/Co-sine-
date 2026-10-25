@@ -24,6 +24,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/musicbrainz"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/native"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/portraits"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
@@ -112,9 +113,10 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	}
 
 	listening := &stats.Service{DB: d}
+	lists := &playlists.Service{DB: d, Stats: listening}
 	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, Stats: listening, OnInboxChange: s.startInbox, Log: log}
 	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Mirror: &mirror.Service{DB: d},
-		Ingester: s.ingester, Version: cfg.Version, Log: log}
+		Ingester: s.ingester, Playlists: lists, Version: cfg.Version, Log: log}
 	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not
@@ -127,10 +129,20 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 			DB:     d,
 			YtDlp:  search.YtDlpSearch{Runner: runner},
 			NewAPI: search.NewSourceAPIs(httpClient),
+			Bandcamp: func(ctx context.Context, q string, n int) ([]search.Result, error) {
+				albums, err := bc.Albums(ctx, q, n)
+				out := make([]search.Result, 0, len(albums))
+				for _, a := range albums {
+					out = append(out, search.Result{Kind: search.KindAlbum, Title: a.Title, Uploader: a.Artist,
+						URL: a.URL, Thumbnail: a.Cover, Source: "bandcamp"})
+				}
+				return out, err
+			},
 		}
 		s.fetcher = &fetch.Fetcher{
 			DB: d, Ingester: s.ingester, Runner: runner, Search: searcher,
 			WorkDir: filepath.Join(cfg.DataDir, "fetch"), Workers: 2, HTTP: httpClient, Log: log.With("component", "fetch"),
+			Playlists: lists,
 		}
 		dash.Fetcher, dash.Search = s.fetcher, searcher
 		dash.YtDlpVersion = runner.Version(context.Background())
@@ -138,7 +150,7 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		log.Info("yt-dlp found", "path", runner.Bin, "version", dash.YtDlpVersion)
 	}
 
-	api := &subsonic.API{DB: d, Auth: as, DataDir: cfg.DataDir, Version: cfg.Version, Log: log}
+	api := &subsonic.API{DB: d, Auth: as, DataDir: cfg.DataDir, Version: cfg.Version, Log: log, Playlists: lists}
 	mux := http.NewServeMux()
 	mux.Handle("/rest/", api.Handler())
 	nativeAPI.Register(mux)

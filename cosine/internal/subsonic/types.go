@@ -135,15 +135,19 @@ type Playlists struct {
 }
 
 type Playlist struct {
-	ID        string  `xml:"id,attr" json:"id"`
-	Name      string  `xml:"name,attr" json:"name"`
-	Owner     string  `xml:"owner,attr" json:"owner"`
-	Public    bool    `xml:"public,attr" json:"public"`
-	SongCount int     `xml:"songCount,attr" json:"songCount"`
-	Duration  int     `xml:"duration,attr" json:"duration"`
-	Created   string  `xml:"created,attr" json:"created"`
-	Changed   string  `xml:"changed,attr" json:"changed"`
-	Entry     []Child `xml:"entry,omitempty" json:"entry,omitempty"`
+	ID        string `xml:"id,attr" json:"id"`
+	Name      string `xml:"name,attr" json:"name"`
+	Comment   string `xml:"comment,attr,omitempty" json:"comment,omitempty"`
+	Owner     string `xml:"owner,attr" json:"owner"`
+	Public    bool   `xml:"public,attr" json:"public"`
+	SongCount int    `xml:"songCount,attr" json:"songCount"`
+	Duration  int    `xml:"duration,attr" json:"duration"`
+	Created   string `xml:"created,attr" json:"created"`
+	Changed   string `xml:"changed,attr" json:"changed"`
+	CoverArt  string `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
+	// Readonly (OpenSubsonic): a smart playlist, whose songs a rule picks.
+	Readonly bool    `xml:"readonly,attr,omitempty" json:"readonly,omitempty"`
+	Entry    []Child `xml:"entry,omitempty" json:"entry,omitempty"`
 }
 
 type User struct {

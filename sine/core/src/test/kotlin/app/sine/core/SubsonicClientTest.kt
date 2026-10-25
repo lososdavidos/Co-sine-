@@ -101,6 +101,35 @@ class SubsonicClientTest {
     }
 
     @Test
+    fun `playlists are made and edited with repeated parameters`() = runTest {
+        respond(""""playlist":{"id":"pl-3","name":"Night","songCount":2}""")
+        assertEquals("pl-3", client.createPlaylist("Night", listOf("t1", "t2")))
+        var url = server.takeRequest().url
+        assertEquals("/navidrome/rest/createPlaylist.view", url.encodedPath)
+        assertEquals("Night", url.queryParameter("name"))
+        assertEquals(listOf("t1", "t2"), url.queryParameterValues("songId"))
+
+        respond(""""ok":true""")
+        client.updatePlaylist("pl-3", add = listOf("t3"), removeAt = listOf(0, 2))
+        url = server.takeRequest().url
+        assertEquals("pl-3", url.queryParameter("playlistId"))
+        assertEquals(null, url.queryParameter("name"))
+        assertEquals(listOf("t3"), url.queryParameterValues("songIdToAdd"))
+        assertEquals(listOf("0", "2"), url.queryParameterValues("songIndexToRemove"))
+
+        respond(""""ok":true""")
+        client.replacePlaylist("pl-3", listOf("t2", "t1"))
+        url = server.takeRequest().url
+        assertEquals("/navidrome/rest/createPlaylist.view", url.encodedPath)
+        assertEquals(listOf("t2", "t1"), url.queryParameterValues("songId"))
+
+        respond(""""playlists":{"playlist":[{"id":"sp-1","name":"Never played","songCount":4,"readonly":true,"comment":"Never played, newest first"}]}""")
+        val smart = client.playlists().single()
+        assertTrue(smart.readonly && smart.isCosineSmart)
+        assertEquals("Never played, newest first", smart.comment)
+    }
+
+    @Test
     fun `playlist entries become tracks`() = runTest {
         respond(""""playlist":{"id":"p1","name":"Night","songCount":1,"entry":[{"id":"t9","title":"Nine","artist":"plenka","album":"Nine"}]}""")
         val p = client.playlist("p1")

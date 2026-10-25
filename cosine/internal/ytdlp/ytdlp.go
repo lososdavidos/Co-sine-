@@ -49,14 +49,19 @@ func (r Runner) Version(ctx context.Context) string {
 // SoundCloud set, a Bandcamp album, a channel) Type is "playlist" and
 // Entries lists its items.
 type Info struct {
-	Type         string      `json:"_type"`
-	ID           string      `json:"id"`
-	Title        string      `json:"title"`
-	Uploader     string      `json:"uploader"`
-	Channel      string      `json:"channel"`
-	Artist       string      `json:"artist"`
-	Track        string      `json:"track"`
-	Album        string      `json:"album"`
+	Type         string   `json:"_type"`
+	ID           string   `json:"id"`
+	Title        string   `json:"title"`
+	Uploader     string   `json:"uploader"`
+	Channel      string   `json:"channel"`
+	Artist       string   `json:"artist"`
+	Track        string   `json:"track"`
+	Album        string   `json:"album"`
+	AlbumArtist  string   `json:"album_artist"`
+	AlbumArtists []string `json:"album_artists"`
+	// AlbumType is what a SoundCloud set says it is: album, ep, single,
+	// compilation, or playlist.
+	AlbumType    string      `json:"album_type"`
 	TrackNumber  int         `json:"track_number"`
 	ReleaseYear  int         `json:"release_year"`
 	Duration     float64     `json:"duration"`
@@ -81,6 +86,64 @@ type Thumbnail struct {
 }
 
 func (i Info) IsCollection() bool { return i.Type == "playlist" }
+
+// Collection kinds.
+const (
+	KindAlbum    = "album"
+	KindPlaylist = "playlist"
+	KindChannel  = "channel"
+)
+
+// Kind says what a collection is. Only a release its artist put out is an
+// album: a YouTube Music album, a Bandcamp album, a SoundCloud set marked
+// as an album, EP or single. Anything someone put together — a YouTube
+// playlist, a SoundCloud set marked as a playlist, a mix — is a playlist,
+// however much it looks like an album, and an account's uploads are a
+// channel. Unsure is a playlist: each song is then filed as itself.
+func (i Info) Kind() string {
+	switch key := strings.ToLower(i.Source()); {
+	case strings.HasPrefix(i.ID, "OLAK5uy_"): // YouTube Music's own album playlists
+		return KindAlbum
+	case key == "bandcampalbum":
+		return KindAlbum
+	case key == "soundcloudset" || key == "soundcloudplaylist":
+		switch strings.ToLower(i.AlbumType) {
+		case "album", "ep", "single", "compilation":
+			return KindAlbum
+		}
+		return KindPlaylist
+	case key == "bandcampuser", strings.HasPrefix(key, "soundclouduser"), key == "soundcloudtrackstation", key == "soundcloudrelated":
+		return KindChannel
+	case key == "youtubetab" && (strings.HasPrefix(i.ID, "UC") || strings.HasPrefix(i.ID, "UU")):
+		return KindChannel
+	}
+	return KindPlaylist
+}
+
+// albumPrefix is how YouTube Music titles a release's playlist.
+var albumPrefix = []string{"Album - ", "EP - ", "Single - "}
+
+// CollectionTitle is a collection's name as people know it.
+func (i Info) CollectionTitle() string {
+	t := strings.TrimSpace(i.Title)
+	if strings.HasPrefix(i.ID, "OLAK5uy_") {
+		for _, p := range albumPrefix {
+			t = strings.TrimPrefix(t, p)
+		}
+	}
+	return t
+}
+
+// CollectionArtist is who released an album, when the source says.
+func (i Info) CollectionArtist() string {
+	if i.AlbumArtist != "" {
+		return i.AlbumArtist
+	}
+	if len(i.AlbumArtists) > 0 {
+		return strings.Join(i.AlbumArtists, ", ")
+	}
+	return i.Poster()
+}
 
 // Link is the canonical page URL for an item, which is what Q12 compares.
 func (i Info) Link() string {

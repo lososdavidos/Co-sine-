@@ -14,7 +14,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -36,6 +41,7 @@ import app.sine.core.download.PinnedBudget
 import app.sine.core.model.ArtistEntry
 import app.sine.core.model.ArtistPage
 import app.sine.core.model.DownloadNode
+import app.sine.core.model.PlaylistEdits
 import app.sine.core.model.Track
 import app.sine.core.play.PlaySource
 import app.sine.core.server.Capability
@@ -72,10 +78,15 @@ fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
         val singles = entries.filterIsInstance<ArtistEntry.Single>().map { it.track }
         var selected by remember(singles) { mutableStateOf(setOf<String>()) }
         var removing by remember { mutableStateOf<List<Track>?>(null) }
+        var adding by remember { mutableStateOf<List<Track>?>(null) }
         Column(Modifier.fillMaxSize()) {
             if (selected.isNotEmpty()) {
                 val chosen = singles.filter { it.id in selected }
-                TrackSelectionBar(session, chosen, nav, onRemoveFromLibrary = { removing = chosen }) { selected = emptySet() }
+                TrackSelectionBar(
+                    session, chosen, nav,
+                    onRemoveFromLibrary = { removing = chosen }.takeIf { session.can(Capability.REMOVE) },
+                    onAddToPlaylist = { adding = chosen },
+                ) { selected = emptySet() }
             }
             LazyColumn(Modifier.fillMaxSize()) {
                 item {
@@ -117,6 +128,9 @@ fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
             }
         }
         RemoveConfirmation(session, removing, scope, onDismiss = { removing = null }) { selected = emptySet() }
+        adding?.let { chosen ->
+            AddToPlaylistDialog(session, chosen, onDismiss = { adding = null }) { selected = emptySet() }
+        }
     }
 }
 
@@ -140,35 +154,14 @@ fun AlbumScreen(session: AccountSession, id: String, nav: NavController) {
     }
 }
 
-@Composable
-fun PlaylistScreen(session: AccountSession, id: String, nav: NavController) {
-    val load = rememberLoad(session, id) {
-        session.fetch(offline = { throw app.sine.data.NotAvailableOffline() }, remote = { it.playlist(id) })
-    }
-    LoadContent(load) { detail, _ ->
-        if (detail.tracks.isEmpty()) {
-            ListMessage(Voice.EMPTY_PLAYLIST)
-            return@LoadContent
-        }
-        TrackListScreen(
-            session = session,
-            title = detail.playlist.name,
-            subtitle = detail.playlist.subtitle(),
-            coverArt = detail.playlist.coverArt,
-            tracks = detail.tracks,
-            node = DownloadNode.OfPlaylist(detail.playlist.id),
-            showTrackArtist = true,
-            nav = nav,
-        )
-    }
-}
-
 /**
  * A release or playlist. Long-press selects rows (the whole row changes, §6.5)
  * and swaps in an action row; tapping while a selection exists extends it.
+ * A playlist of your own adds taking songs out of it ([onRemoveFromPlaylist],
+ * with their positions as listed) and, while [onMove] is set, moving them.
  */
 @Composable
-private fun TrackListScreen(
+internal fun TrackListScreen(
     session: AccountSession,
     title: String,
     subtitle: String,
@@ -181,6 +174,10 @@ private fun TrackListScreen(
     // A release's songs can be taken out of the library; a playlist's are
     // the playlist's, where "remove" would mean something else.
     removable: Boolean = false,
+    empty: String? = null,
+    onRemoveFromPlaylist: ((List<Int>) -> Unit)? = null,
+    onMove: ((from: Int, to: Int) -> Unit)? = null,
+    extraActions: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val player = context.graph.player
@@ -188,34 +185,50 @@ private fun TrackListScreen(
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
     var selected by remember(tracks) { mutableStateOf(setOf<String>()) }
     var removing by remember { mutableStateOf<List<Track>?>(null) }
+    var adding by remember { mutableStateOf<List<Track>?>(null) }
     val canRemove = removable && session.can(Capability.REMOVE)
     val downloadedHere = tracks.count { it.id in downloads }
 
     Column(Modifier.fillMaxSize()) {
-        if (selected.isNotEmpty()) {
+        if (selected.isNotEmpty() && onMove == null) {
             val chosen = tracks.filter { it.id in selected }
-            TrackSelectionBar(session, chosen, nav, onRemoveFromLibrary = if (canRemove) ({ removing = chosen }) else null) {
-                selected = emptySet()
-            }
+            TrackSelectionBar(
+                session, chosen, nav,
+                onRemoveFromLibrary = if (canRemove) ({ removing = chosen }) else null,
+                onAddToPlaylist = { adding = chosen },
+                onRemoveFromPlaylist = onRemoveFromPlaylist?.let { remove ->
+                    { remove(PlaylistEdits.positionsOf(tracks, selected)); selected = emptySet() }
+                },
+            ) { selected = emptySet() }
         }
         LazyColumn(Modifier.fillMaxSize()) {
             item {
                 Header(session.artwork(coverArt), title, subtitle, onTitleClick) {
-                    OutlinedButton(onClick = { player.play(session, tracks) }) { Text("Play") }
-                    OutlinedButton(onClick = { player.play(session, tracks, shuffle = true) }) { Text("Shuffle") }
-                    if (node != null && downloadedHere < tracks.size) {
-                        OutlinedButton(onClick = { startDownload(context, session, node, tracks, nav) }) { Text("Download") }
+                    if (tracks.isNotEmpty() && onMove == null) {
+                        OutlinedButton(onClick = { player.play(session, tracks) }) { Text("Play") }
+                        OutlinedButton(onClick = { player.play(session, tracks, shuffle = true) }) { Text("Shuffle") }
+                        if (node != null && downloadedHere < tracks.size) {
+                            OutlinedButton(onClick = { startDownload(context, session, node, tracks, nav) }) { Text("Download") }
+                        }
+                        if (downloadedHere > 0) {
+                            OutlinedButton(onClick = {
+                                scope.launch { Downloads.remove(context, session, tracks.map { it.id }) }
+                            }) { Text("Remove download") }
+                        }
                     }
-                    if (downloadedHere > 0) {
-                        OutlinedButton(onClick = {
-                            scope.launch { Downloads.remove(context, session, tracks.map { it.id }) }
-                        }) { Text("Remove download") }
-                    }
+                    extraActions()
                     // Last in the row, away from Play (§6.18's rule for destructive actions).
                     if (canRemove) TextButton(onClick = { removing = tracks }) { Text("Remove from library") }
                 }
             }
+            if (tracks.isEmpty() && empty != null) item {
+                Text(empty, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
+            }
             itemsIndexed(tracks, key = { i, t -> "$i:${t.id}" }) { i, track ->
+                if (onMove != null) {
+                    MoveRow(track, i, tracks.size, onMove)
+                    return@itemsIndexed
+                }
                 val isDownloaded = track.id in downloads
                 val playable = session.playSource(track) != PlaySource.Unavailable
                 val number = track.trackNumber?.let { "$it. " }.takeUnless { showTrackArtist } ?: ""
@@ -243,9 +256,32 @@ private fun TrackListScreen(
         selected = emptySet()
         if (removed.size == tracks.size) nav.popBackStack() // nothing left here
     }
+    adding?.let { chosen ->
+        AddToPlaylistDialog(session, chosen, onDismiss = { adding = null }) { selected = emptySet() }
+    }
 }
 
-private fun Set<String>.toggle(id: String) = if (id in this) this - id else this + id
+/** A song while a playlist is being put in order: moved one place at a time. */
+@Composable
+private fun MoveRow(track: Track, index: Int, count: Int, onMove: (Int, Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(track.title, maxLines = 1)
+            Text(track.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+        }
+        IconButton(onClick = { onMove(index, index - 1) }, enabled = index > 0) {
+            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
+        }
+        IconButton(onClick = { onMove(index, index + 1) }, enabled = index < count - 1) {
+            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
+        }
+    }
+}
+
+internal fun Set<String>.toggle(id: String) = if (id in this) this - id else this + id
 
 /** The actions on selected tracks (§6.5), the whole row changed to show them. */
 @Composable
@@ -254,6 +290,8 @@ private fun TrackSelectionBar(
     chosen: List<Track>,
     nav: NavController,
     onRemoveFromLibrary: (() -> Unit)?,
+    onAddToPlaylist: (() -> Unit)? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
     onClear: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -280,8 +318,12 @@ private fun TrackSelectionBar(
             scope.launch { Downloads.remove(context, session, chosen.map { it.id }) }
             onClear()
         }) { Text("Remove download") }
+        if (onAddToPlaylist != null && session.canEditPlaylists) {
+            TextButton(onClick = onAddToPlaylist) { Text("Add to playlist") }
+        }
         TextButton(onClick = onClear) { Text("Clear") }
         // Last, apart from Play (§6.18).
+        if (onRemoveFromPlaylist != null) TextButton(onClick = onRemoveFromPlaylist) { Text("Remove from playlist") }
         if (onRemoveFromLibrary != null) TextButton(onClick = onRemoveFromLibrary) { Text("Remove from library") }
     }
 }

@@ -102,6 +102,41 @@ class SubsonicClient(
         return PlaylistDetail(dto.toModel(), dto.entry.map { it.toModel() })
     }
 
+    /**
+     * Makes a playlist (§2.4). Returns its id, or null from a server older
+     * than API 1.14, which doesn't say.
+     */
+    suspend fun createPlaylist(name: String, trackIds: List<String>): String? {
+        val root = call("createPlaylist", "name" to name, *trackIds.map { "songId" to it }.toTypedArray())
+        return root["playlist"]?.let { WireJson.decodeFromJsonElement(PlaylistDto.serializer(), it).id }
+    }
+
+    /** Sets a playlist's songs, in order: how Subsonic reorders. */
+    suspend fun replacePlaylist(id: String, trackIds: List<String>) {
+        call("createPlaylist", "playlistId" to id, *trackIds.map { "songId" to it }.toTypedArray())
+    }
+
+    /**
+     * Renames a playlist, adds songs at its end and removes songs by their
+     * position in it, as last listed.
+     */
+    suspend fun updatePlaylist(
+        id: String,
+        name: String? = null,
+        add: List<String> = emptyList(),
+        removeAt: List<Int> = emptyList(),
+    ) {
+        call(
+            "updatePlaylist", "playlistId" to id, "name" to name,
+            *add.map { "songIdToAdd" to it }.toTypedArray(),
+            *removeAt.map { "songIndexToRemove" to it }.toTypedArray(),
+        )
+    }
+
+    suspend fun deletePlaylist(id: String) {
+        call("deletePlaylist", "id" to id)
+    }
+
     suspend fun search(query: String, limit: Int = 20): SearchResults {
         val dto = call(
             "search3", "searchResult3", SearchResult3Dto.serializer(),

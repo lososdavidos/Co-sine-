@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ytdlp"
@@ -29,6 +30,14 @@ type Lookup struct {
 	Title   string `json:"title,omitempty"`
 	Backend string `json:"backend,omitempty"` // for searches: which backend answered
 	Items   []Item `json:"items"`
+	// For a collection: what it is (album, playlist or channel), who
+	// released an album, and the URL to name when adding songs from it.
+	Collection string `json:"collection,omitempty"`
+	Artist     string `json:"artist,omitempty"`
+	URL        string `json:"url,omitempty"`
+	// Collections: for a search, the albums and playlists found, those
+	// asked for first. Picking one looks its link up.
+	Collections []Item `json:"collections,omitempty"`
 }
 
 const searchResults = 10
@@ -44,7 +53,9 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 		}
 		l := Lookup{Kind: KindSingle, Title: info.Title}
 		if info.IsCollection() {
-			l.Kind = KindCollection
+			c := collectionOf(info, url)
+			f.remember(c, url)
+			l.Kind, l.Title, l.Collection, l.Artist, l.URL = KindCollection, c.Title, c.Kind, c.Artist, c.URL
 		}
 		seen := map[string]bool{}
 		for _, e := range collectionOrSelf(info) {
@@ -64,11 +75,18 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 		return l, nil
 	}
 
+	var collections []search.Result
+	var wg sync.WaitGroup
+	wg.Go(func() { collections = f.Search.Collections(ctx, input) })
 	res, backend, err := f.Search.Search(ctx, input, searchResults)
-	if err != nil {
+	wg.Wait()
+	if err != nil && len(collections) == 0 {
 		return Lookup{}, err
 	}
 	l := Lookup{Kind: KindSearch, Backend: backend}
+	for _, c := range collections {
+		l.Collections = append(l.Collections, Item{Result: c})
+	}
 	// The song as released first; videos with intros, extended uploads
 	// and previews (which can't be added) after.
 	for _, r := range search.ByRelease(input, res) {

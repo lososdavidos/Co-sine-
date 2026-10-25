@@ -19,6 +19,7 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 )
 
 type API struct {
@@ -27,6 +28,8 @@ type API struct {
 	DataDir string
 	Version string
 	Log     *slog.Logger
+	// Playlists makes and edits playlists; nil: playlists are read-only.
+	Playlists *playlists.Service
 }
 
 type request struct {
@@ -72,6 +75,9 @@ func (a *API) Handler() http.Handler {
 		"search3":         search3,
 		"getPlaylists":    getPlaylists,
 		"getPlaylist":     getPlaylist,
+		"createPlaylist":  createPlaylist,
+		"updatePlaylist":  updatePlaylist,
+		"deletePlaylist":  deletePlaylist,
 		"scrobble":        scrobble,
 		"star":            star(true),
 		"unstar":          star(false),
@@ -311,34 +317,6 @@ func search3(r *request) (*Response, error) {
 		return nil, err
 	}
 	return &Response{SearchResult3: &SearchResult3{Artist: artists, Album: albums, Song: songs}}, nil
-}
-
-func getPlaylists(r *request) (*Response, error) {
-	lists, err := r.lib.playlists(r.ctx(), r.user.ID, 0)
-	if err != nil {
-		return nil, err
-	}
-	return &Response{Playlists: &Playlists{Playlist: lists}}, nil
-}
-
-func getPlaylist(r *request) (*Response, error) {
-	id, err := r.id("pl-")
-	if err != nil {
-		return nil, err
-	}
-	lists, err := r.lib.playlists(r.ctx(), r.user.ID, id)
-	if err != nil {
-		return nil, err
-	}
-	if len(lists) == 0 {
-		return nil, notFound
-	}
-	p := lists[0]
-	p.Entry, err = r.lib.playlistEntries(r.ctx(), r.user.ID, id)
-	if err != nil {
-		return nil, err
-	}
-	return &Response{Playlist: &p}, nil
 }
 
 // scrobble records a play as an append-only event (Q37). The client's

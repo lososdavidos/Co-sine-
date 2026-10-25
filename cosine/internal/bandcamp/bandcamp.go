@@ -32,19 +32,64 @@ const maxPages = 2
 
 type Client struct {
 	Web *webcache.Client
+	// Live asks without the cache: what Add's searches want is today's answer.
+	Live *webcache.Client
 	// SearchURL defaults to Bandcamp's own autocomplete endpoint.
 	SearchURL string
 }
 
 func New(h *http.Client, d *db.DB, userAgent string) *Client {
-	return &Client{Web: &webcache.Client{
-		Name: "Bandcamp", HTTP: h, DB: d, UserAgent: userAgent,
-		Pace: func() time.Duration { return 1500 * time.Millisecond },
-		Valid: func(b []byte) bool {
-			s := strings.TrimSpace(string(b))
-			return strings.HasPrefix(s, "{") || strings.Contains(s, "application/ld+json") || strings.Contains(s, "data-tralbum")
-		},
-	}}
+	web := func(d *db.DB) *webcache.Client {
+		return &webcache.Client{
+			Name: "Bandcamp", HTTP: h, DB: d, UserAgent: userAgent,
+			Pace: func() time.Duration { return 1500 * time.Millisecond },
+			Valid: func(b []byte) bool {
+				s := strings.TrimSpace(string(b))
+				return strings.HasPrefix(s, "{") || strings.Contains(s, "application/ld+json") || strings.Contains(s, "data-tralbum")
+			},
+		}
+	}
+	return &Client{Web: web(d), Live: web(nil)}
+}
+
+// Album is an album Bandcamp's search found.
+type Album struct {
+	Title, Artist, URL, Cover string
+}
+
+// Albums searches Bandcamp for albums, for Add (§3.1a): yt-dlp downloads
+// a Bandcamp album but cannot search for one.
+func (c *Client) Albums(ctx context.Context, query string, n int) ([]Album, error) {
+	body, _ := json.Marshal(map[string]any{
+		"search_text": query, "search_filter": "a", "full_page": false, "fan_id": nil,
+	})
+	web := c.Live
+	if web == nil {
+		web = c.Web
+	}
+	b, err := web.Post(ctx, c.searchURL(), "application/json", body)
+	if errors.Is(err, webcache.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var found searchResponse
+	if err := json.Unmarshal(b, &found); err != nil {
+		return nil, fmt.Errorf("%w: unreadable search answer", ErrUnavailable)
+	}
+	var out []Album
+	for _, it := range found.Auto.Results {
+		if it.Type != "a" || it.Name == "" || it.URL == "" {
+			continue
+		}
+		out = append(out, Album{Title: withoutArtist(it.Name, it.BandName), Artist: it.BandName, URL: it.URL,
+			Cover: imageSize.ReplaceAllString(it.Img, "_10.$1")})
+		if len(out) == n {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (c *Client) searchURL() string {

@@ -33,7 +33,15 @@ data class AddItem(
     val preview: Boolean = false,
     /** The song's length as released, when this result is that song and a label's upload of it was found. */
     val releaseSec: Int = 0,
-)
+    /** "album" or "playlist" for a collection, picked to see its songs; empty for a song. */
+    val kind: String = "",
+    /** A collection's number of songs, when the source says. */
+    val tracks: Int = 0,
+    /** A collection that is what the search asked for. */
+    val asked: Boolean = false,
+) {
+    val isCollection get() = kind.isNotEmpty()
+}
 
 /** What Add's single field resolved to (§6.10). */
 @Serializable
@@ -42,10 +50,36 @@ data class Lookup(
     val title: String? = null,
     val backend: String? = null,
     val items: List<AddItem> = emptyList(),
+    /** For a collection: album, playlist or channel. */
+    val collection: String? = null,
+    /** An album's artist, when the source says. */
+    val artist: String? = null,
+    /** A collection's link, named when adding songs picked from it. */
+    val url: String? = null,
+    /** For a search: albums and playlists found, those asked for first. */
+    val collections: List<AddItem> = emptyList(),
 ) {
     val isSearch get() = kind == "search"
     val isCollection get() = kind == "collection"
+    val isAlbum get() = collection == "album"
+    val isPlaylist get() = collection == "playlist"
 }
+
+/** A smart playlist's rule (§2.4), as Cosine keeps it. Its songs come from the Subsonic API under [id]. */
+@Serializable
+data class SmartPlaylist(
+    val id: String = "",
+    val name: String,
+    val rule: String,
+    /** most-played: 30d, year or all. */
+    val span: String? = null,
+    /** forgotten: not played in this many months. */
+    val months: Int? = null,
+    /** added: in the last this many days. */
+    val days: Int? = null,
+    val size: Int = 100,
+    val description: String = "",
+)
 
 @Serializable
 data class IngestJob(
@@ -68,7 +102,13 @@ data class IngestJob(
 @Serializable private data class AuthRequest(val username: String, val token: String, val salt: String)
 @Serializable private data class AuthResponse(val token: String)
 @Serializable private data class LookupRequest(val input: String)
-@Serializable private data class IngestRequest(val urls: List<String>, val force: Boolean)
+@Serializable private data class IngestRequest(
+    val urls: List<String>,
+    val force: Boolean,
+    val from: String? = null,
+    val playlist: Boolean? = null,
+)
+@Serializable private data class SmartResponse(val playlists: List<SmartPlaylist> = emptyList())
 @Serializable private data class RetryRequest(val force: Boolean)
 @Serializable private data class JobsResponse(val jobs: List<IngestJob>)
 @Serializable private data class JobResponse(val job: IngestJob)
@@ -102,8 +142,32 @@ class CosineClient(
     suspend fun lookup(input: String): Lookup =
         send(post("lookup", LookupRequest.serializer(), LookupRequest(input)), Lookup.serializer())
 
-    suspend fun submit(urls: List<String>, force: Boolean = false): List<IngestJob> =
-        send(post("ingest", IngestRequest.serializer(), IngestRequest(urls, force)), JobsResponse.serializer()).jobs
+    /**
+     * Queues links. [from] is the album or playlist they were picked from
+     * (its [Lookup.url]): an album lends them its name; a playlist becomes
+     * one in the library unless [keepPlaylist] is false.
+     */
+    suspend fun submit(
+        urls: List<String>,
+        force: Boolean = false,
+        from: String? = null,
+        keepPlaylist: Boolean = true,
+    ): List<IngestJob> {
+        val body = IngestRequest(urls, force, from, if (from != null) keepPlaylist else null)
+        return send(post("ingest", IngestRequest.serializer(), body), JobsResponse.serializer()).jobs
+    }
+
+    /** The account's smart playlists' rules. */
+    suspend fun smartPlaylists(): List<SmartPlaylist> =
+        send(get("smart"), SmartResponse.serializer()).playlists
+
+    /** Saves a smart playlist: a new one when its [SmartPlaylist.id] is empty. */
+    suspend fun saveSmart(playlist: SmartPlaylist): SmartPlaylist {
+        val builder = if (playlist.id.isEmpty()) post("smart", SmartPlaylist.serializer(), playlist)
+        else Request.Builder().url(url("smart/${playlist.id}"))
+            .put(WireJson.encodeToString(SmartPlaylist.serializer(), playlist).toRequestBody(JSON))
+        return send(builder, SmartPlaylist.serializer())
+    }
 
     suspend fun jobs(limit: Int = 50): List<IngestJob> =
         send(get("ingest/jobs", "limit" to limit.toString()), JobsResponse.serializer()).jobs
