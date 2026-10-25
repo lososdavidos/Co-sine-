@@ -78,7 +78,7 @@ Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Duration
   - stream / download: always the original bytes, with range requests for seeking
   - getCoverArt: embedded artwork, extracted when the file is ingested
 - **Dashboard:** first-run setup, admin-only login, status with recent ingests, accounts (create and delete; deleting keeps the music), moving the Store (resumable if interrupted), and changing the Inbox.
-- **Startup check:** files that went missing from the Store are flagged, not removed, and the flag clears when they come back.
+- **Missing files (§2.2):** the Store is checked at startup and every five minutes, and a play that finds its file gone marks it at once. A track with no file left isn't offered to Sine or any app (it leaves artists, albums, search and playlists) and returns by itself when the file does, with its plays, stars and playlist places. The dashboard's Missing page lists them and can forget them for good; forgetting is refused when every file is missing, which means an unmounted disk.
 
 ## Not yet
 

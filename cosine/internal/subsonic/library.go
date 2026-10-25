@@ -43,9 +43,11 @@ type library struct{ db *db.DB }
 
 // ---------------------------------------------------------------- tracks
 
+// available: only Tracks with a file in the Store are offered (§2.2).
+const available = db.Available
+
 // songSelect picks, per Track, the Object to describe and serve: the
-// account's version pin, else the largest available file. A Track whose
-// files are all missing still lists (it greys out rather than disappearing, §2.2).
+// account's version pin, else the largest available file.
 const songSelect = `
 SELECT t.id, t.title, COALESCE(t.track_no, 0), COALESCE(t.disc_no, 0),
        r.id, r.title, COALESCE(r.year, 0), r.art_path IS NOT NULL,
@@ -60,7 +62,7 @@ JOIN artists ta ON ta.id = t.artist_id
 LEFT JOIN objects o ON o.hash = (
     SELECT o2.hash FROM objects o2 WHERE o2.track_id = t.id
     ORDER BY o2.missing, COALESCE(o2.hash = p.pin_hash, 0) DESC, o2.size DESC LIMIT 1)
-WHERE p.user_id = ?`
+WHERE p.user_id = ? AND ` + available
 
 func scanSongs(rows *sql.Rows) ([]Child, error) {
 	defer rows.Close()
@@ -119,7 +121,7 @@ FROM pointers p
 JOIN tracks t ON t.id = p.track_id
 JOIN releases r ON r.id = t.release_id
 JOIN artists a ON a.id = r.artist_id
-WHERE p.user_id = ? ` + where + `
+WHERE p.user_id = ? AND ` + available + ` ` + where + `
 GROUP BY a.id ORDER BY a.name LIMIT ? OFFSET ?`
 	rows, err := l.db.QueryContext(ctx, q, append(append([]any{user}, args...), limit, offset)...)
 	if err != nil {
@@ -205,9 +207,9 @@ FROM pointers p
 JOIN tracks t ON t.id = p.track_id
 JOIN releases r ON r.id = t.release_id
 JOIN artists a ON a.id = r.artist_id
-WHERE p.user_id = ? %s
+WHERE p.user_id = ? AND %s %s
 GROUP BY r.id %s
-ORDER BY %s LIMIT ? OFFSET ?`, where, having, order)
+ORDER BY %s LIMIT ? OFFSET ?`, available, where, having, order)
 	rows, err := l.db.QueryContext(ctx, q, append(append([]any{user}, args...), limit, offset)...)
 	if err != nil {
 		return nil, err
@@ -243,12 +245,16 @@ func likePattern(q string) string {
 
 // ---------------------------------------------------------------- playlists
 
+// entryAvailable is available for a playlist entry: a missing Track keeps
+// its place in the playlist but isn't counted or offered.
+const entryAvailable = "EXISTS (SELECT 1 FROM objects ox WHERE ox.track_id = e.track_id AND ox.missing = 0)"
+
 func (l library) playlists(ctx context.Context, user int64, id int64) ([]Playlist, error) {
 	q := `
 SELECT pl.id, pl.name, u.name, pl.created_at, pl.updated_at,
-       (SELECT COUNT(*) FROM playlist_entries e WHERE e.playlist_id = pl.id),
+       (SELECT COUNT(*) FROM playlist_entries e WHERE e.playlist_id = pl.id AND ` + entryAvailable + `),
        COALESCE((SELECT SUM((SELECT MAX(o.duration_sec) FROM objects o WHERE o.track_id = e.track_id))
-                 FROM playlist_entries e WHERE e.playlist_id = pl.id), 0)
+                 FROM playlist_entries e WHERE e.playlist_id = pl.id AND ` + entryAvailable + `), 0)
 FROM playlists pl JOIN users u ON u.id = pl.owner_id
 WHERE pl.owner_id = ? AND (? = 0 OR pl.id = ?)
 ORDER BY pl.name`

@@ -8,6 +8,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -235,6 +236,40 @@ func TestReviewAndRevertInTheDashboard(t *testing.T) {
 	}
 	_, body = e.post(t, "/corrections/1/revert", nil)
 	if !strings.Contains(body, "Reverted.") || strings.Count(body, ">Revert<") != 0 {
+		t.Fatal(body)
+	}
+}
+
+func TestMissingFilesPage(t *testing.T) {
+	e := setup(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	g := &ingest.Ingester{DB: e.db, DataDir: e.dir, ReviewThreshold: 0.8, Log: log,
+		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}}
+	e.dash.Ingester = g
+	store := filepath.Join(e.dir, "s")
+	e.post(t, "/setup", e.setupForm(store, filepath.Join(e.dir, "i")))
+	drop := t.TempDir()
+	var gone ingest.Outcome
+	for _, title := range []string{"Tides", "Hollow"} {
+		out, err := g.Ingest(context.Background(), ingest.Request{Path: testutil.MP3{Title: title, Artist: "Skeler", Body: title}.
+			Write(t, filepath.Join(drop, title+".mp3")), Source: "inbox"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		gone = out
+	}
+	if _, body := e.get(t, "/missing"); !strings.Contains(body, "Nothing is missing") {
+		t.Fatal(body)
+	}
+	os.Remove(filepath.Join(store, gone.RelPath))
+	if _, body := e.post(t, "/missing/check", nil); !strings.Contains(body, "Checked: 1 missing.") || !strings.Contains(body, "Hollow") {
+		t.Fatal(body)
+	}
+	if _, body := e.get(t, "/"); !strings.Contains(body, `<a href="/missing">1</a>`) {
+		t.Fatal("status should link to the missing files")
+	}
+	_, body := e.post(t, "/missing/forget", nil)
+	if !strings.Contains(body, "Forgot 1 file.") || !strings.Contains(body, "Nothing is missing") {
 		t.Fatal(body)
 	}
 }

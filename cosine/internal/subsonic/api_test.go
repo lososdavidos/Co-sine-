@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -286,3 +287,47 @@ func TestXMLFormat(t *testing.T) {
 }
 
 func itoa(n int64) string { return strings.TrimPrefix(trackID(n), "tr-") }
+
+func TestDeletedFilesLeaveTheLibraryAndReturn(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	keep := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Album: "Tides EP", Track: "1", Body: "keep"}, e.alice.ID)
+	gone := e.add(t, testutil.MP3{Title: "Hollow", Artist: "Deadcrow", Album: "Hollow", Track: "1", Body: "gone"}, e.alice.ID)
+	e.db.Exec("INSERT INTO playlists(id, owner_id, name, created_at, updated_at) VALUES(1, ?, 'Mix', 0, 0)", e.alice.ID)
+	e.db.Exec("INSERT INTO playlist_entries(playlist_id, position, track_id) VALUES(1, 0, ?), (1, 1, ?)", gone.TrackID, keep.TrackID)
+
+	songs := func() (artists, albums, random, inPlaylist, playlistCount int) {
+		idx := ok(t, e.get(t, "alice", "sesame", "getArtists", nil))["artists"].(map[string]any)["index"].([]any)
+		for _, i := range idx {
+			artists += len(i.(map[string]any)["artist"].([]any))
+		}
+		albums = len(ok(t, e.get(t, "alice", "sesame", "getAlbumList2", url.Values{"type": {"alphabeticalByName"}}))["albumList2"].(map[string]any)["album"].([]any))
+		random = len(ok(t, e.get(t, "alice", "sesame", "getRandomSongs", nil))["randomSongs"].(map[string]any)["song"].([]any))
+		pl := ok(t, e.get(t, "alice", "sesame", "getPlaylist", url.Values{"id": {"pl-1"}}))["playlist"].(map[string]any)
+		inPlaylist = len(pl["entry"].([]any))
+		playlistCount = int(pl["songCount"].(float64))
+		return
+	}
+	if a, al, r, p, c := songs(); a != 2 || al != 2 || r != 2 || p != 2 || c != 2 {
+		t.Fatal("before:", a, al, r, p, c)
+	}
+
+	root, _ := e.db.Setting(ctx, db.SettingStorePath)
+	moved := filepath.Join(t.TempDir(), "hollow.mp3")
+	os.Rename(filepath.Join(root, gone.RelPath), moved)
+	// Playing it notices at once, without waiting for the next check.
+	res, _ := http.Get(e.url("alice", "sesame", "stream", url.Values{"id": {"tr-" + strconv.FormatInt(gone.TrackID, 10)}}))
+	res.Body.Close()
+	if a, al, r, p, c := songs(); a != 1 || al != 1 || r != 1 || p != 1 || c != 1 {
+		t.Fatal("after deleting:", a, al, r, p, c)
+	}
+
+	// Put back, it returns at the next check, playlist place and all.
+	os.Rename(moved, filepath.Join(root, gone.RelPath))
+	if n, _ := e.g.Verify(ctx); n != 0 {
+		t.Fatal("still missing")
+	}
+	if a, al, r, p, c := songs(); a != 2 || al != 2 || r != 2 || p != 2 || c != 2 {
+		t.Fatal("after putting back:", a, al, r, p, c)
+	}
+}

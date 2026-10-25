@@ -84,6 +84,11 @@ const (
 	SettingDiscogsToken  = "discogs_token" // optional: raises Discogs's limit from 25 to 60 a minute
 )
 
+// Available is true for the Track aliased t when at least one of its files
+// is in the Store. Only those are offered (§2.2); one whose files are all
+// missing, or were forgotten, comes back with its history when a file does.
+const Available = "EXISTS (SELECT 1 FROM objects ox WHERE ox.track_id = t.id AND ox.missing = 0)"
+
 func (d *DB) Setting(ctx context.Context, key string) (string, error) {
 	var v string
 	err := d.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = ?", key).Scan(&v)

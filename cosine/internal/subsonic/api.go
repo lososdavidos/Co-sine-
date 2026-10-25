@@ -416,6 +416,11 @@ func serveFile(r *request) (*Response, error) {
 	}
 	f, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
 	if isMissing || errors.Is(err, os.ErrNotExist) {
+		if !isMissing {
+			// Deleted since the last check: mark it now, so it leaves the
+			// library at once rather than at the next check (§2.2).
+			r.api.DB.ExecContext(r.ctx(), "UPDATE objects SET missing = 1 WHERE rel_path = ?", rel)
+		}
 		return nil, apiError{ErrNotFound, "File missing from the Store."}
 	}
 	if err != nil {
