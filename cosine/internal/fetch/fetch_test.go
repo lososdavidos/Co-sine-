@@ -175,6 +175,40 @@ func TestKnownURLIsRefusedThenForced(t *testing.T) {
 	}
 }
 
+func TestDeletedFileIsNotInTheLibrary(t *testing.T) {
+	url := "https://www.youtube.com/watch?v=bad"
+	e := setup(t, map[string]any{url: track(url, "333", "Halsey - Bad at Love", "Halsey", "bad-at-love", nil)})
+	ctx := context.Background()
+	first, _ := e.f.Submit(ctx, e.alice, []string{url}, false)
+	e.wait(t, first[0].ID, StatusDone)
+	if l, err := e.f.Lookup(ctx, e.alice, url); err != nil || !l.Items[0].InLibrary {
+		t.Fatal(l, err)
+	}
+
+	// Deleted from the Store by hand; Cosine hasn't run its check yet.
+	var root, rel string
+	e.db.QueryRow("SELECT value FROM settings WHERE key = ?", db.SettingStorePath).Scan(&root)
+	e.db.QueryRow("SELECT rel_path FROM objects").Scan(&rel)
+	if err := os.Remove(filepath.Join(root, rel)); err != nil {
+		t.Fatal(err)
+	}
+	if l, err := e.f.Lookup(ctx, e.alice, url); err != nil || l.Items[0].InLibrary {
+		t.Fatal("a deleted file still shows as in the library", l, err)
+	}
+
+	// Adding it again downloads it and puts it back.
+	again, _ := e.f.Submit(ctx, e.alice, []string{url}, false)
+	if j := e.wait(t, again[0].ID, StatusDone, StatusKnown, StatusDuplicate, StatusFailed); j.Status != StatusDone || e.downloads() != 2 {
+		t.Fatalf("%+v, downloads %d", j, e.downloads())
+	}
+	if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+		t.Fatal("not put back:", err)
+	}
+	if l, _ := e.f.Lookup(ctx, e.alice, url); !l.Items[0].InLibrary {
+		t.Fatal("back in the Store but not in the library")
+	}
+}
+
 func TestCollectionQueuesEverything(t *testing.T) {
 	set := "https://soundcloud.com/skeler/sets/tides"
 	a, b := "https://soundcloud.com/skeler/one", "https://soundcloud.com/skeler/two"

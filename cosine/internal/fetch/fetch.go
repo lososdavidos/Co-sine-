@@ -360,16 +360,31 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 	return nil
 }
 
-// known reports whether a source URL is already in the Store, and whether
-// the user already has it.
+// known reports whether a source URL's file is in the Store, and whether
+// the user already has it. A file deleted from the Store doesn't count,
+// whether or not Cosine has noticed yet: fetching it again puts it back.
 func (f *Fetcher) known(ctx context.Context, userID int64, link string) (track int64, has bool, err error) {
-	err = f.DB.QueryRowContext(ctx, `
-		SELECT o.track_id, EXISTS(SELECT 1 FROM pointers p WHERE p.user_id = ? AND p.track_id = o.track_id)
-		FROM objects o WHERE o.source_url = ? LIMIT 1`, userID, link).Scan(&track, &has)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, false, nil
+	root, err := f.DB.Setting(ctx, db.SettingStorePath)
+	if err != nil {
+		return 0, false, err
 	}
-	return
+	rows, err := f.DB.QueryContext(ctx, `
+		SELECT o.track_id, o.rel_path, EXISTS(SELECT 1 FROM pointers p WHERE p.user_id = ? AND p.track_id = o.track_id)
+		FROM objects o WHERE o.source_url = ? AND o.missing = 0`, userID, link)
+	if err != nil {
+		return 0, false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rel string
+		if err := rows.Scan(&track, &rel, &has); err != nil {
+			return 0, false, err
+		}
+		if root != "" && store.Present(root, rel) {
+			return track, has, nil
+		}
+	}
+	return 0, false, rows.Err()
 }
 
 // InLibrary marks which links a user already has, for the Add picker.

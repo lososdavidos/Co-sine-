@@ -163,6 +163,10 @@ records for good while the Track's history waits, out of sight, for the same
 song to be added again. Forgetting is refused when every file is missing:
 that is an unmounted disk, not deleted music.
 
+A deleted file is not "already in your library", whether or not the check has
+run yet: Add offers it again, and fetching or dropping in the same file puts it
+back where it was instead of discarding it as a duplicate.
+
 Revised from "greys out rather than disappearing": a deliberate deletion should
 look like one in the apps, and an unplugged disk is recovered by plugging it
 back in, not by keeping dead rows on screen.
@@ -1687,7 +1691,7 @@ decided.
 
 | # | Question | Proposal |
 |---|---|---|
-| Q12 | Same URL fetched twice | Cosine records the source URL of every Object. A second fetch of a known URL is refused with "you already have this", unless you explicitly ask for another version. Stops accidental duplicates without blocking deliberate ones. |
+| Q12 | Same URL fetched twice | Cosine records the source URL of every Object. A second fetch of a known URL is refused with "you already have this", unless you explicitly ask for another version, or its file has been deleted from the Store. Stops accidental duplicates without blocking deliberate ones. |
 | Q13 | Ingest queue visible from the phone? | Yes — queue, progress, failure reason and retry, in Sine. G4 says ingest has visible state; a queue you can only see over SSH fails that. |
 | Q15 | Rate limiting | One or two concurrent ingest workers, MusicBrainz held to its documented 1 req/sec, and every lookup cached locally forever. Cheap, and it keeps you off the wrong end of an API ban. |
 | Q73 | Source-API search with no key | Silent fallback to yt-dlp search, with a note in the dashboard saying which backend is actually running. Search should degrade, never fail. |

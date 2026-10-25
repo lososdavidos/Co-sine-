@@ -295,3 +295,43 @@ func TestForgetMissingKeepsHistoryForAComeback(t *testing.T) {
 		t.Fatal("every file missing must not be forgotten:", err)
 	}
 }
+
+func TestAddingADeletedFileAgainPutsItBack(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	src := testutil.MP3{Title: "Hollow", Artist: "Deadcrow", Body: "hollow"}
+	first, err := f.g.Ingest(ctx, Request{Path: src.Write(t, filepath.Join(f.drop, "a.mp3")), Source: "inbox"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(f.root, first.RelPath)
+
+	// Deleted by hand, before Cosine noticed, and after (Verify ran).
+	for _, verified := range []bool{false, true} {
+		os.Remove(path)
+		if verified {
+			if n, _ := f.g.Verify(ctx); n != 1 {
+				t.Fatal("not noticed")
+			}
+		}
+		again, err := f.g.Ingest(ctx, Request{Path: src.Write(t, filepath.Join(f.drop, "b.mp3")), Source: "url", Explicit: true, ForUsers: f.users[:1]})
+		if err != nil || again.Duplicate || again.TrackID != first.TrackID || again.RelPath != first.RelPath {
+			t.Fatalf("verified %v: %+v %v", verified, again, err)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("verified %v: the file wasn't put back: %v", verified, err)
+		}
+		if count(t, f.db, "SELECT COUNT(*) FROM objects WHERE missing = 0") != 1 {
+			t.Fatalf("verified %v: still marked missing, or a second Object", verified)
+		}
+	}
+
+	// With the file in place, the same bytes are a duplicate as before.
+	dup, err := f.g.Ingest(ctx, Request{Path: src.Write(t, filepath.Join(f.drop, "c.mp3")), Source: "inbox"})
+	if err != nil || !dup.Duplicate {
+		t.Fatal(dup, err)
+	}
+	if _, err := os.Stat(filepath.Join(f.drop, "c.mp3")); !os.IsNotExist(err) {
+		t.Fatal("the duplicate copy was kept")
+	}
+}

@@ -115,8 +115,17 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 
 	// Dedup is free: a known hash creates Pointers, never a second Object (§2.2).
 	var existingTrack int64
-	err = g.DB.QueryRowContext(ctx, "SELECT track_id FROM objects WHERE hash = ?", hash).Scan(&existingTrack)
+	var existingRel string
+	err = g.DB.QueryRowContext(ctx, "SELECT track_id, rel_path FROM objects WHERE hash = ?", hash).Scan(&existingTrack, &existingRel)
 	if err == nil {
+		// Unless its file was deleted from the Store: then this copy puts
+		// it back, which is how deleted music is added again.
+		restored := !store.Present(root, existingRel)
+		if restored {
+			if err := g.restore(ctx, root, hash, existingRel, existingTrack, req.Path); err != nil {
+				return Outcome{}, err
+			}
+		}
 		if req.Explicit {
 			if err := g.Undismiss(ctx, existingTrack, req.ForUsers); err != nil {
 				return Outcome{}, err
@@ -124,6 +133,9 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 		}
 		if err := g.GrantPointers(ctx, existingTrack, req.ForUsers); err != nil {
 			return Outcome{}, err
+		}
+		if restored {
+			return Outcome{TrackID: existingTrack, Hash: hash, RelPath: filepath.FromSlash(existingRel)}, nil
 		}
 		os.Remove(req.Path)
 		return Outcome{TrackID: existingTrack, Hash: hash, Duplicate: true}, nil
@@ -215,6 +227,18 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 	g.offerArtwork(ctx, id.release, res,
 		embedded, Art{Source: ArtSource, Ext: req.ArtworkExt, Data: req.Artwork})
 	return Outcome{TrackID: trackID, Hash: hash, RelPath: rel}, nil
+}
+
+// restore puts a deleted Object's file back where it was.
+func (g *Ingester) restore(ctx context.Context, root, hash, rel string, track int64, src string) error {
+	if err := store.Place(root, filepath.FromSlash(rel), src, hash); err != nil {
+		return err
+	}
+	// If this fails the file is still in place, and Verify finds it there.
+	if _, err := g.DB.ExecContext(ctx, "UPDATE objects SET missing = 0 WHERE hash = ?", hash); err != nil {
+		return err
+	}
+	return db.LogChange(ctx, g.DB, 0, "track", strconv.FormatInt(track, 10), "upsert") // back in every library it is in
 }
 
 type identityIDs struct {
