@@ -27,6 +27,19 @@ data class PlayerState(
     val shuffle: Boolean = false,
 )
 
+/**
+ * What played last, for Home's Now playing tile when nothing is (§6.4):
+ * whose song it was, and how far it got, to pick up from there.
+ */
+data class LastPlayed(
+    val account: String,
+    val trackId: String,
+    val title: String,
+    val artist: String,
+    val art: String?,
+    val positionMs: Long,
+)
+
 /** The UI's handle on [PlaybackService], through a MediaController. */
 class PlayerConnection(private val context: Context) {
     private var future: ListenableFuture<MediaController>? = null
@@ -35,6 +48,12 @@ class PlayerConnection(private val context: Context) {
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
+
+    private val prefs = context.getSharedPreferences("player", Context.MODE_PRIVATE)
+    /** The account whose songs are playing: the last one to start something. */
+    private var playingFor: String? = prefs.getString("account", null)
+    private val _last = MutableStateFlow(readLast())
+    val last: StateFlow<LastPlayed?> = _last.asStateFlow()
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = refresh()
@@ -74,14 +93,16 @@ class PlayerConnection(private val context: Context) {
      * Plays [tracks] from [startIndex]. Tracks that cannot play right now (offline
      * and not downloaded) are left out of the queue rather than failing mid-way.
      */
-    fun play(session: AccountSession, tracks: List<Track>, startIndex: Int = 0, shuffle: Boolean = false) {
+    fun play(session: AccountSession, tracks: List<Track>, startIndex: Int = 0, shuffle: Boolean = false, startMs: Long = 0) {
         val start = tracks.getOrNull(startIndex)
         val items = tracks.mapNotNull { t -> mediaItem(session, t)?.let { t to it } }
         if (items.isEmpty()) return
         val index = items.indexOfFirst { it.first == start }.coerceAtLeast(0)
+        playingFor = session.account.id
+        prefs.edit().putString("account", session.account.id).apply()
         withController { c ->
             c.shuffleModeEnabled = shuffle
-            c.setMediaItems(items.map { it.second }, if (shuffle) C.INDEX_UNSET else index, 0)
+            c.setMediaItems(items.map { it.second }, if (shuffle) C.INDEX_UNSET else index, startMs)
             c.prepare()
             c.play()
         }
@@ -104,6 +125,35 @@ class PlayerConnection(private val context: Context) {
             queue = (0 until c.mediaItemCount).map { c.getMediaItemAt(it) },
             index = c.currentMediaItemIndex,
             shuffle = c.shuffleModeEnabled,
+        )
+        val item = c.currentMediaItem ?: return
+        val account = playingFor ?: return
+        // Every change of state is a moment to remember where it got to: a pause most of all.
+        remember(LastPlayed(
+            account, item.mediaId, item.mediaMetadata.title?.toString().orEmpty(),
+            item.mediaMetadata.artist?.toString().orEmpty(), item.mediaMetadata.artworkUri?.toString(), c.currentPosition,
+        ))
+    }
+
+    private fun remember(last: LastPlayed) {
+        if (_last.value == last) return
+        _last.value = last
+        prefs.edit()
+            .putString("last.account", last.account)
+            .putString("last.track", last.trackId)
+            .putString("last.title", last.title)
+            .putString("last.artist", last.artist)
+            .putString("last.art", last.art)
+            .putLong("last.position", last.positionMs)
+            .apply()
+    }
+
+    private fun readLast(): LastPlayed? {
+        val account = prefs.getString("last.account", null) ?: return null
+        val track = prefs.getString("last.track", null) ?: return null
+        return LastPlayed(
+            account, track, prefs.getString("last.title", "").orEmpty(), prefs.getString("last.artist", "").orEmpty(),
+            prefs.getString("last.art", null), prefs.getLong("last.position", 0),
         )
     }
 

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.sine.core.cosine.CosineException
 import app.sine.core.download.PinnedBudget
+import app.sine.core.home.TileKind
 import app.sine.core.model.ArtistEntry
 import app.sine.core.model.ArtistPage
 import app.sine.core.model.DownloadNode
@@ -106,6 +107,7 @@ fun ArtistScreen(session: AccountSession, id: String, nav: Pages) {
                     title = detail.artist.name,
                     round = true,
                     meta = listOf(detail.artist.subtitle()),
+                    quiet = { PinToHome(session, TileKind.ARTIST, detail.artist.id, detail.artist.name) },
                 ) {
                     if (!fromDownloads) Pill(
                         "Download all",
@@ -172,6 +174,7 @@ fun AlbumScreen(session: AccountSession, id: String, nav: Pages) {
             meta = listOfNotNull(detail.album.year?.toString()),
             removable = true,
             onByline = detail.album.artistId?.let { artistId -> { nav.navigate(Routes.artist(artistId)) } },
+            quietActions = { PinToHome(session, TileKind.ALBUM, detail.album.id, detail.album.name) },
         )
     }
 }
@@ -378,7 +381,11 @@ internal fun DetailHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 content = actions,
             )
-            Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), content = quiet)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                content = quiet,
+            )
         }
     }
 }

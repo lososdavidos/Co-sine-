@@ -216,6 +216,18 @@ class AccountSession(
         return n
     }
 
+    /** Every song in the library, when the mirror has them; null means only the server knows. */
+    fun libraryTracks(): List<Track>? = library()?.tracks()
+
+    /** The account's smart playlists as the mirror has them; none in compat mode. */
+    fun mirroredSmart(): List<SmartPlaylist> = library()?.smartPlaylists().orEmpty()
+
+    /** One song: from the mirror, else the server's. */
+    suspend fun track(id: String): Sourced<Track> = library()?.track(id)?.let { Sourced(it, false) } ?: fetch(
+        offline = { lib -> lib.all().firstOrNull { it.id == id } ?: throw NotAvailableOffline() },
+        remote = { it.track(id) },
+    )
+
     /** Searches the mirror, or null when there is none and the server must be asked. */
     fun searchMirror(query: String) = library()?.search(query)
 

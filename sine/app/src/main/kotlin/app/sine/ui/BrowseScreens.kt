@@ -39,7 +39,6 @@ import app.sine.core.model.Artist
 import app.sine.core.model.SearchHit
 import app.sine.core.model.SearchRanking
 import app.sine.core.server.Capability
-import app.sine.core.subsonic.AlbumListType
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.data.Sourced
@@ -65,49 +64,6 @@ fun SectionHeader(text: String) = SectionLabel(text)
 fun playingId(): String? = LocalContext.current.graph.player.state.collectAsStateWithLifecycle().value.current?.mediaId
 
 // ---------------------------------------------------------------- Home
-
-/**
- * Placeholder for the tile canvas (§6.4), which isn't built yet. For now:
- * the user's own history in plain lists — nothing here suggests music from
- * outside the library (NG3).
- */
-@Composable
-fun HomeScreen(session: AccountSession, nav: Pages) {
-    val player = LocalContext.current.graph.player
-    val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
-    val load = rememberLoad(session) {
-        session.fetch(
-            offline = { lib -> listOf("Downloaded" to lib.albums()) },
-            remote = { c ->
-                listOf(
-                    "Recently added" to c.albums(AlbumListType.NEWEST, 12),
-                    "Recently played" to c.albums(AlbumListType.RECENT, 12),
-                    "Most played" to c.albums(AlbumListType.FREQUENT, 12),
-                )
-            },
-        )
-    }
-    Column(Modifier.fillMaxSize()) {
-        TitleBar("Home")
-        LoadContent(load) { sections, _ ->
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
-                if (downloads.isNotEmpty()) item {
-                    Pill(
-                        "Shuffle downloads", { player.play(session, session.offline().all(), shuffle = true) },
-                        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                        icon = PhaseIcons.Shuffle, count = downloads.size.toString(),
-                    )
-                }
-                for ((title, albums) in sections) {
-                    if (albums.isEmpty()) continue
-                    item(key = "h:$title") { SectionHeader(title) }
-                    items(albums, key = { "$title:${it.id}" }) { album -> AlbumRow(session, album, nav) }
-                }
-                if (sections.all { it.second.isEmpty() }) item { Message(Voice.NO_DOWNLOADS) }
-            }
-        }
-    }
-}
 
 @Composable
 fun AlbumRow(session: AccountSession, album: Album, nav: Pages) {

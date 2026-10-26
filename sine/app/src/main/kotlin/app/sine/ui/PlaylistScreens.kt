@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.sine.core.cosine.CosineException
 import app.sine.core.cosine.SmartPlaylist
+import app.sine.core.home.TileKind
 import app.sine.core.model.DownloadNode
 import app.sine.core.model.Playlist
 import app.sine.core.model.PlaylistEdits
@@ -71,8 +72,8 @@ import app.sine.ui.phase.PillKind
 import app.sine.ui.phase.SectionLabel
 import app.sine.ui.phase.Signal
 import app.sine.ui.phase.Slab
+import app.sine.ui.phase.StatusLine
 import app.sine.ui.phase.Tag
-import app.sine.ui.phase.rowSurface
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -277,6 +278,7 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: Pages) {
             } else null,
             onMove = order?.let { current -> { from, to -> order = PlaylistEdits.moved(current, from, to) } },
             quietActions = {
+                if (order == null) PinToHome(session, TileKind.PLAYLIST, p.id, p.name)
                 when {
                     order != null -> Unit
                     editable -> {
@@ -347,6 +349,8 @@ internal fun FormPage(
     onAction: () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // A form has the screen to itself, shelf and all, so what Sine says goes here instead.
+    val message by Messages.current.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))) {
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -357,6 +361,7 @@ internal fun FormPage(
             content()
             Spacer(Modifier.height(8.dp))
         }
+        message?.let { m -> StatusLine(m.text, Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp), signal = m.signal) }
         if (action != null) {
             Pill(action, onAction, Modifier.fillMaxWidth().padding(16.dp), kind = PillKind.Primary, enabled = enabled, height = 52.dp)
         }

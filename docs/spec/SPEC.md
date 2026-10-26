@@ -1313,7 +1313,8 @@ never decorative.
 #### 6.4.4 Editing
 
 `RESOLVED` **Long-press selects a tile and the shelf swaps to tile actions** —
-Resize, Unpin, Move — with drag available while selected. Identical to the
+Resize, Unpin, Move (one place earlier or later) — with drag available while
+selected. Identical to the
 gesture used everywhere else in the app; nothing new to learn, and no separate
 "jiggle mode" with its own rules.
 
@@ -1323,6 +1324,23 @@ gesture used everywhere else in the app; nothing new to learn, and no separate
 state.** The Jam tile offers to start one; Now Playing shows what you played
 last; Review queue shows zero. The layout is the user's, and it must never
 reflow underneath them because a background process finished.
+
+`NOTE` Built: the canvas, in four columns, each tile placed in order in the
+first spot from the top where it fits, squares on a multiple of their width.
+- **Tiles:** Now playing; Shuffle all; On this phone, which opens a list of
+  what's downloaded; Review queue; Adding, which shows what Cosine is fetching;
+  and any artist, album or playlist, smart ones included.
+- **Pinning:** Pin to Home sits in the header of an artist's, album's or
+  playlist's page. Add tile on Home lists the rest.
+- **Selected, the shelf offers:** Resize; Earlier and Later, which move the
+  tile one place, while dragging it moves it anywhere; Shuffle on tap or Open
+  on tap, for a pinned tile; and Unpin.
+- **Where the layout lives:** on the phone, and on Cosine with capability
+  `home-layout` (`GET` and `PUT /cosine/v1/home/{device}`, `phone` or
+  `desktop`). Cosine keeps it as sent, in its settings table, under a key that
+  carries when the account was made, so a later account under a reused id
+  starts afresh.
+- **Not yet:** the statistics tile, as Sine has no statistics screen yet.
 
 ### 6.5 The stacked-overlay problem
 
@@ -1774,8 +1792,17 @@ Two consequences accepted deliberately:
   don't slide, because they don't cover anything. The dashboard (§6.18) is a
   set of web pages and keeps ordinary page loads.
 
-`PLANNED` None of this section is built yet. As of 0.5.3, pages fade on the
-160ms move and the sheet on its old 220ms.
+`NOTE` Built: Sine keeps its own page stack, one per destination, in place
+of Navigation Compose.
+- **What the finger does:** a sideways drag anywhere on a page goes back;
+  on a destination's first page it goes along the bar instead. The player
+  row drags now playing up, and the sheet comes down from wherever its list
+  can't scroll further.
+- **Android's back gesture:** it runs the same slides, and from Android 14
+  they follow it.
+- **The snapshot:** Compose's own layer capture, drawn small and then large.
+  Where a device can't make one, the page beneath is dimmed only.
+- **The wave:** any drag that starts on it seeks.
 
 ### 6.17 Voice
 

@@ -390,8 +390,10 @@ fun PageHost(pages: Pages, shelf: @Composable BoxScope.() -> Unit, content: @Com
     LaunchedEffect(m) {
         blur = null
         if (m == null) return@LaunchedEffect
-        withFrameNanos {}
-        withFrameNanos {}
+        // Once the page beneath has been drawn into the layer at least once.
+        var frames = 0
+        while (underLayer.size.width == 0 && frames++ < 10) withFrameNanos {}
+        if (underLayer.size.width == 0) return@LaunchedEffect
         blur = try {
             blurred(underLayer.toImageBitmap())
         } catch (e: CancellationException) {
@@ -429,6 +431,13 @@ fun PageHost(pages: Pages, shelf: @Composable BoxScope.() -> Unit, content: @Com
                 Modifier
                     .fillMaxSize()
                     .zIndex(if (over) 2f else 0f)
+                    // The finger is read before the page moves: a page sliding
+                    // under it mustn't take back what it moved.
+                    .draggable(
+                        sideways, Orientation.Horizontal,
+                        enabled = !page.isSheet && pages.swipes && (m == null || m.dragging),
+                        onDragStopped = { pages.release(it) },
+                    )
                     .graphicsLayer {
                         if (over && m != null) {
                             if (m.vertical) translationY = m.progress * size.height else translationX = m.progress * size.width
@@ -440,12 +449,7 @@ fun PageHost(pages: Pages, shelf: @Composable BoxScope.() -> Unit, content: @Com
                             drawLayer(underLayer)
                         } else drawContent()
                     }
-                    .nestedScroll(sheetScroll.takeIf { page.isSheet } ?: NoScroll)
-                    .draggable(
-                        sideways, Orientation.Horizontal,
-                        enabled = !page.isSheet && pages.swipes && (m == null || m.dragging),
-                        onDragStopped = { pages.release(it) },
-                    ),
+                    .nestedScroll(sheetScroll.takeIf { page.isSheet } ?: NoScroll),
             ) {
                 holder.SaveableStateProvider(page.id) { content(page) }
             }

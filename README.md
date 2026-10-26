@@ -37,7 +37,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Identifying music:** Cosine cleans uploader noise out of titles ("[HD Upgrade]", "(Official Video)", "PREMIERE:"), then looks everything up in MusicBrainz, Discogs and Bandcamp, in that order, and files it under the first confident match's artist and release, with that catalogue's cover. Anything none of them is sure of goes to the review queue (Sine: Library → Review; also in the dashboard). There you pick a match or type the details yourself. Every correction is logged and can be reverted.
 
-**Listening statistics:** Cosine's dashboard has a Listening page with top artists, albums and tracks, listening over time and a year by year view, for everyone or one account. The same data is in the native API, ready for Sine's statistics screen and Home tiles, which aren't built yet.
+**Listening statistics:** Cosine's dashboard has a Listening page with top artists, albums and tracks, listening over time and a year by year view, for everyone or one account. The same data is in the native API, ready for Sine's statistics screen, which isn't built yet.
 
 **Playlists:** make them in Sine (Library → Playlists → New playlist), add songs from any selection on a release, artist or playlist page ("Add to playlist"), and reorder, take songs out of, rename or delete them from the playlist's page. Any other Subsonic app can edit them too. On a Cosine account they're part of the phone's copy of the library: they open, play and download with no connection, and changes made offline show at once and reach Cosine when you're back. Cosine replays what you did (added this, moved that) rather than overwriting the list, so changes made on another device meanwhile stay. A playlist with changes Cosine doesn't have yet says how many on its page.
 
@@ -57,9 +57,11 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Scrobbling:** Cosine sends your plays to Last.fm or ListenBrainz, whichever app played them, including plays made offline, with the time you played them. Connect in Sine (Settings → Scrobbling): ListenBrainz takes your user token; Last.fm needs an API key in Cosine's dashboard once (Settings → Scrobbling), then you approve Cosine on Last.fm.
 
+**Home:** a canvas of tiles you arrange, in four columns: Now playing (or what played last, to pick up from there), Shuffle all, what's on the phone, the review queue, what Cosine is adding, your smart playlists, and any artist, album or playlist you pin from its page (Pin to Home). Long-press a tile to resize it, move it (or drag it), make it shuffle instead of open, or unpin it; Add tile (the + on Home) brings back the rest. Covers take turns on a tile and counts roll over as they change. The arrangement is kept on the phone and, on a Cosine account, on the server too, so it comes back on a new phone; the phone's and the desktop's are kept apart.
+
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, the Home tile canvas, the sliding gestures and the statistics screen in Sine, remote control, Jam, and the desktop client.
+**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, the statistics screen in Sine, remote control, Jam, and the desktop client.
 
 ## Design
 
