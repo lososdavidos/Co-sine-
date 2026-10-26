@@ -249,16 +249,21 @@ func likePattern(q string) string {
 
 // ---------------------------------------------------------------- playlists
 
-// entryAvailable is available for a playlist entry: a missing Track keeps
-// its place in the playlist but isn't counted or offered.
-const entryAvailable = "EXISTS (SELECT 1 FROM objects ox WHERE ox.track_id = e.track_id AND ox.missing = 0)"
+// entryShown: an entry is shown when its Track is in the owner's Library
+// with a file. One that isn't keeps its place in the playlist but isn't
+// counted or offered (§4.1).
+const entryShown = `EXISTS (SELECT 1 FROM objects ox WHERE ox.track_id = e.track_id AND ox.missing = 0)
+	AND EXISTS (SELECT 1 FROM pointers px WHERE px.user_id = pl.owner_id AND px.track_id = e.track_id)`
 
 func (l library) playlists(ctx context.Context, user int64, id int64) ([]Playlist, error) {
 	q := `
 SELECT pl.id, pl.name, u.name, pl.created_at, pl.updated_at,
-       (SELECT COUNT(*) FROM playlist_entries e WHERE e.playlist_id = pl.id AND ` + entryAvailable + `),
+       (SELECT COUNT(*) FROM playlist_entries e WHERE e.playlist_id = pl.id AND ` + entryShown + `),
        COALESCE((SELECT SUM((SELECT MAX(o.duration_sec) FROM objects o WHERE o.track_id = e.track_id))
-                 FROM playlist_entries e WHERE e.playlist_id = pl.id AND ` + entryAvailable + `), 0)
+                 FROM playlist_entries e WHERE e.playlist_id = pl.id AND ` + entryShown + `), 0),
+       COALESCE((SELECT r.id FROM playlist_entries e JOIN tracks t ON t.id = e.track_id JOIN releases r ON r.id = t.release_id
+                 WHERE e.playlist_id = pl.id AND r.art_path IS NOT NULL AND ` + entryShown + `
+                 ORDER BY e.position LIMIT 1), 0)
 FROM playlists pl JOIN users u ON u.id = pl.owner_id
 WHERE pl.owner_id = ? AND (? = 0 OR pl.id = ?)
 ORDER BY pl.name`
@@ -270,23 +275,55 @@ ORDER BY pl.name`
 	var out []Playlist
 	for rows.Next() {
 		var (
-			p                 Playlist
-			pid, created, upd int64
+			p                      Playlist
+			pid, created, upd, art int64
 		)
-		if err := rows.Scan(&pid, &p.Name, &p.Owner, &created, &upd, &p.SongCount, &p.Duration); err != nil {
+		if err := rows.Scan(&pid, &p.Name, &p.Owner, &created, &upd, &p.SongCount, &p.Duration, &art); err != nil {
 			return nil, err
 		}
 		p.ID, p.Created, p.Changed = playlistID(pid), iso(created), iso(upd)
+		if art != 0 {
+			p.CoverArt = albumID(art)
+		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
 }
 
 func (l library) playlistEntries(ctx context.Context, user, id int64) ([]Child, error) {
-	// Entries are listed in playlist order; songSelect's pointer scope means an
-	// entry for a Track this account dismissed shows as a gap (§4.1), not an error.
-	q := songSelect + ` AND t.id IN (SELECT track_id FROM playlist_entries WHERE playlist_id = ?)`
-	rows, err := l.db.QueryContext(ctx, q, user, id)
+	rows, err := l.db.QueryContext(ctx, "SELECT track_id FROM playlist_entries WHERE playlist_id = ? ORDER BY position", id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var tid int64
+		if err := rows.Scan(&tid); err != nil {
+			return nil, err
+		}
+		ids = append(ids, tid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return l.songsInOrder(ctx, user, ids)
+}
+
+// songsInOrder describes Tracks in the order given, repeats included.
+// songSelect's pointer scope means a Track this account doesn't have, or
+// whose file is missing, is left out: a gap, not an error (§4.1).
+func (l library) songsInOrder(ctx context.Context, user int64, ids []int64) ([]Child, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, user)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	q := songSelect + ` AND t.id IN (` + strings.TrimSuffix(strings.Repeat("?, ", len(ids)), ", ") + `)`
+	rows, err := l.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -298,22 +335,13 @@ func (l library) playlistEntries(ctx context.Context, user, id int64) ([]Child, 
 	for _, s := range songs {
 		byID[s.ID] = s
 	}
-	order, err := l.db.QueryContext(ctx, "SELECT track_id FROM playlist_entries WHERE playlist_id = ? ORDER BY position", id)
-	if err != nil {
-		return nil, err
-	}
-	defer order.Close()
 	var out []Child
-	for order.Next() {
-		var tid int64
-		if err := order.Scan(&tid); err != nil {
-			return nil, err
-		}
-		if s, ok := byID[trackID(tid)]; ok {
+	for _, id := range ids {
+		if s, ok := byID[trackID(id)]; ok {
 			out = append(out, s)
 		}
 	}
-	return out, order.Err()
+	return out, nil
 }
 
 // ---------------------------------------------------------------- files

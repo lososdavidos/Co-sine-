@@ -18,10 +18,11 @@ const (
 	ViewForgotten   = "forgotten"           // played before, not in the last N months
 	ViewNeverPlayed = "never-played"        // in the Library, never played, newest first
 	ViewLastYear    = "this-time-last-year" // played in the fortnight around this day a year ago
+	ViewAdded       = "added"               // added in the last N days, newest first
 )
 
 // Views lists the view names, for clients to discover.
-var Views = []string{ViewMostPlayed, ViewRecent, ViewForgotten, ViewNeverPlayed, ViewLastYear}
+var Views = []string{ViewMostPlayed, ViewRecent, ViewForgotten, ViewNeverPlayed, ViewLastYear, ViewAdded}
 
 var ErrView = errors.New("unknown view")
 
@@ -30,6 +31,7 @@ type ViewOptions struct {
 	Limit  int    // default 50, at most 500
 	Window Window // most-played only; default all time
 	Months int    // forgotten only; default 6
+	Days   int    // added only; default 30
 }
 
 // Track is one Track in a view, with the account's own history of it.
@@ -69,6 +71,13 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 		where, order = "plays > 0 AND last_played < "+strconv.FormatInt(cutoff, 10), "plays DESC, last_played"
 	case ViewNeverPlayed:
 		where, order = "plays = 0", "added DESC"
+	case ViewAdded:
+		days := opt.Days
+		if days <= 0 {
+			days = 30
+		}
+		cutoff := now.AddDate(0, 0, -days).UnixMilli()
+		where, order = "added >= "+strconv.FormatInt(cutoff, 10), "added DESC"
 	case ViewLastYear:
 		ago := now.AddDate(-1, 0, 0)
 		from, to = ago.AddDate(0, 0, -7).UnixMilli(), ago.AddDate(0, 0, 7).UnixMilli()

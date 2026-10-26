@@ -1,6 +1,7 @@
-// Package deezer is where artist pictures come from (§6.9). Deezer's public
-// API needs no key, knows most released artists, and its pictures are square
-// press photos, which suit a round avatar. Answers aren't cached: an artist
+// Package deezer is where artist pictures come from (§6.9), and the length
+// of a song as released (§3.1a). Deezer's public API needs no key, knows
+// most released music, and its pictures are square press photos, which
+// suit a round avatar. Answers aren't cached: an artist
 // without a picture is asked about again a month later, and may have one by
 // then.
 package deezer
@@ -89,6 +90,29 @@ func (c *Client) SearchArtists(ctx context.Context, name string) ([]Artist, erro
 		Data []Artist `json:"data"`
 	}
 	err := c.get(ctx, "/search/artist?"+url.Values{"q": {name}, "limit": {"10"}}.Encode(), &found)
+	return found.Data, err
+}
+
+// Track is a released track as Deezer lists it.
+type Track struct {
+	Title        string `json:"title"`
+	TitleShort   string `json:"title_short"`
+	TitleVersion string `json:"title_version"` // "(Stripped)", "(ILLENIUM Remix)"; empty for the song itself
+	DurationSec  int    `json:"duration"`
+	Artist       struct {
+		Name string `json:"name"`
+	} `json:"artist"`
+	Album struct {
+		Title string `json:"title"`
+	} `json:"album"`
+}
+
+// SearchTracks finds released tracks, Deezer's best guess first.
+func (c *Client) SearchTracks(ctx context.Context, query string, n int) ([]Track, error) {
+	var found struct {
+		Data []Track `json:"data"`
+	}
+	err := c.get(ctx, "/search/track?"+url.Values{"q": {query}, "limit": {strconv.Itoa(n)}}.Encode(), &found)
 	return found.Data, err
 }
 

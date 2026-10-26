@@ -33,6 +33,12 @@ type Result struct {
 	// ReleaseSec is the song's length as released, on the results that are
 	// that song, when a label's own upload of it was found (ByRelease).
 	ReleaseSec int `json:"releaseSec,omitempty"`
+	// Kind is "album" or "playlist" for a collection; empty for a song.
+	Kind string `json:"kind,omitempty"`
+	// Tracks is a collection's number of songs, when the source says.
+	Tracks int `json:"tracks,omitempty"`
+	// Asked: a collection that is what the search asked for.
+	Asked bool `json:"asked,omitempty"`
 }
 
 // Sources a result can come from, besides yt-dlp's extractor names.
@@ -60,6 +66,11 @@ type Service struct {
 	YtDlp Backend
 	// NewAPI builds the source-API backend from the stored keys; nil if none are set.
 	NewAPI func(soundCloudID, youTubeKey string) Backend
+	// Bandcamp searches Bandcamp's albums; nil: not searched.
+	Bandcamp func(ctx context.Context, query string, n int) ([]Result, error)
+	// Released finds the song a search asks for as released, for its
+	// length (ByRelease); nil: only YouTube Music's uploads are used.
+	Released func(ctx context.Context, query string) (Result, bool)
 
 	mu     sync.Mutex
 	status string

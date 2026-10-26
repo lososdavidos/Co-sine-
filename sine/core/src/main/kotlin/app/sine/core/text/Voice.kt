@@ -31,6 +31,22 @@ object Voice {
     fun removed(count: Int) =
         if (count == 1) "Removed 1 song from your library." else "Removed $count songs from your library."
 
+    /** Playlists (§2.4). */
+    const val SMART_PLAYLIST_RULE = "A rule picks this playlist's songs. Save it as a playlist to choose them yourself."
+
+    fun addedToPlaylist(count: Int, name: String) =
+        if (count == 1) "Added 1 song to $name." else "Added $count songs to $name."
+
+    fun removedFromPlaylist(count: Int) =
+        if (count == 1) "Took 1 song out of this playlist." else "Took $count songs out of this playlist."
+
+    fun deletePlaylistQuestion(name: String) = "Delete the playlist \"$name\"?"
+
+    const val DELETE_PLAYLIST_EXPLAINED = "Its songs stay in your library."
+
+    /** Adding an album or playlist from a source (§3.1a). */
+    const val PLAYLIST_FILED = "Each song is filed under its own artist and release, never under the playlist's name."
+
     fun downloadQueued(count: Int) =
         if (count == 1) "Downloading 1 track." else "Downloading $count tracks."
 

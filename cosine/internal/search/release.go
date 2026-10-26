@@ -1,25 +1,37 @@
 package search
 
 import (
+	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 )
 
 // ByRelease orders search results by how well each is the song as released
-// (§6.10). A label's own upload of the song asked for (a YouTube Music
-// song) gives the released length. Every result that is the same song is
-// marked with it: those of that length come first, and those much longer
-// or shorter (a music video's intro, a 12-minute extended upload) go below
-// everything else. Previews, which can't be added, go last.
-func ByRelease(query string, results []Result) []Result {
-	if ref, ok := release(query, results); ok {
+// (§6.10). The released length comes from a catalogue of released music
+// (released, when one was asked), else from a label's own upload of the
+// song among the results (a YouTube Music song). Every result that is the
+// same song is marked with it: those of that length come first, the
+// artist's own uploads before others, and those much longer or shorter (a
+// music video's intro, a 12-minute extended upload) go below everything
+// else. Previews, which can't be added, go last.
+func ByRelease(query string, results []Result, released *Result) []Result {
+	ref, ok := release(query, results)
+	if released != nil {
+		ref, ok = *released, true
+	}
+	if ok {
 		for i := range results {
 			if !results[i].Preview && sameSong(ref, results[i]) { // a preview says so already
 				results[i].ReleaseSec = ref.DurationSec
 			}
 		}
+	}
+	// Of the same song, the artist's own upload first.
+	own := func(r Result) bool {
+		return r.ReleaseSec > 0 && resolve.ArtistSimilarity(ref.Uploader, resolve.CleanArtist(r.Uploader)) >= 0.8
 	}
 	rank := func(r Result) int {
 		d := offBy(r)
@@ -36,8 +48,54 @@ func ByRelease(query string, results []Result) []Result {
 			return 1
 		}
 	}
-	sort.SliceStable(results, func(i, j int) bool { return rank(results[i]) < rank(results[j]) })
+	sort.SliceStable(results, func(i, j int) bool {
+		if a, b := rank(results[i]), rank(results[j]); a != b {
+			return a < b
+		}
+		return own(results[i]) && !own(results[j])
+	})
 	return results
+}
+
+// Release looks the song a search asks for up in a catalogue of released
+// music, for its length. YouTube Music no longer lists songs to anyone
+// not signed in, so its uploads can't be relied on for this.
+func (s *Service) Release(ctx context.Context, query string) (Result, bool) {
+	if s.Released == nil {
+		return Result{}, false
+	}
+	return s.Released(ctx, query)
+}
+
+// Released is a track as a catalogue lists it.
+type Released struct {
+	Title       string
+	Version     string // "(Stripped)", "(Remix)": another version of the song
+	Artist      string
+	DurationSec int
+}
+
+// AskedRelease picks, from a catalogue's answers in its own order, the
+// song a search asks for: named like the query, and not another version of
+// it (stripped, a remix) unless the query names that version.
+func AskedRelease(query string, found []Released) (Result, bool) {
+	words := " " + resolve.Normalise(query) + " "
+	for _, t := range found {
+		r := Result{Title: t.Title, Uploader: t.Artist, DurationSec: t.DurationSec}
+		if t.DurationSec <= 0 || !Asked(query, r) || resolve.AnotherVersion(resolve.Hint{Title: query}, t.Title) {
+			continue
+		}
+		asked := true
+		for _, w := range strings.Fields(resolve.Normalise(t.Version)) {
+			if !strings.Contains(words, " "+w+" ") {
+				asked = false
+			}
+		}
+		if asked {
+			return r, true
+		}
+	}
+	return Result{}, false
 }
 
 // sameLength is how far apart two lengths can be and still be the same

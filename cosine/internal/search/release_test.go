@@ -19,7 +19,7 @@ func TestTheSongAsReleasedComesFirst(t *testing.T) {
 		{Title: "Halsey - Without Me", Uploader: "HalseyVEVO", Source: "youtube", DurationSec: 201, URL: "other"},
 		{Title: "Halsey - Bad at Love (Audio)", Uploader: "HalseyVEVO", Source: "youtube", DurationSec: 183, URL: "audio"},
 	}
-	got := ByRelease("halsey bad at love", results)
+	got := ByRelease("halsey bad at love", results, nil)
 	var order []string
 	for _, r := range got {
 		order = append(order, r.URL)
@@ -38,13 +38,52 @@ func TestTheSongAsReleasedComesFirst(t *testing.T) {
 	}
 }
 
+// What signed-out searches see now: YouTube Music lists no songs, so the
+// released length comes from a catalogue (Deezer), as it answered for
+// "halsey without me".
+func TestTheCatalogueGivesTheReleasedLength(t *testing.T) {
+	deezer := []Released{
+		{Title: "Without Me", Version: "(Stripped)", Artist: "Halsey", DurationSec: 182},
+		{Title: "Without Me", Artist: "Halsey", DurationSec: 201},
+		{Title: "Without Me", Version: "(ILLENIUM Remix)", Artist: "Halsey", DurationSec: 249},
+		{Title: "the other girl (with Halsey)", Artist: "Kelsea Ballerini", DurationSec: 201},
+	}
+	ref, ok := AskedRelease("halsey without me", deezer)
+	if !ok || ref.DurationSec != 201 || ref.Title != "Without Me" || ref.Uploader != "Halsey" {
+		t.Fatal(ref, ok)
+	}
+	if ref, _ := AskedRelease("halsey without me stripped", deezer); ref.DurationSec != 182 {
+		t.Fatal("the version asked for:", ref)
+	}
+	if _, ok := AskedRelease("skeler tides", deezer); ok {
+		t.Fatal("not what was asked for")
+	}
+
+	results := []Result{
+		{Title: "Halsey - Without Me", Uploader: "Halsey", Source: "youtube", DurationSec: 237, URL: "video"},
+		{Title: "Halsey - Without Me (Lyrics)", Uploader: "Dan Music", Source: "youtube", DurationSec: 203, URL: "lyrics"},
+		{Title: "Without Me", Uploader: "some fan", Source: "soundcloud", DurationSec: 30, URL: "preview", Preview: true},
+		{Title: "Halsey - Without Me (Official Audio)", Uploader: "Halsey", Source: "youtube", DurationSec: 204, URL: "audio"},
+		{Title: "Halsey - Without Me (ILLENIUM Remix/Audio)", Uploader: "Halsey", Source: "youtube", DurationSec: 248, URL: "remix"},
+	}
+	got := ByRelease("halsey without me", results, &ref)
+	var order []string
+	for _, r := range got {
+		order = append(order, r.URL+":"+LengthNote(r))
+	}
+	want := "audio:Same length as the release lyrics:Same length as the release remix: video:0:36 longer than the release preview:"
+	if strings.Join(order, " ") != want {
+		t.Fatal(order)
+	}
+}
+
 func TestNothingToCompareWithKeepsTheOrder(t *testing.T) {
 	results := []Result{{Title: "Tides", Source: "soundcloud", DurationSec: 200, URL: "a"},
 		{Title: "Tides", Source: "soundcloud", DurationSec: 30, URL: "b", Preview: true},
 		{Title: "Tides (VIP)", Source: "youtube", DurationSec: 260, URL: "c"},
 		// A YouTube Music song that isn't what was asked for sets no length.
 		{Title: "Tides", Uploader: "Ed Sheeran", Source: SourceYouTubeMusic, DurationSec: 194, URL: "d"}}
-	got := ByRelease("skeler tides", results)
+	got := ByRelease("skeler tides", results, nil)
 	if got[0].URL != "a" || got[1].URL != "c" || got[2].URL != "d" || got[3].URL != "b" || got[0].ReleaseSec != 0 {
 		t.Fatalf("%+v", got)
 	}

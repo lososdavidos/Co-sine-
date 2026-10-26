@@ -43,6 +43,10 @@ object Capability {
     const val VERSION_PINS = "version-pins"
     /** Taking songs out of your library (§4.1). */
     const val REMOVE = "remove"
+    /** Making and editing playlists (§2.4); Subsonic servers can by default. */
+    const val PLAYLISTS = "playlists"
+    /** Smart playlists' rules can be made and edited. */
+    const val SMART_PLAYLISTS = "smart-playlists"
 }
 
 sealed interface ProbeResult {

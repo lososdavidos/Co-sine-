@@ -33,3 +33,27 @@ class SearchRankingTest {
         })
     }
 }
+
+class PlaylistEditsTest {
+    @Test
+    fun `moving and finding songs as listed`() {
+        val l = listOf("a", "b", "c", "d")
+        kotlin.test.assertEquals(listOf("b", "c", "a", "d"), app.sine.core.model.PlaylistEdits.moved(l, 0, 2))
+        kotlin.test.assertEquals(listOf("a", "d", "b", "c"), app.sine.core.model.PlaylistEdits.moved(l, 3, 1))
+        kotlin.test.assertEquals(l, app.sine.core.model.PlaylistEdits.moved(l, 0, 9))
+        val tracks = listOf("t1", "t2", "t1", "t3").map { app.sine.core.model.Track(id = it, title = it, artist = "a", album = "b") }
+        kotlin.test.assertEquals(listOf(0, 2, 3), app.sine.core.model.PlaylistEdits.positionsOf(tracks, setOf("t1", "t3")))
+    }
+
+    @Test
+    fun `a smart rule keeps only its own setting`() {
+        val r = app.sine.core.model.SmartRules
+        val p = r.starting("forgotten")
+        kotlin.test.assertEquals("Forgotten", p.name)
+        kotlin.test.assertEquals(6, p.months)
+        val moved = r.withSetting(p.copy(rule = "most-played"))
+        kotlin.test.assertEquals("year", moved.span)
+        kotlin.test.assertEquals(null, moved.months)
+        kotlin.test.assertEquals("2 years", r.monthsLabel(24))
+    }
+}

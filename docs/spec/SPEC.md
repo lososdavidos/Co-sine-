@@ -307,6 +307,23 @@ empty one. Sharing one means converting it to a manual playlist yourself first,
 which is an honest one-step action rather than a feature that quietly does
 something unexpected.
 
+`NOTE` Built: manual playlists are made, reordered, trimmed, renamed and
+deleted through the Subsonic API's own `createPlaylist`, `updatePlaylist` and
+`deletePlaylist`, so Sine and every other Subsonic app edit them the same way.
+Edits need the server for now; the operation log (§5.2) is still to come. A
+song gone from the account's library keeps its place in a playlist, hidden,
+and an edit carries it along beside the song it followed.
+
+`NOTE` Built: a smart playlist is a saved rule — one of the statistics views
+(most played in a period, recently played, not played in N months, never
+played, this time last year, added in the last N days) with its one setting.
+Every account starts with one of each and can make, change, rename or delete
+them; a deleted one does not come back. Over the Subsonic API they are listed
+beside manual playlists as read-only (OpenSubsonic's `readonly`), with the
+rule in words as their comment, and their songs are worked out each time one
+is opened. Sine's "Save as playlist" is the conversion to a manual playlist.
+"Downloaded only" is the phone's to answer and is not a server rule.
+
 ### 2.5 Caching and network policy
 
 Two profiles, differing in **degree**, not in kind:
@@ -420,10 +437,18 @@ without a music video's intro or outro, at the release's length, carrying the
 release's artist, title and album. The first few are described in full, and the
 one that is the song asked for is listed first.
 
-`RESOLVED` **Results are ranked by the song as released.** That upload's length
-is the release's. Every result that is the same song is labelled with how its
-length compares ("Same length as the release", "0:44 longer than the
-release"); those of the release's length come first, those much longer or
+`NOTE` Since October 2026 YouTube Music lists songs and albums only to
+listeners who are signed in: a signed-out search, which is what yt-dlp makes,
+offers videos, artists, profiles and podcasts, in every region tried. Cosine
+still asks, and uses what it lists when it lists something.
+
+`RESOLVED` **Results are ranked by the song as released.** The released length
+comes from Deezer's catalogue (public, no key): its listing of the song asked
+for, not one of its versions ("(Stripped)", a remix) unless the search names
+it. Failing that, a YouTube Music upload's length is the release's. Every result
+that is the same song is labelled with how its length compares ("Same length as
+the release", "0:44 longer than the release"); those of the release's length
+come first, the artist's own uploads before others, those much longer or
 shorter (a video's intro, a 12-minute extended upload) after everything else,
 and previews last. With nothing to compare against, the sites' own order stands.
 
@@ -452,6 +477,26 @@ untouched, only the container around it is written once rather than 22 times.
 - **Queue everything** — paste a set, album or channel URL and take the lot.
 - **Review first** — expand the collection, show the track list, pick what to
   keep before anything downloads.
+
+`RESOLVED` **A playlist is never an album.** Only a release is: a YouTube Music
+album, a Bandcamp album, a SoundCloud set its uploader marked as an album, EP
+or single. Its songs take its name and track order where they don't say their
+own. Anything someone put together — a YouTube playlist, a SoundCloud set
+marked as a playlist, a mix — is a playlist however album-like its name ("Halsey
+- hopeless fountain kingdom (Full Album)"), and each song is resolved as itself;
+the playlist's name is never used as an album, even when a site reports it as
+one. Unsure is a playlist. A playlist added this way becomes a playlist in the
+Library (§2.4) in the source's order, filled in as its songs finish, with the
+songs the account already had; adding it again fills the same one, and it can be
+declined to take only the songs. A channel's uploads are just songs.
+
+`RESOLVED` **Albums and playlists can be searched for, on every source that
+allows it.** Add's search also lists YouTube's playlists (through yt-dlp),
+Bandcamp's albums (through Bandcamp's own search), SoundCloud's albums and
+playlists (through its API, when a client ID is set; yt-dlp searches
+SoundCloud's tracks only), and YouTube Music's albums when it lists them (see
+above: not to signed-out searches). Picking one shows its songs, as pasting its
+link would. Those named like the search come first.
 
 ### 3.2 The resolver
 
@@ -1402,6 +1447,12 @@ Consequences worth building for rather than discovering:
 - Long-pressing Add offers uploading a local file — the rare path, kept out of
   the common one.
 
+`NOTE` Built: a search shows "Albums and playlists" beside the songs, first
+when one is named like the search. Opening one shows its songs to tick, says
+whether it is an album or a playlist, and for a playlist offers "Keep it as a
+playlist in my library" (on by default), with "Make the playlist" when every
+song is already there. "Back to search results" returns to the search.
+
 ### 6.11 The account control
 
 `RESOLVED` **A persistent control in the top corner, on every screen except
@@ -1668,6 +1719,8 @@ not silently keep gigabytes.
 | — | Search backend | Source APIs or yt-dlp search, switchable in dashboard |
 | — | Ingest format | Best available, stored untouched |
 | — | Bulk ingest | Both modes — queue everything, or review first |
+| — | Playlists from sources | Never an album; each song filed as itself, the playlist kept as one |
+| — | Album and playlist search | Every source that allows it, beside songs |
 | — | Visibility | One global server toggle |
 | — | Account creation | Admin-created, or invite code |
 | — | Account deletion | Pointers removed, Objects kept |

@@ -55,7 +55,14 @@ data class Playlist(
     val durationSec: Int = 0,
     val coverArt: String? = null,
     val owner: String? = null,
-)
+    /** For a smart playlist, what its rule picks. */
+    val comment: String? = null,
+    /** A rule picks its songs (a smart playlist, §2.4): they can't be chosen by hand. */
+    val readonly: Boolean = false,
+) {
+    /** One of Cosine's smart playlists, whose rule Sine can edit. */
+    val isCosineSmart get() = id.startsWith("sp-")
+}
 
 data class ArtistDetail(val artist: Artist, val albums: List<Album>)
 data class AlbumDetail(val album: Album, val tracks: List<Track>)

@@ -186,10 +186,12 @@ func TestAddMusicFromALink(t *testing.T) {
 	e.post(t, "/setup", e.setupForm(filepath.Join(e.dir, "s"), filepath.Join(e.dir, "i")))
 
 	_, body := e.get(t, "/add?q="+url.QueryEscape(link))
-	if !strings.Contains(body, "Tides: 2 tracks") || !strings.Contains(body, "2:05") || strings.Count(body, "checked") != 2 {
+	// A set that doesn't say it's an album is a playlist, and kept as one unless unticked.
+	if !strings.Contains(body, "Playlist: Tides.") || !strings.Contains(body, "2 tracks") || !strings.Contains(body, "2:05") ||
+		strings.Count(body, "checked") != 3 || !strings.Contains(body, `name="from" value="`+link+`"`) {
 		t.Fatal(body)
 	}
-	_, body = e.post(t, "/add", url.Values{"url": {"https://soundcloud.com/skeler/two"}})
+	_, body = e.post(t, "/add", url.Values{"url": {"https://soundcloud.com/skeler/two"}, "from": {link}, "playlist": {"1"}})
 	if !strings.Contains(body, "Queued 1 link") || !strings.Contains(body, "soundcloud.com/skeler/two") {
 		t.Fatal(body)
 	}

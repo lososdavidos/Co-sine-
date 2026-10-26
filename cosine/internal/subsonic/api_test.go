@@ -19,7 +19,9 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/testutil"
 )
 
@@ -50,7 +52,8 @@ func setup(t *testing.T) *env {
 	g := &ingest.Ingester{DB: d, DataDir: dir, ReviewThreshold: 0.8, Log: log,
 		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}, MinConfidence: 0.8},
 		Probe:    func(string) int { return 200 }}
-	api := &API{DB: d, Auth: as, DataDir: dir, Version: "test", Log: log}
+	api := &API{DB: d, Auth: as, DataDir: dir, Version: "test", Log: log,
+		Playlists: &playlists.Service{DB: d, Stats: &stats.Service{DB: d}}}
 	mux := http.NewServeMux()
 	mux.Handle("/rest/", api.Handler())
 	srv := httptest.NewServer(mux)

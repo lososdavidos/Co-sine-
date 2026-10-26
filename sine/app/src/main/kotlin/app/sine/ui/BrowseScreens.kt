@@ -38,7 +38,6 @@ import app.sine.core.model.SearchRanking
 import app.sine.core.subsonic.AlbumListType
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
-import app.sine.data.NotAvailableOffline
 import app.sine.data.Sourced
 import app.sine.download.Downloads
 import app.sine.graph
@@ -196,7 +195,7 @@ fun LibraryScreen(session: AccountSession, nav: NavController) {
         when (segment) {
             0 -> ArtistList(session, downloadedOnly, nav)
             1 -> AlbumList(session, downloadedOnly, nav)
-            else -> PlaylistList(session, downloadedOnly, nav)
+            else -> PlaylistList(session, nav)
         }
     }
 }
@@ -227,22 +226,6 @@ private fun AlbumList(session: AccountSession, downloadedOnly: Boolean, nav: Nav
         if (albums.isEmpty()) ListMessage(if (downloadedOnly) Voice.NO_DOWNLOADS else "No albums.")
         else LazyColumn(Modifier.fillMaxSize()) {
             items(albums, key = { it.id }) { AlbumRow(session, it, nav) }
-        }
-    }
-}
-
-@Composable
-private fun PlaylistList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
-    val load = rememberLoad(session, downloadedOnly) {
-        // Compat mode has no local mirror, so playlists need the server (G2 degrades, §2.1).
-        session.fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlists() })
-    }
-    LoadContent(load) { playlists, _ ->
-        if (playlists.isEmpty()) ListMessage("No playlists.")
-        else LazyColumn(Modifier.fillMaxSize()) {
-            items(playlists, key = { it.id }) { p ->
-                ItemRow(p.name, p.subtitle(), session.artwork(p.coverArt, 150)) { nav.navigate(Routes.playlist(p.id)) }
-            }
         }
     }
 }

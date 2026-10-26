@@ -36,7 +36,15 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Identifying music:** Cosine cleans uploader noise out of titles ("[HD Upgrade]", "(Official Video)", "PREMIERE:"), then looks everything up in MusicBrainz, Discogs and Bandcamp, in that order, and files it under the first confident match's artist and release, with that catalogue's cover. Anything none of them is sure of goes to the review queue (Sine: Library → Review; also in the dashboard). There you pick a match or type the details yourself. Every correction is logged and can be reverted.
 
-**Listening statistics:** Cosine's dashboard has a Listening page with top artists, albums and tracks, listening over time and a year by year view, for everyone or one account. The same data is in the native API, ready for Sine's statistics screen, Home tiles and smart playlists, which aren't built yet.
+**Listening statistics:** Cosine's dashboard has a Listening page with top artists, albums and tracks, listening over time and a year by year view, for everyone or one account. The same data is in the native API, ready for Sine's statistics screen and Home tiles, which aren't built yet.
+
+**Playlists:** make them in Sine (Library → Playlists → New playlist), add songs from any selection on a release, artist or playlist page ("Add to playlist"), and reorder, take songs out of, rename or delete them from the playlist's page. Any other Subsonic app can edit them too. Playlists need the server for now; they aren't in the phone's copy of the library yet.
+
+**Smart playlists:** every account starts with Recently added, Most played this year, Recently played, Forgotten, Never played and This time last year, worked out from your own listening each time you open one. Make your own from the same rules ("New smart playlist"), change a rule, or save one as an ordinary playlist to choose its songs yourself. Other Subsonic apps list them as read-only playlists.
+
+**Albums and playlists from the sources:** searching in Add also finds albums and playlists: YouTube playlists, Bandcamp albums, and SoundCloud albums and playlists when a SoundCloud client ID is set in the dashboard. (YouTube Music albums too, when YouTube Music lists them: it currently shows albums and songs only to signed-in listeners.)
+
+**The song as released:** search results that are the song you searched for say how their length compares with the release ("Same length as the release", "0:36 longer than the release"), using Deezer's listing of it, and those of the release's length come first, the artist's own upload before others. Pick one to see its songs, or paste its link. An album lends its songs its name and track order. A playlist is never filed as an album: each song goes under its own artist and release, and the playlist becomes a playlist in your library, in the source's order, including the songs you already had (untick "Keep it as a playlist" to just take the songs).
 
 **Library mirror:** on a Cosine account, Sine keeps the whole library on the phone and syncs only what changed (on opening, every minute while open, on a pull, and right after you add or correct something). Library, artist and album pages and search read it: instant, searchable as you type, and all there offline, with what isn't downloaded dimmed. Compat mode (a plain Subsonic server) asks per screen as before.
 
@@ -46,7 +54,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push and offline playlist edits, the cache tier, Android Auto browsing, the Home tile canvas, smart playlists and the statistics screen in Sine, Last.fm/ListenBrainz scrobbling, remote control, Jam, and the desktop client.
+**Not yet built:** audio fingerprinting, the mirror's live push and offline playlist edits, shared playlists, the cache tier, Android Auto browsing, the Home tile canvas and the statistics screen in Sine, Last.fm/ListenBrainz scrobbling, remote control, Jam, and the desktop client.
 
 ## Design
 

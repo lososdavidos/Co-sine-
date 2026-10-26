@@ -5,9 +5,25 @@
 </form>
 {{with .Data.Lookup}}
 {{if eq .Kind "search"}}<p>Search results{{if eq .Backend "api"}} from the source APIs{{else}} from yt-dlp search{{end}}.</p>{{end}}
-{{if eq .Kind "collection"}}<p>{{.Title}}: {{len .Items}} tracks. Queue everything, or untick what you don't want.</p>{{end}}
+{{if eq .Kind "collection"}}<p>{{if eq .Collection "album"}}Album: {{.Title}}{{with .Artist}} by {{.}}{{end}}.
+{{else if eq .Collection "playlist"}}Playlist: {{.Title}}. Each song is filed under its own artist and release, never under the playlist's name.
+{{else}}{{.Title}}.{{end}}
+{{len .Items}} tracks. Queue everything, or untick what you don't want.</p>{{end}}
+{{if .Collections}}
+<h3>Albums and playlists</h3>
+<table>
+<tr><th>Title</th><th>By</th><th>Songs</th><th>Source</th><th></th></tr>
+{{range .Collections}}<tr>
+<td><a href="/add?q={{.URL}}">{{.Title}}</a></td><td>{{.Uploader}}</td><td>{{if .Tracks}}{{.Tracks}}{{end}}</td><td>{{.Source}}</td>
+<td>{{if eq .Kind "album"}}Album{{else}}Playlist{{end}}</td></tr>
+{{end}}</table>
+{{end}}
 {{if .Items}}
+{{if .Collections}}<h3>Songs</h3>{{end}}
 <form method="post" action="/add">
+{{if eq .Kind "collection"}}<input type="hidden" name="from" value="{{.URL}}">
+{{if eq .Collection "playlist"}}<p><label><input type="checkbox" name="playlist" value="1" checked> Keep it as a playlist in your library, with the songs you already have</label></p>{{end}}
+{{end}}
 <table>
 <tr><th></th><th>Title</th><th>By</th><th>Length</th><th>Plays</th><th>Source</th><th></th></tr>
 {{range .Items}}<tr>
@@ -18,6 +34,6 @@
 {{end}}</table>
 <button>Add selected</button>
 </form>
-{{else}}<p>No results.</p>{{end}}
+{{else if not .Collections}}<p>No results.</p>{{end}}
 {{end}}
 {{end}}

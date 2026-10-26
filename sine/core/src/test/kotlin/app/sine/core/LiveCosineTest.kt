@@ -24,6 +24,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -69,8 +70,31 @@ class LiveCosineTest {
         for (type in AlbumListType.entries) sub.albums(type, size = 50)
         assertTrue(sub.albums(AlbumListType.NEWEST).any { it.id == ep.id })
         assertTrue(sub.search("tides").tracks.any { it.id == tides.id })
-        val playlist = sub.playlists().single()
+        val playlist = sub.playlists().single { !it.readonly }
         assertEquals(listOf("Surge", "Tides"), sub.playlist(playlist.id).tracks.map { it.title })
+
+        // Playlists made and edited the way the app does it, over plain Subsonic (§2.4).
+        assertTrue(Capability.PLAYLISTS in kind.capabilities, "$kind")
+        val surgeId = album.tracks[1].id
+        val made = assertNotNull(sub.createPlaylist("Contract mix", listOf(tides.id)))
+        sub.updatePlaylist(made, add = listOf(surgeId, tides.id))
+        assertEquals(listOf("Tides", "Surge", "Tides"), sub.playlist(made).tracks.map { it.title })
+        sub.updatePlaylist(made, name = "Contract mix 2", removeAt = listOf(2))
+        sub.replacePlaylist(made, listOf(surgeId, tides.id))
+        val edited = sub.playlist(made)
+        assertEquals("Contract mix 2", edited.playlist.name)
+        assertEquals(listOf("Surge", "Tides"), edited.tracks.map { it.title })
+        sub.deletePlaylist(made)
+        assertTrue(sub.playlists().none { it.id == made })
+
+        // Smart playlists: listed beside them, read-only, a rule's songs.
+        assertTrue(Capability.SMART_PLAYLISTS in kind.capabilities, "$kind")
+        val smart = sub.playlists().filter { it.readonly }
+        assertEquals(6, smart.size, "$smart")
+        val recent = smart.single { it.name == "Recently added" }
+        assertEquals("Added in the last 30 days", recent.comment)
+        assertEquals(setOf("Tides", "Surge"), sub.playlist(recent.id).tracks.map { it.title }.toSet())
+        assertFailsWith<app.sine.core.subsonic.SubsonicException> { sub.updatePlaylist(recent.id, add = listOf(tides.id)) }
 
         // Playback and downloads: original bytes, seekable; artwork.
         val (code, full) = bytes(sub.downloadUrl(tides.id))
@@ -96,6 +120,17 @@ class LiveCosineTest {
         // The native protocol: review.
         val cosine = CosineClient(found.baseUrl, creds, http)
         assertEquals(kind, cosine.describe())
+
+        // A smart playlist's rule, made in the app, is a playlist everywhere.
+        val rules = cosine.smartPlaylists()
+        assertEquals(smart.map { it.id }.toSet(), rules.map { it.id }.toSet())
+        val heavy = cosine.saveSmart(app.sine.core.model.SmartRules.starting("most-played", "Contract heavy").copy(span = "all"))
+        assertEquals("Most played of all time", heavy.description)
+        assertTrue(sub.playlists().any { it.id == heavy.id && it.readonly && it.name == "Contract heavy" })
+        val dusty = cosine.saveSmart(app.sine.core.model.SmartRules.withSetting(heavy.copy(name = "Contract dust", rule = "forgotten", span = null)))
+        assertEquals(6, dusty.months)
+        sub.deletePlaylist(heavy.id)
+        assertTrue(cosine.smartPlaylists().none { it.id == heavy.id })
         val queue = cosine.reviewQueue()
         assertTrue(queue.total >= 2, "$queue")
         val surge = queue.items.single { it.identity.title == "Surge" }

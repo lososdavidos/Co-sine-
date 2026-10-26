@@ -18,6 +18,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 )
@@ -33,8 +34,10 @@ type API struct {
 	Mirror  *mirror.Service // nil: no library mirror
 	// Ingester takes tracks out of Libraries; nil: no removing.
 	Ingester *ingest.Ingester
-	Version  string
-	Log      *slog.Logger
+	// Playlists: editable playlists and smart playlists; nil: neither.
+	Playlists *playlists.Service
+	Version   string
+	Log       *slog.Logger
 }
 
 func (a *API) capabilities() []string {
@@ -53,6 +56,12 @@ func (a *API) capabilities() []string {
 	}
 	if a.Ingester != nil {
 		caps = append(caps, CapRemove)
+	}
+	if a.Playlists != nil {
+		caps = append(caps, CapPlaylists)
+		if a.Playlists.Stats != nil {
+			caps = append(caps, CapSmart)
+		}
 	}
 	return caps
 }
@@ -78,6 +87,9 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Ingester != nil {
 		a.registerLibrary(mux)
+	}
+	if a.Playlists != nil && a.Playlists.Stats != nil {
+		a.registerSmart(mux)
 	}
 }
 
@@ -158,11 +170,20 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request, u auth.User) {
 	var body struct {
 		URLs  []string `json:"urls"`
 		Force bool     `json:"force"`
+		// From: the album or playlist (Lookup's url) the links were picked
+		// from. Playlist: whether a playlist also becomes one in the
+		// Library; yes unless false.
+		From     string `json:"from"`
+		Playlist *bool  `json:"playlist"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	jobs, err := a.Fetcher.Submit(r.Context(), u.ID, body.URLs, body.Force)
+	var from *fetch.From
+	if body.From != "" {
+		from = &fetch.From{URL: body.From, Playlist: body.Playlist == nil || *body.Playlist}
+	}
+	jobs, err := a.Fetcher.Submit(r.Context(), u.ID, body.URLs, body.Force, from)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

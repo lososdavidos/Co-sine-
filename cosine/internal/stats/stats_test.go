@@ -203,6 +203,20 @@ func TestViews(t *testing.T) {
 	if _, err := e.s.View(ctx, e.alice, "nope", ViewOptions{}); err != ErrView {
 		t.Fatal(err)
 	}
+	// Added: by the account's own date of adding, newest first.
+	added := func(track, at int64) {
+		e.db.Exec("UPDATE pointers SET added_at = ? WHERE user_id = ? AND track_id = ?", at, e.alice, track)
+	}
+	added(e.tides, day(2026, 10, 20))
+	added(e.hollow, day(2026, 10, 1))
+	added(e.old, day(2026, 1, 1))
+	added(e.glass, day(2025, 1, 1))
+	if got := names(ViewAdded, ViewOptions{}); got != "Tides Hollow" {
+		t.Error("added in 30 days:", got)
+	}
+	if got := names(ViewAdded, ViewOptions{Days: 10}); got != "Tides" {
+		t.Error("added in 10 days:", got)
+	}
 	// A Track with no file left isn't offered (§2.2).
 	os.Remove(filepath.Join(e.root, e.glassPath))
 	e.db.Exec("UPDATE objects SET missing = 1 WHERE track_id = ?", e.glass)

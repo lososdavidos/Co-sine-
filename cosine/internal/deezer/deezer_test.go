@@ -48,3 +48,26 @@ func TestErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSearchTracks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search/track" || r.URL.Query().Get("q") != "halsey without me" || r.URL.Query().Get("limit") != "2" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(`{"data":[
+			{"title":"Without Me","title_short":"Without Me","title_version":"","duration":201,"artist":{"name":"Halsey"},"album":{"title":"Manic"}},
+			{"title":"Without Me (Stripped)","title_short":"Without Me","title_version":"(Stripped)","duration":182,"artist":{"name":"Halsey"},"album":{"title":"Manic"}}]}`))
+	}))
+	defer srv.Close()
+	c := New(srv.Client(), "test")
+	c.BaseURL = srv.URL
+	c.Web.Pace = func() time.Duration { return time.Millisecond }
+	tracks, err := c.SearchTracks(context.Background(), "halsey without me", 2)
+	if err != nil || len(tracks) != 2 {
+		t.Fatal(tracks, err)
+	}
+	if s := tracks[1]; s.TitleShort != "Without Me" || s.TitleVersion != "(Stripped)" || s.DurationSec != 182 || s.Artist.Name != "Halsey" || s.Album.Title != "Manic" {
+		t.Fatalf("%+v", s)
+	}
+}

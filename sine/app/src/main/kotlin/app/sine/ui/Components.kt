@@ -195,4 +195,8 @@ fun ItemRow(
 fun Track.durationText() = Voice.formatDuration(durationSec)
 fun Artist.subtitle() = if (albumCount == 1) "1 album" else "$albumCount albums"
 fun Album.subtitle() = listOfNotNull(artist.ifBlank { null }, year?.toString()).joinToString(" · ")
-fun Playlist.subtitle() = if (trackCount == 1) "1 track" else "$trackCount tracks"
+fun Playlist.subtitle(): String {
+    val count = if (trackCount == 1) "1 track" else "$trackCount tracks"
+    // A smart playlist says what its rule picks.
+    return if (readonly && !comment.isNullOrBlank()) "$comment · $count" else count
+}

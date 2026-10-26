@@ -774,7 +774,11 @@ func (d *Dashboard) add(w http.ResponseWriter, r *http.Request, u auth.User) {
 		d.render(w, "add", page{Title: "Add music", User: &u, Error: "Nothing selected.", Data: addData{}})
 		return
 	}
-	jobs, err := d.Fetcher.Submit(r.Context(), u.ID, urls, false)
+	var from *fetch.From
+	if f := r.FormValue("from"); f != "" {
+		from = &fetch.From{URL: f, Playlist: r.FormValue("playlist") != ""}
+	}
+	jobs, err := d.Fetcher.Submit(r.Context(), u.ID, urls, false, from)
 	if err != nil {
 		d.render(w, "add", page{Title: "Add music", User: &u, Error: err.Error(), Data: addData{}})
 		return

@@ -99,9 +99,11 @@ internal data class PlaylistDto(
     val duration: Int = 0,
     val coverArt: String? = null,
     val owner: String? = null,
+    val comment: String? = null,
+    val readonly: Boolean = false,
     val entry: List<SongDto> = emptyList(),
 ) {
-    fun toModel() = Playlist(id, name, songCount, duration, coverArt, owner)
+    fun toModel() = Playlist(id, name, songCount, duration, coverArt, owner, comment, readonly)
 }
 
 @Serializable

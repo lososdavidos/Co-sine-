@@ -48,3 +48,36 @@ func TestCoverURLPrefersLargestJPEG(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestOnlyAReleaseIsAnAlbum(t *testing.T) {
+	cases := []struct {
+		info Info
+		want string
+	}{
+		{Info{ExtractorKey: "YoutubeTab", ID: "OLAK5uy_l1m0thk3g31NmIIz_vMIbWtyv7eZixlH0"}, KindAlbum},
+		{Info{ExtractorKey: "BandcampAlbum", ID: "we-are-the-plague"}, KindAlbum},
+		{Info{ExtractorKey: "SoundcloudSet", AlbumType: "ep"}, KindAlbum},
+		{Info{ExtractorKey: "SoundcloudSet", AlbumType: "album"}, KindAlbum},
+		// Put together by someone, however album-like its name.
+		{Info{ExtractorKey: "SoundcloudSet", AlbumType: "playlist", Title: "Halsey - hopeless fountain kingdom"}, KindPlaylist},
+		{Info{ExtractorKey: "SoundcloudSet"}, KindPlaylist},
+		{Info{ExtractorKey: "YoutubeTab", ID: "PLXkYU9X6yyt3_6dTtVXg7VwuGJwpn8sI6", Title: "Halsey - hopeless fountain kingdom (Full Album)"}, KindPlaylist},
+		{Info{ExtractorKey: "Mixcloud", ID: "x"}, KindPlaylist},
+		{Info{ExtractorKey: "YoutubeTab", ID: "UCm3FgJ2Hqm7tb70T-GfwXVA"}, KindChannel},
+		{Info{ExtractorKey: "SoundcloudUser", ID: "1"}, KindChannel},
+		{Info{ExtractorKey: "BandcampUser", ID: "x"}, KindChannel},
+	}
+	for _, c := range cases {
+		if got := c.info.Kind(); got != c.want {
+			t.Errorf("%+v: %s, want %s", c.info, got, c.want)
+		}
+	}
+	album := Info{ID: "OLAK5uy_x", Title: "Album - hopeless fountain kingdom (Deluxe)", Channel: "Halsey"}
+	if album.CollectionTitle() != "hopeless fountain kingdom (Deluxe)" || album.CollectionArtist() != "Halsey" {
+		t.Fatal(album.CollectionTitle(), album.CollectionArtist())
+	}
+	set := Info{ID: "1", Title: "Album - a playlist named so", AlbumArtists: []string{"Levi Ryan"}, Uploader: "a fan"}
+	if set.CollectionTitle() != "Album - a playlist named so" || set.CollectionArtist() != "Levi Ryan" {
+		t.Fatal(set.CollectionTitle(), set.CollectionArtist())
+	}
+}

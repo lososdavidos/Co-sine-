@@ -20,7 +20,8 @@ func searchBody(base string) string {
 	return `{"auto":{"results":[
   {"type":"b","name":"Skeler","band_name":"Skeler","item_url_path":"` + base + `"},
   {"type":"t","id":1,"name":"Tides","band_name":"Skeler","album_name":"Skeler - Tides EP","item_url_path":"` + base + `/track/tides","img":"https://f4.bcbits.com/img/a0123456789_3.jpg"},
-  {"type":"t","id":2,"name":"Tides (1 Hour Loop)","band_name":"loop archive","album_name":"","item_url_path":"` + base + `/track/tides-loop","img":"https://f4.bcbits.com/img/a0999_3.jpg"}
+  {"type":"t","id":2,"name":"Tides (1 Hour Loop)","band_name":"loop archive","album_name":"","item_url_path":"` + base + `/track/tides-loop","img":"https://f4.bcbits.com/img/a0999_3.jpg"},
+  {"type":"a","id":3,"name":"Skeler - Tides EP","band_name":"Skeler","item_url_path":"` + base + `/album/tides-ep","img":"https://f4.bcbits.com/img/a0123456789_3.jpg"}
  ]}}`
 }
 
@@ -68,7 +69,25 @@ func newClient(t *testing.T, blocked bool) (*Client, *fake) {
 	c := New(f.srv.Client(), nil, "Cosine/test")
 	c.SearchURL = f.srv.URL + "/search"
 	c.Web.Pace = func() time.Duration { return time.Millisecond }
+	c.Live.Pace = c.Web.Pace
 	return c, f
+}
+
+func TestAlbumSearch(t *testing.T) {
+	c, f := newClient(t, false)
+	for i := 0; i < 2; i++ {
+		albums, err := c.Albums(context.Background(), "skeler tides", 5)
+		if err != nil || len(albums) != 1 {
+			t.Fatal(albums, err)
+		}
+		want := Album{Title: "Tides EP", Artist: "Skeler", URL: f.srv.URL + "/album/tides-ep", Cover: "https://f4.bcbits.com/img/a0123456789_10.jpg"}
+		if albums[0] != want {
+			t.Fatalf("%+v", albums[0])
+		}
+	}
+	if f.searches.Load() != 2 {
+		t.Fatal("Add's searches are asked afresh each time:", f.searches.Load())
+	}
 }
 
 func TestTrackOnAnEP(t *testing.T) {

@@ -21,6 +21,7 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/store"
@@ -65,9 +66,13 @@ type Fetcher struct {
 	Workers  int
 	HTTP     *http.Client
 	Log      *slog.Logger
+	// Playlists makes a playlist added from a source one in the Library;
+	// nil: its songs are added all the same.
+	Playlists *playlists.Service
 
 	wakeOnce sync.Once
 	wake     chan struct{}
+	recent   recentCollections
 }
 
 // init creates the wake channel exactly once. Run and Submit both reach
@@ -86,8 +91,11 @@ func (f *Fetcher) nudge() {
 }
 
 // Submit queues URLs for a user. force skips Q12's "you already have this".
-func (f *Fetcher) Submit(ctx context.Context, userID int64, urls []string, force bool) ([]Job, error) {
-	if len(urls) == 0 {
+// from, when the links were picked from an album or playlist, says which.
+func (f *Fetcher) Submit(ctx context.Context, userID int64, urls []string, force bool, from *From) ([]Job, error) {
+	// No links at all is fine from a playlist: it becomes one with the
+	// songs already in the library.
+	if len(urls) == 0 && (from == nil || from.URL == "") {
 		return nil, errors.New("no URLs given")
 	}
 	if len(urls) > maxBatch {
@@ -101,17 +109,37 @@ func (f *Fetcher) Submit(ctx context.Context, userID int64, urls []string, force
 		}
 		clean = append(clean, u)
 	}
-	ids, err := f.insert(ctx, userID, clean, force)
+	var col *started
+	if from != nil && from.URL != "" {
+		// Not knowing where they came from only loses the album's name or
+		// the playlist: the songs are added all the same.
+		c, err := f.collection(ctx, from.URL)
+		if err != nil {
+			f.Log.Warn("describing a collection again", "url", from.URL, "err", err)
+		} else if c.Kind != ytdlp.KindChannel {
+			if col, err = f.start(ctx, userID, c, from.Playlist); err != nil {
+				return nil, err
+			}
+		}
+	}
+	ids, err := f.insert(ctx, userID, clean, force, col)
 	if err != nil {
 		return nil, err
+	}
+	if col != nil && col.playlist != 0 {
+		f.placeKnown(ctx, userID, col, clean)
 	}
 	for range ids {
 		f.nudge()
 	}
+	if len(ids) == 0 {
+		return []Job{}, nil
+	}
 	return f.jobs(ctx, "WHERE j.id IN ("+placeholders(len(ids))+")", toAny(ids)...)
 }
 
-func (f *Fetcher) insert(ctx context.Context, userID int64, urls []string, force bool) ([]int64, error) {
+// insert queues one job per URL, as part of col when they came from one.
+func (f *Fetcher) insert(ctx context.Context, userID int64, urls []string, force bool, col *started) ([]int64, error) {
 	tx, err := f.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -125,9 +153,13 @@ func (f *Fetcher) insert(ctx context.Context, userID int64, urls []string, force
 			continue
 		}
 		seen[u] = true
+		var collection, position any
+		if col != nil {
+			collection, position = col.id, col.position(u)
+		}
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO ingest_jobs(source, input, status, user_id, url, title, force, created_at, updated_at)
-			VALUES('url', ?, 'queued', ?, ?, ?, ?, ?, ?)`, u, userID, u, u, force, now, now)
+			INSERT INTO ingest_jobs(source, input, status, user_id, url, title, force, collection_id, position, created_at, updated_at)
+			VALUES('url', ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)`, u, userID, u, u, force, collection, position, now, now)
 		if err != nil {
 			return nil, err
 		}
@@ -211,10 +243,12 @@ func (f *Fetcher) Run(ctx context.Context) {
 }
 
 type claimed struct {
-	id    int64
-	user  int64
-	url   string
-	force bool
+	id         int64
+	user       int64
+	url        string
+	force      bool
+	collection int64 // 0: not part of an album or playlist
+	position   int   // its place there
 }
 
 func (f *Fetcher) work(ctx context.Context) {
@@ -241,7 +275,8 @@ func (f *Fetcher) claim(ctx context.Context) (claimed, error) {
 	err := f.DB.QueryRowContext(ctx, `
 		UPDATE ingest_jobs SET status = 'running', updated_at = ?
 		WHERE id = (SELECT id FROM ingest_jobs WHERE status = 'queued' AND url IS NOT NULL ORDER BY id LIMIT 1)
-		RETURNING id, user_id, url, force`, db.Now()).Scan(&c.id, &c.user, &c.url, &c.force)
+		RETURNING id, user_id, url, force, COALESCE(collection_id, 0), COALESCE(position, 0)`, db.Now()).
+		Scan(&c.id, &c.user, &c.url, &c.force, &c.collection, &c.position)
 	return c, err
 }
 
@@ -270,13 +305,15 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 	if info.IsCollection() {
 		// Queue everything (§3.1a): each item becomes its own job. "Review
 		// first" never gets here — the client submits the items it picked.
-		var urls []string
-		for _, e := range info.Entries {
-			if l := e.Link(); l != "" {
-				urls = append(urls, l)
+		c := collectionOf(info, job.url)
+		f.remember(c, job.url)
+		var col *started
+		if c.Kind != ytdlp.KindChannel {
+			if col, err = f.start(ctx, job.user, c, true); err != nil {
+				return err
 			}
 		}
-		ids, err := f.insert(ctx, job.user, urls, job.force)
+		ids, err := f.insert(ctx, job.user, c.Links, job.force, col)
 		if err != nil {
 			return err
 		}
@@ -284,7 +321,7 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 			f.nudge()
 		}
 		f.set(job.id, "status = 'expanded', title = ?, progress = 1",
-			fmt.Sprintf("%s (%d tracks queued)", firstNonEmpty(info.Title, job.url), len(ids)))
+			fmt.Sprintf("%s (%d tracks queued)", c.Title, len(ids)))
 		return nil
 	}
 
@@ -301,6 +338,7 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 		case track != 0 && has:
 			f.set(job.id, "status = 'known', error = ?, track_id = ?, progress = 0",
 				"Already in your library.", track)
+			f.place(ctx, job, track)
 			return nil
 		case track != 0:
 			// Someone else fetched it: adding it is a Pointer, not a download.
@@ -311,6 +349,7 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 				return err
 			}
 			f.set(job.id, "status = 'duplicate', track_id = ?, progress = 1", track)
+			f.place(ctx, job, track)
 			return nil
 		}
 	}
@@ -332,8 +371,20 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 		return err
 	}
 
+	src := &resolve.SourceInfo{
+		Title: info.Title, Uploader: info.Poster(),
+		Artist: info.Artist, Track: info.Track, Album: info.Album,
+		TrackNo: info.TrackNumber, Year: info.ReleaseYear,
+	}
+	if job.collection != 0 {
+		var kind, title string
+		if err := f.DB.QueryRowContext(ctx, "SELECT kind, title FROM ingest_collections WHERE id = ?", job.collection).
+			Scan(&kind, &title); err == nil {
+			lend(src, kind, title, job.position)
+		}
+	}
 	art, artExt := f.artwork(ctx, info.CoverURL())
-	_, err = f.Ingester.Ingest(ctx, ingest.Request{
+	out, err := f.Ingester.Ingest(ctx, ingest.Request{
 		Path:         path,
 		OriginalName: store.Sanitize(firstNonEmpty(info.Title, info.ID)) + filepath.Ext(path),
 		Source:       "url",
@@ -344,17 +395,16 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 		DurationSec:  int(info.Duration + 0.5),
 		Artwork:      art,
 		ArtworkExt:   artExt,
-		SourceInfo: &resolve.SourceInfo{
-			Title: info.Title, Uploader: info.Poster(),
-			Artist: info.Artist, Track: info.Track, Album: info.Album,
-			TrackNo: info.TrackNumber, Year: info.ReleaseYear,
-		},
+		SourceInfo:   src,
 	})
 	if errors.Is(err, ingest.ErrNotAudio) {
 		return fmt.Errorf("the source sent a %s file, which is not audio", filepath.Ext(path))
 	}
 	if errors.Is(err, ingest.ErrNoStore) {
 		return err
+	}
+	if err == nil {
+		f.place(ctx, job, out.TrackID)
 	}
 	// Other outcomes, success or failure, were written to the job by Ingest.
 	return nil

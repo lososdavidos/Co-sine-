@@ -7,6 +7,7 @@ import app.sine.core.cosine.CosineClient
 import app.sine.core.download.DownloadIndex
 import app.sine.core.download.DownloadLayout
 import app.sine.core.cosine.CosineException
+import app.sine.core.cosine.SmartPlaylist
 import app.sine.core.download.OfflineLibrary
 import app.sine.core.mirror.LibraryMirror
 import app.sine.core.mirror.MirrorLibrary
@@ -14,6 +15,8 @@ import app.sine.core.model.Album
 import app.sine.core.model.AlbumDetail
 import app.sine.core.model.Artist
 import app.sine.core.model.ArtistDetail
+import app.sine.core.model.Playlist
+import app.sine.core.model.PlaylistDetail
 import app.sine.core.model.Track
 import app.sine.core.play.PlayLog
 import app.sine.core.play.PlaySource
@@ -209,6 +212,50 @@ class AccountSession(
             }.distinctBy { it.id } // pages can overlap if the library changes mid-load; lists need unique keys
         },
     )
+
+    // ------------------------------------------------------------ playlists (§2.4)
+
+    private val _playlistsChanged = MutableStateFlow(0)
+
+    /** Counts playlist changes made here, so the screens showing playlists ask again. */
+    val playlistsChanged: StateFlow<Int> = _playlistsChanged.asStateFlow()
+
+    /** Playlists can be made and edited: on any Subsonic server, on Cosine once it says so. */
+    val canEditPlaylists: Boolean get() = cosine == null || can(Capability.PLAYLISTS)
+
+    /** Smart playlists' rules can be made and edited. */
+    val canEditSmart: Boolean get() = can(Capability.SMART_PLAYLISTS)
+
+    private suspend fun <T> changing(block: suspend () -> T): T = block().also { _playlistsChanged.value++ }
+
+    /** Playlists need the server: there is no copy of them here yet (§5.2). */
+    suspend fun playlists(): Sourced<List<Playlist>> =
+        fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlists() })
+
+    suspend fun playlist(id: String): Sourced<PlaylistDetail> =
+        fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlist(id) })
+
+    suspend fun createPlaylist(name: String, trackIds: List<String> = emptyList()): String? =
+        changing { client.createPlaylist(name, trackIds) }
+
+    suspend fun addToPlaylist(id: String, trackIds: List<String>) = changing { client.updatePlaylist(id, add = trackIds) }
+
+    /** Takes songs out of a playlist by their positions in it, as listed. */
+    suspend fun removeFromPlaylist(id: String, positions: List<Int>) =
+        changing { client.updatePlaylist(id, removeAt = positions) }
+
+    suspend fun reorderPlaylist(id: String, trackIds: List<String>) = changing { client.replacePlaylist(id, trackIds) }
+
+    suspend fun renamePlaylist(id: String, name: String) = changing { client.updatePlaylist(id, name = name) }
+
+    suspend fun deletePlaylist(id: String) = changing { client.deletePlaylist(id) }
+
+    suspend fun smartPlaylists(): List<SmartPlaylist> = cosine?.smartPlaylists() ?: emptyList()
+
+    suspend fun saveSmart(playlist: SmartPlaylist): SmartPlaylist {
+        val c = cosine ?: throw CosineException(400, "Smart playlists need a Cosine server.")
+        return changing { c.saveSmart(playlist) }
+    }
 
     fun playSource(track: Track): PlaySource =
         PlaySource.resolve(downloads[track.id], isOnline) { client.streamUrl(track.id) }

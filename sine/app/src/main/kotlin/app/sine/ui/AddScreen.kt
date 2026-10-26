@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
@@ -75,6 +76,10 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
     val scope = rememberCoroutineScope()
     var input by rememberSaveable { mutableStateOf(initialText) }
     var lookup by remember { mutableStateOf<Lookup?>(null) }
+    // The search an album or playlist was opened from, to go back to.
+    var searched by remember { mutableStateOf<Lookup?>(null) }
+    // A playlist's songs also become a playlist in the library unless unticked.
+    var keepPlaylist by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(setOf<String>()) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -100,8 +105,7 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
         null
     }
 
-    fun look() {
-        val text = input.trim()
+    fun look(text: String = input.trim(), from: Lookup? = null) {
         if (text.isEmpty()) return
         scope.launch {
             busy = true
@@ -109,26 +113,37 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
             val result = attempt { cosine.lookup(text) }
             if (result != null) {
                 lookup = result
+                searched = from
+                keepPlaylist = true
                 // A collection is queued whole unless you untick things; search results start unticked.
                 selected = if (result.isSearch) emptySet() else result.items.filterNot { it.inLibrary }.map { it.url }.toSet()
-                if (result.items.isEmpty()) message = "No results."
+                if (result.items.isEmpty() && result.collections.isEmpty()) message = "No results."
             }
             busy = false
         }
     }
 
     fun add(urls: List<String>, force: Boolean = false) {
-        if (urls.isEmpty()) return
+        // Songs picked from an album or playlist say where from: an album
+        // lends them its name, a playlist becomes one in the library — even
+        // with nothing to fetch, from the songs already here.
+        val from = lookup?.takeIf { it.isCollection }?.url
+        val playlistOnly = urls.isEmpty() && from != null && lookup?.isPlaylist == true && keepPlaylist
+        if (urls.isEmpty() && !playlistOnly) return
         if (!session.isOnline) {
             keepForLater(urls)
             return
         }
         scope.launch {
             busy = true
-            val queued = attempt { cosine.submit(urls, force) }
+            val queued = attempt { cosine.submit(urls, force, from, keepPlaylist) }
             if (queued == null && message == Voice.serverUnreachable(true)) keepForLater(urls)
             if (queued != null) {
-                message = if (queued.size == 1) "Queued." else "Queued ${queued.size} links."
+                message = when {
+                    playlistOnly -> "Playlist made from the songs already in your library."
+                    queued.size == 1 -> "Queued."
+                    else -> "Queued ${queued.size} links."
+                }
                 selected = emptySet()
                 refreshJobs++
             }
@@ -182,13 +197,19 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
         }
 
         lookup?.let { l ->
-            item {
-                val heading = when {
-                    l.isCollection -> "${l.title ?: "Collection"}: ${l.items.size} tracks"
-                    l.isSearch -> if (l.backend == "api") "From the source APIs" else "From yt-dlp search"
-                    else -> null
+            searched?.let { back ->
+                item {
+                    TextButton(onClick = { lookup = back; searched = null; selected = emptySet() }, Modifier.padding(horizontal = 8.dp)) {
+                        Text("← Back to search results")
+                    }
                 }
-                heading?.let { SectionHeader(it) }
+            }
+            if (l.isCollection) item { CollectionHeading(l, keepPlaylist) { keepPlaylist = it } }
+            // Albums and playlists come first when one is what was asked for.
+            val collectionsFirst = l.collections.firstOrNull()?.asked == true
+            if (collectionsFirst) collectionResults(l) { look(it.url, from = l) }
+            if (l.isSearch && l.items.isNotEmpty()) item {
+                SectionHeader(if (l.backend == "api") "Songs, from the source APIs" else "Songs")
             }
             // Keyed by position: a result list may repeat a link, and a
             // repeated LazyColumn key crashes.
@@ -197,14 +218,17 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
                     selected = if (item.url in selected) selected - item.url else selected + item.url
                 }
             }
-            item {
+            if (l.items.isNotEmpty()) item {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { add(selected.toList()) }, enabled = selected.isNotEmpty() && !busy) {
+                    Button(onClick = { add(l.items.map { it.url }.filter { it in selected }) }, enabled = selected.isNotEmpty() && !busy) {
                         Text(if (selected.size == 1) "Add" else "Add ${selected.size}")
                     }
                     // Q12: something you already have is refused unless you insist.
                     val owned = l.items.filter { it.inLibrary }
                     if (!l.isSearch && owned.isNotEmpty() && selected.isEmpty()) {
+                        if (l.isPlaylist && keepPlaylist) {
+                            Button(onClick = { add(emptyList()) }, enabled = !busy) { Text("Make the playlist") }
+                        }
                         OutlinedButton(onClick = { add(owned.map { it.url }, force = true) }, enabled = !busy) {
                             Text("Add anyway")
                         }
@@ -212,6 +236,7 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
                 }
                 HorizontalDivider()
             }
+            if (!collectionsFirst) collectionResults(l) { look(it.url, from = l) }
         }
 
         if (jobs.isNotEmpty()) {
@@ -228,6 +253,47 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
                 )
             }
         }
+    }
+}
+
+/** What a looked-up album or playlist is, and what adding it does (§3.1a). */
+@Composable
+private fun CollectionHeading(l: Lookup, keepPlaylist: Boolean, onKeepPlaylist: (Boolean) -> Unit) {
+    val count = if (l.items.size == 1) "1 track" else "${l.items.size} tracks"
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            when {
+                l.isAlbum -> "Album: ${l.title ?: "Untitled"}" + (l.artist?.let { " by $it" } ?: "")
+                l.isPlaylist -> "Playlist: ${l.title ?: "Untitled"}"
+                else -> l.title ?: "Collection"
+            },
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            if (l.isPlaylist) "$count. ${Voice.PLAYLIST_FILED}" else "$count. Untick what you don't want.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (l.isPlaylist) {
+            Row(Modifier.clickable { onKeepPlaylist(!keepPlaylist) }, verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = keepPlaylist, onCheckedChange = onKeepPlaylist)
+                Text("Keep it as a playlist in my library, with the songs I already have")
+            }
+        }
+    }
+}
+
+/** Albums and playlists a search found; picking one shows its songs. */
+private fun LazyListScope.collectionResults(l: Lookup, onOpen: (AddItem) -> Unit) {
+    if (l.collections.isEmpty()) return
+    item { SectionHeader("Albums and playlists") }
+    itemsIndexed(l.collections, key = { i, it -> "c:$i:${it.url}" }) { _, item ->
+        val details = listOfNotNull(
+            if (item.kind == "album") "Album" else "Playlist",
+            item.uploader.ifBlank { null },
+            item.tracks.takeIf { it > 0 }?.let { if (it == 1) "1 song" else "$it songs" },
+            item.source.ifBlank { null },
+        ).joinToString(" · ")
+        ItemRow(item.title, details, item.thumbnail) { onOpen(item) }
     }
 }
 
