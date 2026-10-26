@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 166 resolved decisions · last updated 2026-10-26 (icons carry the actions, slightly 3D, §6.1; Phase's two blues, §6.1; motion and gestures, §6.16; Home tiles, §6.4)
+**Status:** COMPLETE DRAFT · 171 resolved decisions · last updated 2026-10-26 (the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat and liking in Now playing, §6.6; Liked songs and Favourites, §2.4, §6.4.1; recent searches, §6.8)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -1554,6 +1554,12 @@ Mixing Artists, Albums, Tracks and Playlists in one list needs two things:
 
 `RESOLVED` **Search is always global**, unaffected by which Library segment was
 last open.
+
+`RESOLVED` **Recent searches show while the field is empty.** The last ten, per
+account, kept on the phone, newest first. A search is kept once it found
+something you opened, or you pressed search, not every word typed on the way;
+the same search again moves to the top. A tap searches it again; each can be
+forgotten, or all of them cleared.
 
 `RESOLVED` **Sort and filter options per screen, not remembered.** Artists by
 name or by recently added; a release's tracks always in track order, because

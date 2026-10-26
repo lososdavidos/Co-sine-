@@ -26,6 +26,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Token + salt login; the password is never stored
 - Several accounts, switched explicitly
 - Browse Artists / Albums / Playlists, search, artist and album pages; pull any list down to refresh it
+- Recent searches, shown while the search field is empty: tap one to search it again, forget one, or clear them
 - Streaming playback of the original files (`format=raw`, no transcoding), with the media notification, lockscreen, Bluetooth and headset controls from Media3
 - Shuffle that plays every song once, from the start of each, and Repeat (the queue, or one song); Up next shows the order they'll play in
 - Like a song with two taps on Add to playlist in Now playing (one tap picks a playlist); it's Subsonic's star, so other apps see it, and it puts the song in Liked songs

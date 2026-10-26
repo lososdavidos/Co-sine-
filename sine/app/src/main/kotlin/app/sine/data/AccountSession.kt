@@ -27,6 +27,7 @@ import app.sine.core.model.PlaylistDetail
 import app.sine.core.model.Track
 import app.sine.core.play.PlayLog
 import app.sine.core.play.PlaySource
+import app.sine.core.search.SearchHistory
 import app.sine.core.server.Capability
 import app.sine.core.subsonic.AlbumListType
 import app.sine.core.subsonic.SubsonicClient
@@ -76,6 +77,7 @@ class AccountSession(
     val plays = PlayLog(File(dir, "plays.json"))
     /** Home's arrangement (§6.4): kept here, and on Cosine when it keeps one. */
     val home = HomeStore(File(dir, "home.json"))
+    val searches = SearchHistory(File(dir, "searches.json"))
     private val coversDir = File(dir, "covers")
 
     /**

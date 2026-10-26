@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -45,6 +46,7 @@ import app.sine.data.Sourced
 import app.sine.download.Downloads
 import app.sine.graph
 import app.sine.ui.phase.Chip
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseField
 import app.sine.ui.phase.PhaseIcons
@@ -85,6 +87,9 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
     val playing = playingId()
     var query by rememberSaveable { mutableStateOf("") }
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val recent by session.searches.queries.collectAsStateWithLifecycle()
+    // A search is kept once it found what you opened, or you pressed search (#19).
+    val opened = { session.searches.add(query) }
     // Searching the mirror is instant: one load for every keystroke keeps
     // the last results up while typing. Searching the server shows it's
     // working, so each query starts afresh.
@@ -111,8 +116,12 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
             leading = PhaseIcons.Search,
             onClear = { query = "" },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { opened() }),
         )
-        if (query.isBlank()) return@Column
+        if (query.isBlank()) {
+            RecentSearches(recent, onPick = { query = it }, onRemove = session.searches::remove, onClear = session.searches::clear)
+            return@Column
+        }
         LoadContent(load) { hits, _ ->
             if (hits.isEmpty()) {
                 ListMessage(Voice.NO_SEARCH_RESULTS)
@@ -123,23 +132,48 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
                 items(hits) { hit ->
                     when (hit) {
                         is SearchHit.OfArtist -> ItemRow(hit.name, null, session.artwork(hit.artist.coverArt, 150), roundArt = true, label = "Artist") {
+                            opened()
                             nav.navigate(Routes.artist(hit.artist.id))
                         }
                         is SearchHit.OfAlbum -> ItemRow(hit.name, hit.album.artist, session.artwork(hit.album.coverArt, 150), label = "Album") {
+                            opened()
                             nav.navigate(Routes.album(hit.album.id))
                         }
                         is SearchHit.OfPlaylist -> ItemRow(hit.name, null, session.artwork(hit.playlist.coverArt, 150), label = "Playlist") {
+                            opened()
                             nav.navigate(Routes.playlist(hit.playlist.id))
                         }
                         is SearchHit.OfTrack -> ItemRow(
                             hit.name, hit.track.artist, session.artwork(hit.track.coverArt, 150),
                             label = "Song", playing = hit.track.id == playing,
                         ) {
+                            opened()
                             player.play(session, tracks, tracks.indexOf(hit.track))
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** What you searched for lately, to search again with a tap (#19). */
+@Composable
+private fun RecentSearches(queries: List<String>, onPick: (String) -> Unit, onRemove: (String) -> Unit, onClear: () -> Unit) {
+    if (queries.isEmpty()) return
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                SectionLabel("Recent searches", Modifier.weight(1f))
+                Pill("Clear", onClear, Modifier.padding(top = 18.dp), kind = PillKind.Quiet, height = 40.dp)
+            }
+        }
+        items(queries) { q ->
+            ItemRow(
+                q, null, null, showArt = false,
+                leading = { PhaseIcon(PhaseIcons.Search, null, size = 20.dp, tone = IconTone.Dim) },
+                end = { Pill(null, { onRemove(q) }, kind = PillKind.Quiet, icon = PhaseIcons.Close, height = 40.dp, contentDescription = "Forget \"$q\"") },
+            ) { onPick(q) }
         }
     }
 }
