@@ -253,6 +253,18 @@ Note the side effect: accepting a playlist grows your Library without an
 explicit per-track decision. Worth an "added N tracks" confirmation rather than
 silence.
 
+`NOTE` Built: the owner shares a playlist with an account by name; the
+recipient sees an invitation ("Shared with you") and accepts or declines it.
+Accepting adds the Pointers and says how many ("Added 12 songs to your
+library"). A shared playlist is one playlist, not a copy: every member sees
+and edits it, and a song any member adds is given to every member's Library
+too, so it keeps playing in full. Songs an account removed from its Library
+itself are never given back this way (§4.1); they stay hidden for it. A member
+can leave; the owner can stop sharing with anyone or delete it for everyone;
+the songs a playlist brought stay either way. Only the owner shares it on.
+Sharing is an explicit act by the owner, so it does not depend on the
+visibility toggle below.
+
 `RESOLVED` **Visibility is one global server toggle.** Either every account can
 browse every other, or none can. No per-user or per-pair rules — at this scale
 they'd be state nobody ever changes.
@@ -310,9 +322,10 @@ something unexpected.
 `NOTE` Built: manual playlists are made, reordered, trimmed, renamed and
 deleted through the Subsonic API's own `createPlaylist`, `updatePlaylist` and
 `deletePlaylist`, so Sine and every other Subsonic app edit them the same way.
-Edits need the server for now; the operation log (§5.2) is still to come. A
-song gone from the account's library keeps its place in a playlist, hidden,
-and an edit carries it along beside the song it followed.
+Sine, on a Cosine account, keeps them in its mirror and edits them by
+operation (§5.2), offline too. A song gone from the account's library keeps
+its place in a playlist, hidden, and an edit carries it along beside the
+song it followed.
 
 `NOTE` Built: a smart playlist is a saved rule — one of the statistics views
 (most played in a period, recently played, not played in N months, never
@@ -644,6 +657,17 @@ up later are scrobbled correctly, and Subsonic clients scrobble without any
 setup of their own. Late-arriving offline plays carry the time they were played
 (Q70).
 
+`NOTE` Built: an account connects Last.fm or ListenBrainz in Sine, and
+Cosine sends every play it records from then on, whichever client reported
+it, in the order the plays reached it — so plays made offline go when they
+sync, with the time they were played. ListenBrainz needs only the account's
+user token. Last.fm needs an API account for the server, made once by
+whoever runs it and entered in the dashboard; each account then approves
+Cosine on Last.fm (its desktop flow, no password typed into Sine). A
+service that can't be reached is retried, backing off up to an hour; one
+that refuses the account's access stops until it is connected again, and
+the plays wait. Last.fm's "now playing" is not sent.
+
 `RESOLVED` **A play counts after half the track or four minutes, whichever
 comes first** — the scrobbler convention. The client that heard it decides and
 reports it with its time; Cosine records what it is told. Sine applies this
@@ -892,7 +916,26 @@ server never issued (a restored database) or more than 2000 changes gets the
 whole library again. Sine syncs on opening, on reconnecting, every minute while
 on screen, on a pull, and straight after an add or a correction; Library,
 artist and album pages and search read the mirror. Still to come: the WebSocket
-push, the playlist operation log, and Home and playlists from the mirror.
+push, and Home from the mirror.
+
+`NOTE` Built (capability `playlist-sync`): the sync carries playlists, each
+with every entry in order whether shown or not (the client hides those whose
+track it doesn't have, as the server does), invitations to shared playlists
+(§2.3), and the smart playlists as last worked out. What a smart playlist
+holds changes with listening and with time, which the change log doesn't
+record, so they are worked out on every sync and sent only when they differ
+from the client's (`smart=<tag>`). The operation log going up is
+`POST /cosine/v1/playlists/ops`: create, rename, add (to the end), remove,
+move (after an entry, or to the top) and delete, in order. An entry is named
+by its track and which of that track's entries it is, counted just before
+the op, so a song in a playlist twice is told apart. Each op has an id and is
+applied once however often it's resent (an answer lost on a bad connection);
+a playlist made offline is named by its create's id until Cosine gives it
+one. An op that no longer fits — its playlist deleted, its song already
+taken out — is skipped, not refused. A reorder goes up as the fewest moves
+that make it, so a concurrent edit elsewhere survives it. Sine replays its
+unsent ops over the server's copy, so what the phone shows is what Cosine
+will hold, and sends them before each sync.
 
 ### 5.2a Client
 
@@ -1808,6 +1851,12 @@ not silently keep gigabytes.
 | — | Terminal client | None |
 | — | Accessibility | Not specified; Graphit's own floors still apply |
 | — | Library root | Segmented control: Artists / Albums / Playlists |
+| — | Shared playlists | One playlist every member sees and edits; songs any member adds reach every member's Library, except songs one removed itself |
+| — | Sharing and visibility | Sharing is the owner's explicit act; it doesn't depend on the visibility toggle |
+| — | Playlist ops | Entries named by track and occurrence; each op applied once by id; ops that no longer fit are skipped; a reorder is the fewest moves |
+| — | Smart playlists offline | Sent with the sync as last worked out, again only when they change |
+| — | Last.fm account | One API account per server, entered by its admin; each account approves Cosine on Last.fm |
+| — | Scrobbling start | Plays from the moment an account connects; earlier history isn't sent |
 
 ---
 

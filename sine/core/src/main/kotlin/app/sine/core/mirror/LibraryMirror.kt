@@ -1,10 +1,13 @@
 package app.sine.core.mirror
 
+import app.sine.core.cosine.SmartPlaylist
 import app.sine.core.download.OfflineLibrary
 import app.sine.core.model.Album
 import app.sine.core.model.AlbumDetail
 import app.sine.core.model.Artist
 import app.sine.core.model.ArtistDetail
+import app.sine.core.model.Playlist
+import app.sine.core.model.PlaylistDetail
 import app.sine.core.model.SearchResults
 import app.sine.core.model.Track
 import app.sine.core.persist.JsonFile
@@ -17,7 +20,9 @@ import java.io.File
 /**
  * One answer from Cosine's sync endpoint (§5.2): with [full], the whole
  * library, to replace what's here; otherwise what to add or update and the
- * tracks to drop. Albums and artists are sent without counts.
+ * tracks to drop. Albums and artists are sent without counts. Playlists
+ * and invitations follow the same rule; smart playlists come whole, or
+ * not at all ([smart] null) when the ones here, as of [smartTag], are current.
  */
 @Serializable
 data class SyncChanges(
@@ -27,6 +32,11 @@ data class SyncChanges(
     val albums: List<Album> = emptyList(),
     val tracks: List<Track> = emptyList(),
     val removedTracks: List<String> = emptyList(),
+    val playlists: List<MirrorPlaylist> = emptyList(),
+    val invites: List<PlaylistInvite> = emptyList(),
+    val removedPlaylists: List<String> = emptyList(),
+    val smart: List<MirrorSmart>? = null,
+    val smartTag: String? = null,
 )
 
 @Serializable
@@ -36,6 +46,16 @@ internal data class MirrorState(
     val artists: Map<String, Artist> = emptyMap(),
     val albums: Map<String, Album> = emptyMap(),
     val tracks: Map<String, Track> = emptyMap(),
+    val playlists: Map<String, MirrorPlaylist> = emptyMap(),
+    val invites: Map<String, PlaylistInvite> = emptyMap(),
+    val smart: List<MirrorSmart> = emptyList(),
+    val smartTag: String = "",
+    /** Playlist edits made here that Cosine hasn't got yet, oldest first. */
+    val pending: List<PlaylistOp> = emptyList(),
+    /** Those of [pending] Cosine has taken: dropped at the next sync, which brings their result. */
+    val sent: Set<String> = emptySet(),
+    /** Playlists made here, by the id they went by, and the id Cosine gave them. */
+    val aliases: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -57,9 +77,20 @@ class LibraryMirror(file: File) {
     /** Whether a sync has ever filled it. */
     val synced: Boolean get() = _state.value.synced
 
+    /** Which smart playlists this copy has, to tell Cosine on the next sync. */
+    val smartTag: String get() = _state.value.smartTag
+
+    /** Playlist edits made here and not yet sent to Cosine, oldest first. */
+    val pending: List<PlaylistOp> get() = _state.value.let { s -> s.pending.filterNot { it.id in s.sent } }
+
+    /**
+     * Applies a sync. Edits Cosine has taken are dropped now: this sync
+     * started after it took them, so it brings what they did.
+     */
     @Synchronized
     fun apply(c: SyncChanges) {
-        val base = if (c.full) MirrorState() else _state.value
+        val now = _state.value
+        val base = if (c.full) MirrorState() else now
         val removed = c.removedTracks.toSet()
         val tracks = base.tracks.filterKeys { it !in removed } + c.tracks.associateBy { it.id }
         // An album with no tracks left is gone; so is an artist with no albums.
@@ -67,18 +98,48 @@ class LibraryMirror(file: File) {
         val albums = (base.albums + c.albums.associateBy { it.id }).filterKeys { it in withTracks }
         val withAlbums = albums.values.mapNotNullTo(HashSet()) { it.artistId }
         val artists = (base.artists + c.artists.associateBy { it.id }).filterKeys { it in withAlbums }
-        val next = MirrorState(synced = true, cursor = c.cursor, artists = artists, albums = albums, tracks = tracks)
+        val gone = c.removedPlaylists.toSet()
+        val playlists = base.playlists.filterKeys { it !in gone } + c.playlists.associateBy { it.id }
+        val invites = (base.invites.filterKeys { it !in gone && it !in playlists } + c.invites.associateBy { it.id })
+        val next = MirrorState(
+            synced = true, cursor = c.cursor, artists = artists, albums = albums, tracks = tracks,
+            playlists = playlists, invites = invites,
+            smart = c.smart ?: now.smart, smartTag = c.smartTag ?: now.smartTag,
+            // Edits still to send to a playlist made here name it by Cosine's id now.
+            pending = now.pending.filterNot { it.id in now.sent }.map { op ->
+                op.new?.let { now.aliases[PlaylistOps.localId(it)] }?.let { op.copy(new = null, playlist = it) } ?: op
+            },
+            aliases = now.aliases.filterValues { it in playlists },
+        )
+        save(next)
+    }
+
+    /** Records a playlist edit made here, shown at once and sent on the next sync. */
+    @Synchronized
+    fun edit(ops: List<PlaylistOp>) {
+        if (ops.isEmpty()) return
+        val s = _state.value
+        save(s.copy(pending = s.pending + ops))
+    }
+
+    /** Cosine took these edits; a playlist made here now has its own id. */
+    @Synchronized
+    fun sent(results: List<PlaylistOpResult>) {
+        val s = _state.value
+        val made = s.pending.filter { it.op == PlaylistOps.CREATE }.map { it.id }.toSet()
+        val aliases = results.filter { it.id in made && it.playlist != null }
+            .associate { PlaylistOps.localId(it.id) to it.playlist!! }
+        save(s.copy(sent = s.sent + results.map { it.id }, aliases = s.aliases + aliases))
+    }
+
+    @Synchronized
+    fun clear() = save(MirrorState())
+
+    private fun save(next: MirrorState) {
         if (next == _state.value) return
         store.write(next)
         _state.value = next
         _library.value = MirrorLibrary.of(next)
-    }
-
-    @Synchronized
-    fun clear() {
-        store.write(MirrorState())
-        _state.value = MirrorState()
-        _library.value = MirrorLibrary.of(_state.value)
     }
 }
 
@@ -87,8 +148,13 @@ class MirrorLibrary private constructor(
     private val artistsById: Map<String, Artist>,
     private val albumsById: Map<String, Album>,
     private val tracks: List<Track>,
+    private val manual: Map<String, MirrorPlaylist>,
+    private val smart: List<MirrorSmart>,
+    private val invites: List<PlaylistInvite>,
+    private val aliases: Map<String, String>,
 ) {
     private val tracksByAlbum = tracks.groupBy { it.albumId }
+    private val tracksById = tracks.associateBy { it.id }
 
     private fun Album.counted(): Album {
         val ts = tracksByAlbum[id].orEmpty()
@@ -123,7 +189,55 @@ class MirrorLibrary private constructor(
         return AlbumDetail(album.counted(), tracksByAlbum[id].orEmpty().sortedWith(OfflineLibrary.trackOrder))
     }
 
-    fun track(id: String): Track? = tracks.firstOrNull { it.id == id }
+    fun track(id: String): Track? = tracksById[id]
+
+    // ------------------------------------------------------------ playlists (§2.4)
+
+    /** A playlist's id now: one made here goes by Cosine's once the sync has brought it. */
+    fun resolve(id: String): String = aliases[id]?.takeIf { it in manual } ?: id
+
+    /** The songs of [ids] this library has, in order: the shown ones (§4.1). */
+    private fun shown(ids: List<String>) = ids.mapNotNull { tracksById[it] }
+
+    private fun describe(p: MirrorPlaylist): Playlist {
+        val ts = shown(p.tracks)
+        return Playlist(
+            id = p.id, name = p.name, trackCount = ts.size, durationSec = ts.sumOf { it.durationSec },
+            coverArt = ts.firstNotNullOfOrNull { it.coverArt }, owner = p.owner.ifEmpty { null },
+            mine = p.mine, sharedWith = p.sharedWith, invited = p.invited,
+        )
+    }
+
+    private fun describe(s: MirrorSmart): Playlist {
+        val ts = shown(s.tracks)
+        return Playlist(
+            id = s.id, name = s.name, trackCount = ts.size, durationSec = ts.sumOf { it.durationSec },
+            coverArt = ts.firstNotNullOfOrNull { it.coverArt }, comment = s.description, readonly = true,
+        )
+    }
+
+    /** Your playlists and those shared with you, by name, then the smart ones. */
+    fun playlists(): List<Playlist> =
+        manual.values.map { describe(it) }.sortedBy { it.name.lowercase() } + smart.map { describe(it) }
+
+    fun playlist(id: String): PlaylistDetail? {
+        val key = resolve(id)
+        manual[key]?.let { return PlaylistDetail(describe(it), shown(it.tracks)) }
+        return smart.firstOrNull { it.id == key }?.let { PlaylistDetail(describe(it), shown(it.tracks)) }
+    }
+
+    /** Every entry of a manual playlist, shown or not, as edits count them. */
+    fun entries(id: String): List<String>? = manual[resolve(id)]?.tracks
+
+    /** Where each shown song of a manual playlist is among all its entries. */
+    fun shownEntries(id: String): List<Int>? =
+        entries(id)?.let { all -> all.indices.filter { all[it] in tracksById } }
+
+    /** Playlists shared with you, waiting for an answer (§2.3). */
+    fun invites(): List<PlaylistInvite> = invites
+
+    /** A smart playlist's rule, to edit. */
+    fun smartRule(id: String): SmartPlaylist? = smart.firstOrNull { it.id == id }?.toRule()
 
     /**
      * Search as you type (§6.8): names first, and a track or album also when
@@ -141,6 +255,11 @@ class MirrorLibrary private constructor(
     }
 
     internal companion object {
-        fun of(s: MirrorState) = MirrorLibrary(s.artists, s.albums, s.tracks.values.toList())
+        /** The library, and its playlists with the edits made here replayed on Cosine's. */
+        fun of(s: MirrorState) = MirrorLibrary(
+            s.artists, s.albums, s.tracks.values.toList(),
+            s.pending.fold(s.playlists) { lists, op -> PlaylistOps.apply(lists, op) },
+            s.smart, s.invites.values.sortedBy { it.name.lowercase() }, s.aliases,
+        )
     }
 }

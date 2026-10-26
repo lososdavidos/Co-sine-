@@ -46,6 +46,8 @@ import app.sine.core.subsonic.SubsonicException
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.data.NotAvailableOffline
+import app.sine.data.PlaylistChanged
+import app.sine.data.PlaylistGone
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,11 +59,18 @@ import java.io.IOException
 
 /**
  * Makes a change on the server and says what happened, or why it didn't.
- * [block] returns what to say on success, or null to say nothing.
+ * [block] returns what to say on success, or null to say nothing; for a
+ * playlist [edit] made with no connection, that it's kept here until
+ * Cosine has it (§5.2).
  */
-internal suspend fun attemptChange(context: Context, session: AccountSession, block: suspend () -> String?): Boolean {
+internal suspend fun attemptChange(
+    context: Context,
+    session: AccountSession,
+    edit: Boolean = false,
+    block: suspend () -> String?,
+): Boolean {
     val (ok, said) = try {
-        true to block()
+        true to (block() ?: Voice.PLAYLIST_SAVED_OFFLINE.takeIf { edit && session.editsPlaylistsOffline && !session.isOnline })
     } catch (e: CancellationException) {
         throw e
     } catch (e: SubsonicException) {
@@ -69,7 +78,11 @@ internal suspend fun attemptChange(context: Context, session: AccountSession, bl
     } catch (e: CosineException) {
         false to (e.message ?: "Cosine refused that.")
     } catch (e: NotAvailableOffline) {
-        false to "Playlists need the server. Reconnect to change them."
+        false to "That needs the server. Reconnect to do it."
+    } catch (e: PlaylistGone) {
+        false to e.message
+    } catch (e: PlaylistChanged) {
+        false to e.message
     } catch (e: IOException) {
         false to Voice.serverUnreachable(session.account.isCosine)
     }
@@ -82,11 +95,15 @@ internal fun PlaylistList(session: AccountSession, nav: NavController) {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val changed by session.playlistsChanged.collectAsStateWithLifecycle()
-    // Compat mode has no local mirror, so playlists need the server (G2 degrades, §2.1).
-    val load = rememberLoad(session, refreshOn = changed) { session.playlists() }
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    // From the mirror when Cosine keeps playlists in it; otherwise (compat
+    // mode) they need the server (G2 degrades, §2.1).
+    val load = rememberLoad(session, refreshOn = changed to mirrored) { session.playlists() }
     var naming by remember { mutableStateOf(false) }
     var smart by remember { mutableStateOf<SmartPlaylist?>(null) }
+    var answering by remember { mutableStateOf<String?>(null) } // an invitation being answered
     LoadContent(load) { playlists, _ ->
+        val invites = session.invites()
         LazyColumn(Modifier.fillMaxSize()) {
             if (session.canEditPlaylists) item {
                 Row(
@@ -99,14 +116,39 @@ internal fun PlaylistList(session: AccountSession, nav: NavController) {
                     }
                 }
             }
-            if (playlists.isEmpty()) item { Message("No playlists.") }
+            if (invites.isNotEmpty()) item { SectionHeader("Shared with you") }
+            items(invites, key = { "invite-" + it.id }) { inv ->
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(inv.name, style = MaterialTheme.typography.bodyLarge)
+                    Text(Voice.invitation(inv.owner, inv.songs), style = MaterialTheme.typography.bodyMedium)
+                    Text(Voice.ACCEPT_EXPLAINED, style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = answering == null, onClick = {
+                            answering = inv.id
+                            scope.launch {
+                                attemptChange(context, session) { Voice.accepted(session.accept(inv.id)) }
+                                answering = null
+                            }
+                        }) { Text("Accept") }
+                        TextButton(enabled = answering == null, onClick = {
+                            answering = inv.id
+                            scope.launch {
+                                attemptChange(context, session) { session.decline(inv.id); "Declined." }
+                                answering = null
+                            }
+                        }) { Text("Decline") }
+                    }
+                }
+                HorizontalDivider()
+            }
+            if (playlists.isEmpty() && invites.isEmpty()) item { Message("No playlists.") }
             items(playlists, key = { it.id }) { p ->
                 ItemRow(p.name, p.subtitle(), session.artwork(p.coverArt, 150)) { nav.navigate(Routes.playlist(p.id)) }
             }
         }
     }
     if (naming) NameDialog("New playlist", "", "Create", onDismiss = { naming = false }) { name ->
-        scope.launch { if (attemptChange(context, session) { session.createPlaylist(name); null }) naming = false }
+        scope.launch { if (attemptChange(context, session, edit = true) { session.createPlaylist(name); null }) naming = false }
     }
     smart?.let { SmartPlaylistDialog(session, it, onDismiss = { smart = null }) }
 }
@@ -116,18 +158,21 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: NavController) {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val changed by session.playlistsChanged.collectAsStateWithLifecycle()
-    val load = rememberLoad(session, id, refreshOn = changed) { session.playlist(id) }
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val load = rememberLoad(session, id, refreshOn = changed to mirrored) { session.playlist(id) }
     var renaming by remember { mutableStateOf(false) }
     var savingAs by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf(false) }
     var rule by remember { mutableStateOf<SmartPlaylist?>(null) }
-    // While putting the playlist in order: the order so far, saved in one go.
-    var order by remember(id) { mutableStateOf<List<Track>?>(null) }
+    // While putting the playlist in order: the order so far, as positions
+    // in the playlist as listed, saved in one go.
+    var order by remember(id) { mutableStateOf<List<Int>?>(null) }
 
     LoadContent(load) { detail, _ ->
         val p = detail.playlist
         val editable = !p.readonly && session.canEditPlaylists
-        val tracks = order ?: detail.tracks
+        val tracks = order?.mapNotNull { detail.tracks.getOrNull(it) } ?: detail.tracks
         TrackListScreen(
             session = session,
             title = p.name,
@@ -138,10 +183,10 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: NavController) {
             showTrackArtist = true,
             nav = nav,
             empty = Voice.EMPTY_PLAYLIST,
-            onRemoveFromPlaylist = if (editable) { positions ->
+            onRemoveFromPlaylist = if (editable && order == null) { positions ->
                 scope.launch {
                     attemptChange(context, session) {
-                        session.removeFromPlaylist(p.id, positions)
+                        session.removeFromPlaylist(p.id, positions, detail.tracks)
                         Voice.removedFromPlaylist(positions.size)
                     }
                 }
@@ -151,21 +196,24 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: NavController) {
             when {
                 order != null -> {
                     OutlinedButton(onClick = {
-                        val ids = tracks.map { it.id }
-                        scope.launch { if (attemptChange(context, session) { session.reorderPlaylist(p.id, ids); null }) order = null }
+                        val wanted = order.orEmpty()
+                        scope.launch {
+                            if (attemptChange(context, session, edit = true) { session.reorderPlaylist(p.id, detail.tracks, wanted); null }) order = null
+                        }
                     }) { Text("Save order") }
                     TextButton(onClick = { order = null }) { Text("Cancel") }
                 }
                 editable -> {
-                    if (tracks.size > 1) OutlinedButton(onClick = { order = detail.tracks }) { Text("Reorder") }
+                    if (tracks.size > 1) OutlinedButton(onClick = { order = detail.tracks.indices.toList() }) { Text("Reorder") }
                     OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
-                    TextButton(onClick = { deleting = true }) { Text("Delete") }
+                    if (p.mine && session.canShare) OutlinedButton(onClick = { sharing = true }) { Text("Share") }
+                    TextButton(onClick = { deleting = true }) { Text(if (p.mine) "Delete" else "Leave") }
                 }
                 p.readonly -> {
                     if (p.isCosineSmart && session.canEditSmart) OutlinedButton(onClick = {
                         scope.launch {
                             attemptChange(context, session) {
-                                rule = session.smartPlaylists().firstOrNull { it.id == p.id }
+                                rule = session.smartRule(p.id)
                                 null
                             }
                         }
@@ -181,7 +229,7 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: NavController) {
         }
 
         if (renaming) NameDialog("Rename playlist", p.name, "Rename", onDismiss = { renaming = false }) { name ->
-            scope.launch { if (attemptChange(context, session) { session.renamePlaylist(p.id, name); null }) renaming = false }
+            scope.launch { if (attemptChange(context, session, edit = true) { session.renamePlaylist(p.id, name); null }) renaming = false }
         }
         if (savingAs) NameDialog("Save as playlist", p.name, "Save", onDismiss = { savingAs = false }) { name ->
             val ids = tracks.map { it.id }
@@ -189,24 +237,83 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: NavController) {
                 if (attemptChange(context, session) { session.createPlaylist(name, ids); "Saved as a playlist." }) savingAs = false
             }
         }
+        if (sharing) ShareDialog(session, p, onDismiss = { sharing = false })
         if (deleting) AlertDialog(
             onDismissRequest = { deleting = false },
-            title = { Text(Voice.deletePlaylistQuestion(p.name)) },
-            text = { Text(Voice.DELETE_PLAYLIST_EXPLAINED) },
+            title = { Text(if (p.mine) Voice.deletePlaylistQuestion(p.name) else Voice.leavePlaylistQuestion(p.name)) },
+            text = { Text(if (p.mine) Voice.DELETE_PLAYLIST_EXPLAINED else Voice.leavePlaylistExplained(p.owner)) },
             confirmButton = {
                 TextButton(onClick = {
                     deleting = false
                     scope.launch {
-                        if (attemptChange(context, session) { session.deletePlaylist(p.id); "Playlist deleted." }) {
+                        val said = if (p.mine) "Playlist deleted." else "Left the playlist."
+                        if (attemptChange(context, session) { session.deletePlaylist(p.id); said }) {
                             withContext(Dispatchers.Main) { nav.popBackStack() }
                         }
                     }
-                }) { Text("Delete playlist") }
+                }) { Text(if (p.mine) "Delete playlist" else "Leave playlist") }
             },
             dismissButton = { TextButton(onClick = { deleting = false }) { Text("Keep") } },
         )
         rule?.let { SmartPlaylistDialog(session, it, onDismiss = { rule = null }) }
     }
+}
+
+/**
+ * Who a playlist is shared with (§2.3), and sharing it with someone else.
+ * The other accounts come from the server, so this needs a connection.
+ */
+@Composable
+internal fun ShareDialog(session: AccountSession, playlist: Playlist, onDismiss: () -> Unit) {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    var accounts by remember { mutableStateOf<List<String>?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        attemptChange(context, session) { accounts = session.accounts(); null }.also { if (!it) problem = "Sharing needs the server." }
+    }
+    val on = playlist.sharedWith + playlist.invited
+    fun act(work: suspend () -> String) {
+        busy = true
+        scope.launch {
+            attemptChange(context, session) { work() }
+            busy = false
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Share \"${playlist.name}\"") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Whoever accepts gets its songs in their library, and can change it too.", style = MaterialTheme.typography.bodySmall)
+                for (name in on) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        if (name in playlist.invited) "$name (asked)" else name,
+                        Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodyLarge,
+                    )
+                    TextButton(enabled = !busy, onClick = { act { session.unshare(playlist.id, name); "Stopped sharing with $name." } }) {
+                        Text("Stop sharing")
+                    }
+                }
+                when (val all = accounts) {
+                    null -> Text(problem ?: "Loading…")
+                    else -> {
+                        val others = all.filterNot { it in on }
+                        if (others.isEmpty() && on.isEmpty()) Text("There are no other accounts on this server.")
+                        for (name in others) Text(
+                            name,
+                            Modifier.fillMaxWidth().clickable(enabled = !busy) {
+                                act { session.share(playlist.id, name); Voice.invited(name) }
+                            }.padding(vertical = 12.dp),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 /** A name for a playlist: a new one, a renamed one, a smart one saved as a playlist. */

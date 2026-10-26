@@ -7,10 +7,15 @@ import app.sine.core.cosine.CosineClient
 import app.sine.core.download.DownloadIndex
 import app.sine.core.download.DownloadLayout
 import app.sine.core.cosine.CosineException
+import app.sine.core.cosine.LastFmApproval
+import app.sine.core.cosine.Scrobbling
 import app.sine.core.cosine.SmartPlaylist
 import app.sine.core.download.OfflineLibrary
 import app.sine.core.mirror.LibraryMirror
 import app.sine.core.mirror.MirrorLibrary
+import app.sine.core.mirror.PlaylistInvite
+import app.sine.core.mirror.PlaylistOp
+import app.sine.core.mirror.PlaylistOps
 import app.sine.core.model.Album
 import app.sine.core.model.AlbumDetail
 import app.sine.core.model.Artist
@@ -36,11 +41,14 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 
 /** A value and where it came from. [fromDownloads] means the server was not asked or did not answer. */
 data class Sourced<T>(val value: T, val fromDownloads: Boolean)
 
 class NotAvailableOffline : Exception("Not available offline.")
+class PlaylistGone : Exception("This playlist isn't here any more.")
+class PlaylistChanged : Exception("The playlist changed meanwhile. Try again.")
 
 /**
  * Everything belonging to one account: its client, downloads, play log and
@@ -123,15 +131,22 @@ class AccountSession(
     /**
      * Brings the mirror up to date with what changed on the server. Quietly
      * does nothing offline, on a server without a mirror, or while another
-     * sync is under way.
+     * sync is under way, unless [wait]ing for it: after a change on the
+     * server, so it shows.
      */
-    suspend fun sync() {
+    suspend fun sync(wait: Boolean = false) {
         val m = mirror ?: return
         val c = cosine ?: return
-        if (!can(Capability.DELTA_SYNC) || !network.state.value.connected || syncing.isLocked) return
+        if (!can(Capability.DELTA_SYNC) || !network.state.value.connected || (!wait && syncing.isLocked)) return
         syncing.withLock {
             try {
-                val changes = c.sync(m.cursor)
+                // Playlist edits made here go first, so this sync brings back what they did.
+                val ops = m.pending
+                if (ops.isNotEmpty() && can(Capability.PLAYLIST_SYNC)) {
+                    val results = c.playlistOps(ops)
+                    withContext(Dispatchers.IO) { m.sent(results) }
+                }
+                val changes = c.sync(m.cursor, m.smartTag)
                 withContext(Dispatchers.IO) { m.apply(changes) }
                 _reachable.value = true
             } catch (e: IOException) {
@@ -181,6 +196,13 @@ class AccountSession(
     /** Searches the mirror, or null when there is none and the server must be asked. */
     fun searchMirror(query: String) = library()?.search(query)
 
+    /** Playlists whose name matches, from the mirror (§6.8). */
+    fun searchPlaylists(query: String): List<Playlist> {
+        val q = query.trim().lowercase()
+        if (q.isEmpty()) return emptyList()
+        return playlistLibrary()?.playlists()?.filter { q in it.name.lowercase() }.orEmpty()
+    }
+
     suspend fun album(id: String): Sourced<AlbumDetail> = library()?.album(id)?.let { Sourced(it, false) } ?: fetch(
         offline = { lib ->
             val album = lib.albums().firstOrNull { it.id == id } ?: throw NotAvailableOffline()
@@ -226,36 +248,145 @@ class AccountSession(
     /** Smart playlists' rules can be made and edited. */
     val canEditSmart: Boolean get() = can(Capability.SMART_PLAYLISTS)
 
+    /** Playlists can be shared with other accounts on this server (§2.3). */
+    val canShare: Boolean get() = can(Capability.SHARED_PLAYLISTS)
+
     private suspend fun <T> changing(block: suspend () -> T): T = block().also { _playlistsChanged.value++ }
 
-    /** Playlists need the server: there is no copy of them here yet (§5.2). */
+    /**
+     * Playlists from the mirror, offline too, with edits made here shown at
+     * once and sent by operation (§5.2), when Cosine keeps them in its sync.
+     * Otherwise, as in compat mode, they need the server.
+     */
+    private fun playlistLibrary(): MirrorLibrary? = library()?.takeIf { can(Capability.PLAYLIST_SYNC) }
+
+    /** Whether playlists can be changed with no connection: they're edited here and sent later. */
+    val editsPlaylistsOffline: Boolean get() = playlistLibrary() != null
+
     suspend fun playlists(): Sourced<List<Playlist>> =
-        fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlists() })
+        playlistLibrary()?.let { Sourced(it.playlists(), false) }
+            ?: fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlists() })
 
-    suspend fun playlist(id: String): Sourced<PlaylistDetail> =
-        fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlist(id) })
+    suspend fun playlist(id: String): Sourced<PlaylistDetail> {
+        playlistLibrary()?.let { lib -> return Sourced(lib.playlist(id) ?: throw PlaylistGone(), false) }
+        return fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlist(id) })
+    }
 
-    suspend fun createPlaylist(name: String, trackIds: List<String> = emptyList()): String? =
-        changing { client.createPlaylist(name, trackIds) }
+    /** A playlist's songs as the mirror has them; null when it isn't there. */
+    fun mirroredPlaylistTracks(id: String): List<Track>? = playlistLibrary()?.playlist(id)?.tracks
 
-    suspend fun addToPlaylist(id: String, trackIds: List<String>) = changing { client.updatePlaylist(id, add = trackIds) }
+    /** Playlists other accounts shared with this one, waiting for an answer. */
+    fun invites(): List<PlaylistInvite> = playlistLibrary()?.invites().orEmpty()
 
-    /** Takes songs out of a playlist by their positions in it, as listed. */
-    suspend fun removeFromPlaylist(id: String, positions: List<Int>) =
-        changing { client.updatePlaylist(id, removeAt = positions) }
+    private fun opId() = UUID.randomUUID().toString()
 
-    suspend fun reorderPlaylist(id: String, trackIds: List<String>) = changing { client.replacePlaylist(id, trackIds) }
+    /** Keeps edits in the mirror, where they show at once, and sends them now if it can, else on reconnect. */
+    private fun record(ops: List<PlaylistOp>) {
+        mirror?.edit(ops)
+        _playlistsChanged.value++
+        syncSoon()
+    }
 
-    suspend fun renamePlaylist(id: String, name: String) = changing { client.updatePlaylist(id, name = name) }
+    private fun on(id: String, op: String): PlaylistOp =
+        PlaylistOps.on(playlistLibrary()?.resolve(id) ?: id, opId(), op)
 
-    suspend fun deletePlaylist(id: String) = changing { client.deletePlaylist(id) }
+    /** Makes a playlist; returns its id. */
+    suspend fun createPlaylist(name: String, trackIds: List<String> = emptyList()): String? {
+        if (playlistLibrary() != null) {
+            val op = PlaylistOps.create(opId(), name, trackIds)
+            record(listOf(op))
+            return PlaylistOps.localId(op.id)
+        }
+        return changing { client.createPlaylist(name, trackIds) }
+    }
+
+    suspend fun addToPlaylist(id: String, trackIds: List<String>) {
+        if (playlistLibrary() != null) return record(listOf(on(id, PlaylistOps.ADD).copy(tracks = trackIds)))
+        changing { client.updatePlaylist(id, add = trackIds) }
+    }
+
+    /** Takes songs out of a playlist by their [positions] in it, as listed: [listed]. */
+    suspend fun removeFromPlaylist(id: String, positions: List<Int>, listed: List<Track>) {
+        val lib = playlistLibrary() ?: return changing { client.updatePlaylist(id, removeAt = positions) }
+        val entries = lib.entries(id) ?: throw PlaylistGone()
+        val shown = lib.shownEntries(id).orEmpty()
+        // Changed by a sync since it was listed: the positions could name other songs.
+        if (shown.map { entries[it] } != listed.map { it.id }) throw PlaylistChanged()
+        record(PlaylistOps.remove(lib.resolve(id), entries, positions.mapNotNull { shown.getOrNull(it) }, ::opId))
+    }
+
+    /** Puts a playlist's songs, [tracks] as listed, in a new [order]: positions in [tracks]. */
+    suspend fun reorderPlaylist(id: String, tracks: List<Track>, order: List<Int>) {
+        val lib = playlistLibrary() ?: return changing { client.replacePlaylist(id, order.map { tracks[it].id }) }
+        val entries = lib.entries(id) ?: throw PlaylistGone()
+        val shown = lib.shownEntries(id).orEmpty()
+        if (shown.map { entries[it] } != tracks.map { it.id }) throw PlaylistChanged()
+        record(PlaylistOps.reorder(lib.resolve(id), entries, shown, order, ::opId))
+    }
+
+    suspend fun renamePlaylist(id: String, name: String) {
+        if (playlistLibrary() != null) return record(listOf(on(id, PlaylistOps.RENAME).copy(name = name)))
+        changing { client.updatePlaylist(id, name = name) }
+    }
+
+    /** Deletes a playlist; for one shared with you, leaves it. */
+    suspend fun deletePlaylist(id: String) {
+        if (playlistLibrary() != null && !id.startsWith("sp-")) return record(listOf(on(id, PlaylistOps.DELETE)))
+        changing { client.deletePlaylist(id) }
+        if (id.startsWith("sp-")) sync(wait = true)
+    }
 
     suspend fun smartPlaylists(): List<SmartPlaylist> = cosine?.smartPlaylists() ?: emptyList()
 
+    /** A smart playlist's rule: from the mirror when it's there. */
+    suspend fun smartRule(id: String): SmartPlaylist? =
+        playlistLibrary()?.smartRule(id) ?: smartPlaylists().firstOrNull { it.id == id }
+
     suspend fun saveSmart(playlist: SmartPlaylist): SmartPlaylist {
         val c = cosine ?: throw CosineException(400, "Smart playlists need a Cosine server.")
-        return changing { c.saveSmart(playlist) }
+        return changing { c.saveSmart(playlist) }.also { sync(wait = true) }
     }
+
+    // ------------------------------------------------------------ sharing (§2.3)
+
+    private fun native(): CosineClient = cosine ?: throw CosineException(400, "Sharing needs a Cosine server.")
+
+    /** The other accounts here, to share with. Needs the server. */
+    suspend fun accounts(): List<String> = native().accounts()
+
+    /** Shares a playlist; a playlist made here and not yet sent is sent first. */
+    suspend fun share(id: String, with: String) {
+        native().share(sentId(id), with)
+        sync(wait = true)
+    }
+
+    suspend fun unshare(id: String, name: String) {
+        native().unshare(sentId(id), name)
+        sync(wait = true)
+    }
+
+    /** Takes up a shared playlist; returns how many songs went into your library. */
+    suspend fun accept(id: String): Int = native().accept(id).also { sync(wait = true) }
+
+    suspend fun decline(id: String) {
+        native().decline(id)
+        sync(wait = true)
+    }
+
+    /** Cosine's id for a playlist, sending edits first if it was made here. */
+    private suspend fun sentId(id: String): String {
+        if (!PlaylistOps.isLocal(id)) return id
+        sync(wait = true)
+        return playlistLibrary()?.resolve(id)?.takeUnless { PlaylistOps.isLocal(it) } ?: throw NotAvailableOffline()
+    }
+
+    // ------------------------------------------------------------ scrobbling (§4A)
+
+    suspend fun scrobbling(): Scrobbling = native().scrobbling()
+    suspend fun startLastFm(): LastFmApproval = native().startLastFm()
+    suspend fun finishLastFm(token: String): String = native().finishLastFm(token)
+    suspend fun connectListenBrainz(token: String): String = native().connectListenBrainz(token)
+    suspend fun disconnectScrobbler(service: String) = native().disconnectScrobbler(service)
 
     fun playSource(track: Track): PlaySource =
         PlaySource.resolve(downloads[track.id], isOnline) { client.streamUrl(track.id) }

@@ -1,5 +1,7 @@
 package app.sine.core.cosine
 
+import app.sine.core.mirror.PlaylistOp
+import app.sine.core.mirror.PlaylistOpResult
 import app.sine.core.mirror.SyncChanges
 import app.sine.core.server.ServerKind
 import app.sine.core.subsonic.SubsonicCredentials
@@ -81,6 +83,28 @@ data class SmartPlaylist(
     val description: String = "",
 )
 
+/** Where an account's plays are scrobbled (§4A): a service, as whom, and whether it stopped. */
+@Serializable
+data class Scrobbler(
+    val service: String,
+    val username: String,
+    /** Set when the service refused the account's token: connect again. */
+    val error: String? = null,
+    /** Plays not sent yet. */
+    val pending: Int = 0,
+)
+
+@Serializable
+data class Scrobbling(
+    val connected: List<Scrobbler> = emptyList(),
+    /** Last.fm can be connected: the server has its own Last.fm API account. */
+    val lastfmAvailable: Boolean = false,
+)
+
+/** Connecting Last.fm: approve Cosine at [url], then finish with [token]. */
+@Serializable
+data class LastFmApproval(val url: String, val token: String)
+
 @Serializable
 data class IngestJob(
     val id: Long,
@@ -118,6 +142,14 @@ data class IngestJob(
 @Serializable private data class RemoveRequest(val tracks: List<String>)
 @Serializable private data class RemoveResponse(val removed: Int)
 @Serializable private data class CapabilitiesResponse(val version: String, val capabilities: Set<String> = emptySet())
+@Serializable private data class OpsRequest(val ops: List<PlaylistOp>)
+@Serializable private data class OpsResponse(val results: List<PlaylistOpResult> = emptyList())
+@Serializable private data class AccountsResponse(val accounts: List<String> = emptyList())
+@Serializable private data class ShareRequest(val with: String)
+@Serializable private data class OkResponse(val ok: Boolean = true)
+@Serializable private data class AcceptResponse(val added: Int = 0)
+@Serializable private data class TokenRequest(val token: String)
+@Serializable private data class UsernameResponse(val username: String = "")
 
 /**
  * Cosine's native protocol (§2.1). Authenticates once with the Subsonic
@@ -198,9 +230,51 @@ class CosineClient(
     suspend fun remove(trackIds: List<String>): Int =
         send(post("library/remove", RemoveRequest.serializer(), RemoveRequest(trackIds)), RemoveResponse.serializer()).removed
 
-    /** The library since [after] (0: all of it), for the mirror (§5.2). */
-    suspend fun sync(after: Long): SyncChanges =
-        send(get("sync", "after" to after.toString()), SyncChanges.serializer())
+    /**
+     * The library since [after] (0: all of it), for the mirror (§5.2), and
+     * the smart playlists unless those as of [smartTag] are current.
+     */
+    suspend fun sync(after: Long, smartTag: String = ""): SyncChanges =
+        send(get("sync", "after" to after.toString(), "smart" to smartTag), SyncChanges.serializer())
+
+    /** Sends playlist edits made here, maybe offline, in order. Each is applied once, however often sent. */
+    suspend fun playlistOps(ops: List<PlaylistOp>): List<PlaylistOpResult> =
+        send(post("playlists/ops", OpsRequest.serializer(), OpsRequest(ops)), OpsResponse.serializer()).results
+
+    /** The other accounts on this server, to share a playlist with. */
+    suspend fun accounts(): List<String> = send(get("accounts"), AccountsResponse.serializer()).accounts
+
+    suspend fun share(playlistId: String, with: String) {
+        send(post("playlists/$playlistId/share", ShareRequest.serializer(), ShareRequest(with)), OkResponse.serializer())
+    }
+
+    suspend fun unshare(playlistId: String, name: String) {
+        send(delete("playlists/$playlistId/share/$name"), OkResponse.serializer())
+    }
+
+    /** Takes up a shared playlist. Returns how many of its songs went into your library. */
+    suspend fun accept(playlistId: String): Int =
+        send(post("playlists/$playlistId/accept", OkResponse.serializer(), OkResponse()), AcceptResponse.serializer()).added
+
+    suspend fun decline(playlistId: String) {
+        send(post("playlists/$playlistId/decline", OkResponse.serializer(), OkResponse()), OkResponse.serializer())
+    }
+
+    suspend fun scrobbling(): Scrobbling = send(get("scrobbling"), Scrobbling.serializer())
+
+    suspend fun startLastFm(): LastFmApproval =
+        send(post("scrobbling/lastfm/start", OkResponse.serializer(), OkResponse()), LastFmApproval.serializer())
+
+    /** Finishes connecting Last.fm once Cosine was approved in the browser. Returns the Last.fm username. */
+    suspend fun finishLastFm(token: String): String =
+        send(post("scrobbling/lastfm/finish", TokenRequest.serializer(), TokenRequest(token)), UsernameResponse.serializer()).username
+
+    suspend fun connectListenBrainz(token: String): String =
+        send(post("scrobbling/listenbrainz", TokenRequest.serializer(), TokenRequest(token)), UsernameResponse.serializer()).username
+
+    suspend fun disconnectScrobbler(service: String) {
+        send(delete("scrobbling/$service"), OkResponse.serializer())
+    }
 
     suspend fun confirm(trackId: String): ReviewItem =
         send(Request.Builder().url(url("review/$trackId/confirm")).post(ByteArray(0).toRequestBody(JSON)), ReviewItem.serializer())
@@ -212,6 +286,8 @@ class CosineClient(
 
     private fun get(path: String, vararg query: Pair<String, String>) =
         Request.Builder().url(url(path, *query)).get()
+
+    private fun delete(path: String) = Request.Builder().url(url(path)).delete()
 
     private fun <T> post(path: String, serializer: KSerializer<T>, body: T) =
         Request.Builder().url(url(path)).post(WireJson.encodeToString(serializer, body).toRequestBody(JSON))
