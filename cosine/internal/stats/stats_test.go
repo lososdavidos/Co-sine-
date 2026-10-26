@@ -230,6 +230,20 @@ func TestViews(t *testing.T) {
 	}
 }
 
+// A play recorded this very millisecond counts, so a sync straight after
+// it sees it.
+func TestAPlayThisMillisecondCounts(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	e.db.Exec("INSERT INTO plays(user_id, track_id, played_at) VALUES(?, ?, ?)", e.alice, e.glass, now.UnixMilli())
+	if ts, _ := e.s.View(ctx, e.alice, ViewRecent, ViewOptions{Limit: 1}); len(ts) != 1 || ts[0].Title != "glass" {
+		t.Fatalf("recent: %+v", ts)
+	}
+	if ts, _ := e.s.View(ctx, e.alice, ViewNeverPlayed, ViewOptions{}); len(ts) != 0 {
+		t.Fatalf("never played: %+v", ts)
+	}
+}
+
 func artistOf(t *testing.T, e *env, track int64) int64 {
 	var a int64
 	if err := e.db.QueryRow("SELECT artist_id FROM tracks WHERE id = ?", track).Scan(&a); err != nil {
