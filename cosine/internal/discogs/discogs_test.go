@@ -227,3 +227,79 @@ func TestANamedCompilationDoesNotBeatTheArtistsAlbum(t *testing.T) {
 		t.Fatalf("%+v %v", r, err)
 	}
 }
+
+func TestTheFirstReleaseBeatsAGreatestHits(t *testing.T) {
+	// "Timber" as Discogs answers: the greatest hits first, a master with
+	// no formats and twenty tracks, so it looks like an album; only its
+	// pressings in the search say Compilation. Then the single, the EP and
+	// the album it first came out on, from 2013.
+	tracks := func(n, at int, length string) string {
+		var b strings.Builder
+		for i := 1; i <= n; i++ {
+			title, duration := "Filler", "3:00"
+			if i == at {
+				title, duration = "Timber", length
+			}
+			if i > 1 {
+				b.WriteString(",")
+			}
+			b.WriteString(`{"position":"` + strconv.Itoa(i) + `","type_":"track","title":"` + title + `","duration":"` + duration + `"}`)
+		}
+		return b.String()
+	}
+	var mu sync.Mutex
+	var asked []string
+	album := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked = append(asked, r.URL.Path)
+		mu.Unlock()
+		pitbull := `"artists":[{"name":"Pitbull"}]`
+		switch r.URL.Path {
+		case "/database/search":
+			results := `{"id":11,"type":"release","master_id":1,"year":"2017","format":["CD","Compilation"]},
+				{"id":12,"type":"release","master_id":1,"year":"2024","format":["Vinyl","LP","Compilation"]},
+				{"id":2,"type":"master","year":"2013","format":["CD","Single"]},
+				{"id":3,"type":"master","year":"2013","format":["CD","EP"]}`
+			if album {
+				results += `,{"id":4,"type":"master","year":"2012","format":["CD","Album"]}`
+			}
+			w.Write([]byte(`{"results":[` + results + `]}`))
+		case "/masters/1":
+			w.Write([]byte(`{"title":"Greatest Hits","year":2017,` + pitbull + `,"tracklist":[` + tracks(20, 2, "3:24") + `]}`))
+		case "/masters/2":
+			w.Write([]byte(`{"title":"Timber","year":2013,` + pitbull + `,"tracklist":[` + tracks(1, 1, "") + `]}`))
+		case "/masters/3":
+			w.Write([]byte(`{"title":"Meltdown EP","year":2013,` + pitbull + `,"tracklist":[` + tracks(6, 1, "") + `]}`))
+		case "/masters/4":
+			w.Write([]byte(`{"title":"Global Warming: Meltdown","year":2012,` + pitbull + `,"tracklist":[` + tracks(13, 13, "3:24") + `]}`))
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.Client(), nil, "t", nil)
+	c.BaseURL = srv.URL
+	c.Web.Pace = func() time.Duration { return time.Millisecond }
+	hint := resolve.Hint{Artist: "Pitbull", Title: "Timber", DurationSec: 204}
+
+	// The album, looked up first as the earliest: confident, so the
+	// greatest hits isn't looked up at all.
+	r, ok, err := c.Match(context.Background(), hint)
+	if err != nil || !ok || r.Release != "Global Warming: Meltdown" || r.TrackNo != 13 {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if strings.Contains(strings.Join(asked, " "), "/masters/1") {
+		t.Fatal("looked up the greatest hits:", asked)
+	}
+
+	// Without the album: the EP, then the single, the greatest hits last,
+	// though it alone says how long the track is.
+	album = false
+	got, err := c.Candidates(context.Background(), hint, 5)
+	var order []string
+	for _, r := range got {
+		order = append(order, r.Release)
+	}
+	if err != nil || strings.Join(order, ", ") != "Meltdown EP, Timber, Greatest Hits" || got[0].Confidence < 0.8 {
+		t.Fatalf("%v %+v", err, got)
+	}
+}

@@ -30,7 +30,8 @@ func (c *Client) Candidates(ctx context.Context, h Hint, n int) ([]resolve.Resul
 	// ("Bad at Love" vanished). versionPenalty sorts those out instead.
 	base := "recording:" + phrase(h.Title) + " AND artist:" + phrase(h.Artist)
 	queries := []string{base + " AND status:official AND video:false", base}
-	var out []candidate
+	var out []resolve.Placed
+	var ranked []resolve.Result
 	seen := map[string]bool{}
 	for _, q := range queries {
 		recs, err := c.searchRecordings(ctx, q, 50)
@@ -49,16 +50,12 @@ func (c *Client) Candidates(ctx context.Context, h Hint, n int) ([]resolve.Resul
 				}
 			}
 		}
-		sort.SliceStable(out, func(i, j int) bool { return better(out[i], out[j]) })
-		if len(out) > 0 && out[0].Confidence >= confident {
+		ranked = resolve.Order(out)
+		if len(ranked) > 0 && ranked[0].Confidence >= confident {
 			break
 		}
 	}
-	results := make([]resolve.Result, 0, min(n, len(out)))
-	for _, c := range out[:min(n, len(out))] {
-		results = append(results, c.Result)
-	}
-	return results, nil
+	return ranked[:min(n, len(ranked))], nil
 }
 
 // Match returns the single best identity, if any.
@@ -70,60 +67,32 @@ func (c *Client) Match(ctx context.Context, h Hint) (resolve.Result, bool, error
 	return cands[0], true, nil
 }
 
-// candidate is an identity with how canonical its release is (releaseRank).
-type candidate struct {
-	resolve.Result
-	rank int
-}
-
-// better orders candidates: by confidence, and between equals the better
-// release (an album over a single, either over a compilation, across
-// recordings too: MusicBrainz often keeps the single's and the album's
-// recordings apart), then the earliest, then one that says where the
-// track sits. Without this a tie goes to whatever MusicBrainz listed
-// first, such as a reissue a year later with no track numbers.
-func better(a, b candidate) bool {
-	if math.Abs(a.Confidence-b.Confidence) > 1e-9 {
-		return a.Confidence > b.Confidence
-	}
-	if a.rank != b.rank {
-		return a.rank < b.rank
-	}
-	year := func(r resolve.Result) int {
-		if r.Year == 0 {
-			return 9999
-		}
-		return r.Year
-	}
-	if year(a.Result) != year(b.Result) {
-		return year(a.Result) < year(b.Result)
-	}
-	return a.TrackNo > 0 && b.TrackNo == 0
-}
-
 // confident is the review threshold (§5.3): a match below it is a guess.
 const confident = 0.8
 
 // identities turns one recording into candidate identities: the best
 // release for it, plus up to two alternatives, so a correction can choose
-// the album over the single or the reverse.
-func identities(h Hint, r recording) []candidate {
+// the album over the single or the reverse. resolve.Order puts them, and
+// other recordings' copies of the song, in order.
+func identities(h Hint, r recording) []resolve.Placed {
 	base := score(h, r) - versionPenalty(h, r)
+	length := (r.Length + 500) / 1000
 	rels := rankReleases(h, r)
 	if len(rels) == 0 {
 		// A recording on no release: file it as a single of itself.
-		return []candidate{{finish(h, r, release{Title: r.Title}, base), 0}}
+		return []resolve.Placed{{Result: finish(h, r, release{Title: r.Title}, base), LengthSec: length}}
 	}
-	var out []candidate
+	var out []resolve.Placed
 	for i, rel := range rels {
 		if i == 3 {
 			break
 		}
-		conf := base - 0.02*float64(i) // alternatives rank just below the preferred release
-		if named(h, rel) && !compiled(rel) {
+		conf := base
+		home := home(h, r, rel)
+		if home.Named {
 			conf += 0.05 // the album we were told about
 		}
-		out = append(out, candidate{finish(h, r, rel, conf), releaseRank(h, r, rel)})
+		out = append(out, resolve.Placed{Result: finish(h, r, rel, conf), Home: home, LengthSec: length})
 	}
 	return out
 }
@@ -254,38 +223,47 @@ func named(h Hint, rel release) bool {
 	return h.Release != "" && !strings.EqualFold(h.Release, h.Title) && similarity(h.Release, rel.Title) >= 0.8
 }
 
-// rankReleases orders a recording's releases by how canonical they are for
-// this file (releaseRank), earliest first between equals.
+// rankReleases orders a recording's releases by how good a home each is
+// for this file (home, resolve.Home.Before), the earlier date between equals.
 func rankReleases(h Hint, r recording) []release {
 	rels := append([]release(nil), r.Releases...)
+	homes := make(map[string]resolve.Home, len(rels))
+	all := make([]resolve.Home, 0, len(rels))
+	for _, rel := range rels {
+		homes[rel.ID] = home(h, r, rel)
+		all = append(all, homes[rel.ID])
+	}
+	first := resolve.First(all...)
 	sort.SliceStable(rels, func(i, j int) bool {
-		ri, rj := releaseRank(h, r, rels[i]), releaseRank(h, r, rels[j])
-		if ri != rj {
-			return ri < rj
+		hi, hj := homes[rels[i].ID], homes[rels[j].ID]
+		if hi.Before(hj, first) || hj.Before(hi, first) {
+			return hi.Before(hj, first)
 		}
 		return dateKey(rels[i].Date) < dateKey(rels[j].Date)
 	})
 	return rels
 }
 
-// releaseRank says how good a home a release is for a track; lower is
-// better. The album the file names comes first. Otherwise a song that has
-// ever been on an album is filed under the album, then an EP, then its
-// single (the one named after the track, if there are several), and only
-// then a compilation, soundtrack or live album. Official before anything.
+// home says how good a home a release is for a track (resolve.Home). The
+// album the file names comes first, and official releases before others.
+// Then, among a song's first releases, one that has ever been on an album
+// is filed under the album, then an EP, then its single (the one named
+// after the track, if there are several), and only then a compilation,
+// soundtrack or live album; and any of those before a release years later.
 //
 // A compilation the file names is not "the album" in that sense: YouTube
 // credits a video to whichever release claimed it, often a "Hot Party
 // Winter 2018", and a ripped "NOW" CD names one too. It only goes ahead
 // of other compilations; the artist's own release still wins.
-func releaseRank(h Hint, r recording, rel release) int {
+func home(h Hint, r recording, rel release) resolve.Home {
 	wantAlbum := h.Release != "" && !strings.EqualFold(h.Release, h.Title)
+	hm := resolve.Home{Named: named(h, rel) && !compiled(rel), Unofficial: rel.Status != "Official"}
+	if len(rel.Date) >= 4 {
+		hm.Year, _ = strconv.Atoi(rel.Date[:4])
+	}
 	n := 0
-	switch {
-	case named(h, rel) && compiled(rel):
+	if named(h, rel) && compiled(rel) {
 		n--
-	case named(h, rel):
-		n -= 100
 	}
 	switch rel.ReleaseGroup.PrimaryType {
 	case "Album":
@@ -297,9 +275,6 @@ func releaseRank(h Hint, r recording, rel release) int {
 	}
 	if !wantAlbum && similarity(rel.Title, r.Title) >= 0.9 {
 		n -= 5
-	}
-	if rel.Status != "Official" {
-		n += 40
 	}
 	// The original release before a compilation, a live album or a mix of
 	// it. A release credited to Various Artists is a compilation whatever
@@ -316,7 +291,8 @@ func releaseRank(h Hint, r recording, rel release) int {
 			n += 25
 		}
 	}
-	return n
+	hm.Kind = n
+	return hm
 }
 
 func dateKey(d string) string {
