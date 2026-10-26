@@ -92,6 +92,11 @@ object PlaylistOps {
 
     fun create(opId: String, name: String, tracks: List<String>) = PlaylistOp(opId, CREATE, name = name, tracks = tracks)
 
+    /** Whether [op] changes playlist [id], local or Cosine's: what makes it, or an edit to it. */
+    fun touches(op: PlaylistOp, id: String): Boolean =
+        if (isLocal(id)) id.removePrefix(LOCAL).let { op.new == it || (op.op == CREATE && op.id == it) }
+        else op.playlist == id
+
     /** Applies [op] to [lists], playlists by id. An op that no longer fits (its playlist gone) changes nothing. */
     fun apply(lists: Map<String, MirrorPlaylist>, op: PlaylistOp): Map<String, MirrorPlaylist> {
         if (op.op == CREATE) {

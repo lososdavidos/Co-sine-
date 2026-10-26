@@ -1,0 +1,155 @@
+/*
+ * Phase, Cosine's dashboard (§6.18): the same language as Sine, in the browser.
+ * Sine (lime) is your next action; Cosine (sky) is the server at work; red
+ * is for faults and for deleting. Everything else is grey. No glass, no blur.
+ * Admin work is tabular, so tables, mono figures and plain forms carry it.
+ */
+
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("/static/fonts/instrument-sans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-stretch: 75% 100%;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Martian Mono";
+  src: url("/static/fonts/martian-mono.woff2") format("woff2");
+  font-weight: 100 800;
+  font-stretch: 75% 112.5%;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --ground: #0B0B0C;
+  --raised: #161618;
+  --float: #202023;
+  --lift: #2E2E33;
+  --line: #2A2A2F;
+  --line-float: #34343A;
+  --line-strong: #45454B;
+  --bar: #3A3A40;
+  --text-1: #F3F3F0;
+  --text-2: #A6A6AB;
+  --text-3: #8A8A90;
+  --sine: #D7F144;
+  --cosine: #46D3E6;
+  --fault: #F75E51;
+  --ink: #0B0B0C;
+  --sans: "Instrument Sans", system-ui, sans-serif;
+  --mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text-1);
+  font: 400 15px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--text-1); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition-duration: 1ms !important; } }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 40px) 64px; }
+
+/* -------------------------------------------------------------- header */
+.top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.mark {
+  display: inline-flex; align-items: center; gap: 12px;
+  color: var(--text-1); text-decoration: none;
+  font: 700 30px/1 var(--sans); font-stretch: 75%;
+}
+.who { display: flex; align-items: center; gap: 8px; }
+.label, th {
+  font: 500 10px/14px var(--mono); font-stretch: 87.5%;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--text-3);
+}
+
+/* Where you are is the light pill: location, never a signal. */
+nav.main { display: flex; flex-wrap: wrap; gap: 4px; margin: 20px 0 8px; }
+nav.main a {
+  display: inline-flex; align-items: center; height: 40px; padding: 0 16px;
+  border-radius: 999px; color: var(--text-2); text-decoration: none; font-weight: 500;
+  transition: background 100ms, color 100ms;
+}
+nav.main a:hover { background: var(--raised); color: var(--text-1); }
+nav.main a[aria-current="page"] { background: var(--text-1); color: var(--ink); font-weight: 600; }
+
+/* ---------------------------------------------------------------- type */
+h1 { margin: 24px 0 20px; font: 700 clamp(40px, 7vw, 64px)/0.88 var(--sans); font-stretch: 75%; letter-spacing: -0.015em; }
+h2 { margin: 40px 0 12px; font: 650 26px/1.1 var(--sans); font-stretch: 80%; }
+h3 { margin: 28px 0 8px; font: 600 20px/1.2 var(--sans); font-stretch: 85%; }
+p { color: var(--text-2); max-width: 72ch; }
+a { color: var(--text-1); text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--text-1); }
+
+/* -------------------------------------------------------------- tables */
+main { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--line); font-size: 14px; margin: 8px 0 16px; }
+th { text-align: left; padding: 12px 12px 10px 0; font-weight: 500; vertical-align: bottom; }
+td { padding: 10px 12px 10px 0; border-top: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
+tbody tr:first-child td, tr:first-child td { border-top: 0; }
+tr + tr > th, tr + tr > td { border-top: 1px solid var(--line); }
+td:last-child, th:last-child { padding-right: 0; }
+td form { margin: 0; display: inline; }
+/* Key and value rows (the status page, a track as it's filed now). */
+table tr > th:first-child:not(:only-child) { width: 1%; white-space: nowrap; padding-right: 24px; vertical-align: middle; }
+
+/* --------------------------------------------------------------- forms */
+form { margin: 12px 0; }
+label { display: block; margin: 12px 0; color: var(--text-2); font-size: 14px; }
+input:not([type]), input[type="text"], input[type="password"], input[type="number"], input[type="url"], select {
+  margin-top: 6px; height: 44px; padding: 0 14px; max-width: 100%;
+  border-radius: 16px; border: 1px solid var(--line-float); background: var(--raised);
+  color: var(--text-1); font: inherit; font-size: 15px;
+}
+select { padding-right: 32px; }
+input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-color: var(--sine); vertical-align: -3px; margin: 0 8px 0 0; }
+
+/* Something you press: a pill. Lift by default. */
+button {
+  height: 40px; padding: 0 18px; margin: 4px 4px 4px 0;
+  border: 0; border-radius: 999px; background: var(--lift); color: var(--text-1);
+  font: 500 14px/1 var(--sans); cursor: pointer; transition: background 100ms;
+}
+button:hover { background: var(--bar); }
+/* The one action a page is for. */
+button.go { background: var(--sine); color: var(--ink); font-weight: 600; }
+button.go:hover { background: var(--sine); filter: brightness(1.05); }
+/* Removes or deletes, naming what and how many. Never beside the primary. */
+button.destroy { background: var(--fault); color: var(--ink); font-weight: 600; }
+button.quiet { background: transparent; color: var(--text-2); padding: 0 12px; }
+button.quiet:hover { color: var(--text-1); background: transparent; }
+
+/* -------------------------------------------------------------- states */
+/* A line of status: Cosine's dot for the server at work, red for something that stopped. */
+.ok, .err, .s-running, .s-queued, .s-failed, .s-expanded { display: inline-flex; align-items: baseline; gap: 10px; }
+.ok::before, .err::before, .s-running::before, .s-queued::before, .s-failed::before, .s-expanded::before {
+  content: ""; flex: none; width: 8px; height: 8px; border-radius: 2px; transform: translateY(-1px);
+}
+p.ok, p.err { display: flex; padding: 14px 16px; border-radius: 16px; background: var(--raised); color: var(--text-1); max-width: none; }
+.ok::before { display: none; }
+.err::before, .s-failed::before { background: var(--fault); }
+.s-running::before, .s-queued::before, .s-expanded::before { background: var(--cosine); }
+
+/* A tag: one word, square, read not pressed. */
+.tag {
+  display: inline-block; padding: 3px 6px; border-radius: 3px;
+  font: 600 10px/14px var(--mono); font-stretch: 87.5%; letter-spacing: .05em; text-transform: uppercase;
+  border: 1px solid var(--line-strong); color: var(--text-2);
+}
+.tag.server { background: var(--cosine); border-color: var(--cosine); color: var(--ink); }
+.tag.fault { background: var(--fault); border-color: var(--fault); color: var(--ink); }
+
+/* Figures are mono, tabular. */
+.num, td.num { font-family: var(--mono); font-stretch: 87.5%; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+
+/* Listening over time: bars are grey planes, never a coloured line (§6.13). */
+.bar { display: inline-block; height: 10px; background: var(--bar); border-radius: 2px; vertical-align: middle; margin-right: 8px; }
+/* Fetching is the server at work: a Cosine bar. */
+.progress { display: inline-block; width: 120px; height: 6px; background: var(--line); border-radius: 3px; vertical-align: middle; margin-left: 8px; overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--cosine); }
+
+.apart { margin-top: 32px; }

@@ -8,13 +8,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -28,8 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -40,14 +42,21 @@ import app.sine.core.model.Track
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.data.Sourced
+import app.sine.ui.phase.OnPhoneMark
+import app.sine.ui.phase.PhaseColor
+import app.sine.ui.phase.PhaseLabel
+import app.sine.ui.phase.PhaseShape
+import app.sine.ui.phase.PhaseType
+import app.sine.ui.phase.PlayingBars
+import app.sine.ui.phase.rowInk
+import app.sine.ui.phase.rowSurface
 import coil3.compose.AsyncImage
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
 /*
- * Deliberately unstyled: Material 3 defaults throughout. The design language is
- * being replaced, so nothing here encodes Graphit or any other visual system.
- * Structure and behaviour only.
+ * Shared pieces of Sine's screens, in Phase (§6): loading and its messages,
+ * artwork, and the row every list is made of.
  */
 
 sealed interface Load<out T> {
@@ -124,7 +133,7 @@ fun <T> LoadContent(loader: Loader<T>, content: @Composable (T, Boolean) -> Unit
 @Composable
 fun Message(text: String, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Text(text, style = MaterialTheme.typography.bodyLarge)
+        Text(text, color = PhaseColor.Text2, style = PhaseType.Body, textAlign = TextAlign.Center)
     }
 }
 
@@ -136,22 +145,31 @@ fun ListMessage(text: String) {
     }
 }
 
-/** Artwork, or a plain plane where there is none. An artist's picture is [round] (§6.9). */
+/**
+ * Artwork. A cover is square, nearly: a sleeve. An artist's picture is
+ * round, because circles are people (§6.9). With no artwork, a raised
+ * square, never a generated colour.
+ */
 @Composable
 fun Art(model: Any?, size: Dp, modifier: Modifier = Modifier, round: Boolean = false) {
-    val shape = if (round) CircleShape else RectangleShape
-    Box(modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)) {
+    val shape = if (round) CircleShape else PhaseShape.Square
+    Box(modifier.size(size).clip(shape).background(PhaseColor.Raised)) {
         if (model != null) {
             AsyncImage(
                 model = model,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size),
+                modifier = Modifier.matchParentSize(),
             )
         }
     }
 }
 
+/**
+ * The row every list is made of. Quiet by default: a name, a second line,
+ * the length in mono. Something true of the row adds one mark (playing, on
+ * this phone, a tag). Selected, the whole row is Sine with black ink (§6.8).
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ItemRow(
@@ -164,31 +182,45 @@ fun ItemRow(
     trailing: String? = null,
     selected: Boolean = false,
     dimmed: Boolean = false,
+    playing: Boolean = false,
+    onPhone: Boolean = false,
+    label: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    end: (@Composable RowScope.() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
     Row(
         modifier
-            .fillMaxWidth()
-            .background(if (selected) colors.primaryContainer else colors.background)
+            .rowSurface(selected)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .heightIn(min = if (showArt) 64.dp else 52.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        if (showArt) Art(art, 48.dp, round = roundArt)
-        Column(Modifier.weight(1f)) {
-            val ink = if (dimmed) colors.onBackground.copy(alpha = 0.4f) else colors.onBackground
-            Text(title, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        leading?.invoke()
+        if (showArt) Art(art, 44.dp, round = roundArt)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                title, color = rowInk(selected, dimmed),
+                style = PhaseType.Name.copy(fontWeight = if (playing || selected) FontWeight.SemiBold else FontWeight.Medium),
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
             if (!subtitle.isNullOrBlank()) {
                 Text(
-                    subtitle, color = ink.copy(alpha = ink.alpha * 0.7f),
-                    style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    subtitle, color = rowInk(selected, dimmed, secondary = true),
+                    style = PhaseType.Small, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        if (trailing != null) Text(trailing, style = MaterialTheme.typography.bodySmall)
+        if (label != null) PhaseLabel(label, color = rowInk(selected, dimmed, secondary = true))
+        if (playing && leading == null) PlayingBars(color = if (selected) PhaseColor.Ink else PhaseColor.Sine)
+        if (onPhone) OnPhoneMark()
+        if (trailing != null) {
+            Text(trailing, color = rowInk(selected, dimmed, secondary = true), style = PhaseType.Data, maxLines = 1)
+        }
+        end?.invoke(this)
     }
 }
 
@@ -196,7 +228,7 @@ fun Track.durationText() = Voice.formatDuration(durationSec)
 fun Artist.subtitle() = if (albumCount == 1) "1 album" else "$albumCount albums"
 fun Album.subtitle() = listOfNotNull(artist.ifBlank { null }, year?.toString()).joinToString(" · ")
 fun Playlist.subtitle(): String {
-    val count = if (trackCount == 1) "1 track" else "$trackCount tracks"
+    val count = Voice.songs(trackCount)
     val owner = owner
     return when {
         // A smart playlist says what its rule picks.

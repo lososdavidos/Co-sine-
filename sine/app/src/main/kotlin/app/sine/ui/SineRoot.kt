@@ -4,45 +4,25 @@ package app.sine.ui
 
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,10 +35,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import app.sine.core.server.Capability
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.graph
+import app.sine.ui.phase.PhaseColor
+import app.sine.ui.phase.PhaseTheme
+import app.sine.ui.phase.Signal
 import kotlinx.coroutines.delay
 
 object Routes {
@@ -85,7 +67,7 @@ object Routes {
 @Composable
 fun SineRoot() {
     val graph = LocalContext.current.graph
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+    PhaseTheme {
         val accounts by graph.accounts.state.collectAsStateWithLifecycle()
         val session by graph.activeSession.collectAsStateWithLifecycle()
         val share by graph.incomingShare.collectAsStateWithLifecycle()
@@ -105,7 +87,7 @@ fun SineRoot() {
             }
         }
 
-        Surface(Modifier.fillMaxSize()) {
+        Surface(Modifier.fillMaxSize(), color = PhaseColor.Ground, contentColor = PhaseColor.Text1) {
             val active = session
             if (accounts.accounts.isEmpty() || active == null) {
                 AddAccountScreen(onDone = {}, onCancel = null)
@@ -117,13 +99,11 @@ fun SineRoot() {
     }
 }
 
-private data class Destination(val route: String, val label: String, val icon: ImageVector)
-
-// Three destinations (§6.2). Add is a Library action, Jam lives in now-playing.
+// Three destinations (§6.2), words in the shelf. Add is a Library action, Jam lives in now-playing.
 private val destinations = listOf(
-    Destination(Routes.HOME, "Home", Icons.Default.Home),
-    Destination(Routes.SEARCH, "Search", Icons.Default.Search),
-    Destination(Routes.LIBRARY, "Library", Icons.AutoMirrored.Filled.List),
+    Destination(Routes.HOME, "Home"),
+    Destination(Routes.SEARCH, "Search"),
+    Destination(Routes.LIBRARY, "Library"),
 )
 
 @Composable
@@ -137,9 +117,10 @@ private fun MainScaffold(session: AccountSession) {
     val reachable by session.reachable.collectAsStateWithLifecycle()
     val offline = !network.connected || !reachable
     val account by session.accountFlow.collectAsStateWithLifecycle()
-    val canIngest = session.cosine != null && Capability.INGEST in account.kind.capabilities
-    val canReview = session.cosine != null && Capability.REVIEW in account.kind.capabilities
     val share by graph.incomingShare.collectAsStateWithLifecycle()
+    val shelf = remember { ShelfController() }
+    // Which of the three the shelf shows as here: the last one you were on.
+    var here by rememberSaveable { mutableStateOf(Routes.HOME) }
 
     // The mirror (§5.2) catches up every minute while Sine is on screen, and
     // straight away when it comes back on screen.
@@ -163,71 +144,28 @@ private fun MainScaffold(session: AccountSession) {
         }
     }
 
-    Scaffold(
-        topBar = {
-            if (route != Routes.NOW_PLAYING) {
-                TopAppBar(
-                    title = { Text(titleFor(route)) },
-                    navigationIcon = {
-                        if (!topLevel && nav.previousBackStackEntry != null) {
-                            IconButton(onClick = { nav.popBackStack() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                        }
-                    },
-                    actions = {
-                        // Add lives on the Library, not in the navigation (§6.2), and
-                        // only where the server can ingest: compat mode hides it (§2.1).
-                        // The review queue sits beside Add in the Library header (§6.12).
-                        if (route == Routes.LIBRARY && canReview) {
-                            TextButton(onClick = { nav.navigate(Routes.REVIEW) }) { Text("Review") }
-                        }
-                        if (route == Routes.LIBRARY && canIngest) {
-                            IconButton(onClick = { nav.navigate(Routes.add()) }) {
-                                Icon(Icons.Default.Add, contentDescription = "Add music")
-                            }
-                        }
-                        // The account control (§6.11): every screen except now-playing.
-                        if (route != Routes.SETTINGS) {
-                            IconButton(onClick = { nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }) {
-                                Icon(Icons.Default.AccountCircle, contentDescription = "Accounts and settings")
-                            }
-                        }
-                    },
-                )
-            }
-        },
-        bottomBar = {
-            if (route != Routes.NOW_PLAYING) {
-                Column {
-                    MiniPlayer(onOpen = { nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true } })
-                    NavigationBar {
-                        destinations.forEach { d ->
-                            NavigationBarItem(
-                                selected = route == d.route,
-                                onClick = { nav.navigateTopLevel(d.route) },
-                                icon = { Icon(d.icon, contentDescription = null) },
-                                label = { Text(d.label) },
-                            )
-                        }
-                    }
-                }
-            }
-        },
-    ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            if (offline) {
-                Text(
-                    Voice.serverUnreachable(session.account.isCosine),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.secondaryContainer)
-                        .clickable { session.forceOnlineRetry() }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-            NavHost(nav, startDestination = Routes.HOME, modifier = Modifier.weight(1f)) {
+    LaunchedEffect(route) {
+        if (topLevel && route != null) here = route
+        shelf.question = null // a question belongs to the screen that asked it
+    }
+    // Losing the server is said once, in the shelf; the Offline mark stays in the top bar.
+    LaunchedEffect(offline) {
+        if (offline) say(Voice.serverUnreachable(session.account.isCosine), Signal.Server)
+    }
+
+    val chrome = Chrome(
+        offline = offline,
+        onRetry = { session.forceOnlineRetry() },
+        // The account control (§6.11): every screen except now-playing, and Settings itself.
+        onAccount = if (route == Routes.SETTINGS) null else ({ nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }),
+    )
+
+    CompositionLocalProvider(LocalShelf provides shelf, LocalChrome provides chrome) {
+        Box(Modifier.fillMaxSize()) {
+            NavHost(
+                nav, startDestination = Routes.HOME, modifier = Modifier.fillMaxSize(),
+                enterTransition = { fadeIn(tween(160)) }, exitTransition = { fadeOut(tween(160)) },
+            ) {
                 composable(Routes.HOME) { HomeScreen(session, nav) }
                 composable(Routes.SEARCH) { SearchScreen(session, nav) }
                 composable(Routes.LIBRARY) { LibraryScreen(session, nav) }
@@ -240,7 +178,11 @@ private fun MainScaffold(session: AccountSession) {
                 composable(Routes.PLAYLIST, arguments = listOf(navArgument("id") { type = NavType.StringType })) {
                     PlaylistScreen(session, it.arguments?.getString("id").orEmpty(), nav)
                 }
-                composable(Routes.NOW_PLAYING) { NowPlayingScreen(onClose = { nav.popBackStack() }) }
+                // The sheet (§6.6) comes in on the overlay's 220ms and leaves on 160, opacity only.
+                composable(
+                    Routes.NOW_PLAYING,
+                    enterTransition = { fadeIn(tween(220)) }, exitTransition = { fadeOut(tween(160)) },
+                ) { NowPlayingScreen(onClose = { nav.popBackStack() }) }
                 composable(Routes.SETTINGS) { SettingsScreen(session, nav) }
                 composable(
                     Routes.ADD,
@@ -256,6 +198,22 @@ private fun MainScaffold(session: AccountSession) {
                     AddAccountScreen(onDone = { nav.popBackStack() }, onCancel = { nav.popBackStack() })
                 }
             }
+            if (!topLevel && route != null && route != Routes.NOW_PLAYING && route != Routes.ADD_ACCOUNT) {
+                DetailBar(
+                    back = backLabel(nav.previousBackStackEntry?.destination?.route),
+                    onBack = { nav.popBackStack() },
+                    showAccount = route != Routes.SETTINGS,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            }
+            if (route != Routes.NOW_PLAYING && route != Routes.ADD_ACCOUNT) {
+                Shelf(
+                    destinations, here,
+                    onNavigate = { nav.navigateTopLevel(it) },
+                    onOpenPlayer = { nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true } },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
         }
     }
 }
@@ -266,42 +224,13 @@ private fun NavHostController.navigateTopLevel(route: String) = navigate(route) 
     restoreState = true
 }
 
-private fun titleFor(route: String?) = when (route) {
+/** The back pill names where it goes when it can; a page about one thing says Back. */
+private fun backLabel(route: String?) = when (route) {
     Routes.HOME -> "Home"
     Routes.SEARCH -> "Search"
     Routes.LIBRARY -> "Library"
     Routes.SETTINGS -> "Settings"
-    Routes.ADD_ACCOUNT -> "Add account"
-    Routes.ADD -> "Add music"
     Routes.REVIEW -> "Review"
-    Routes.CORRECT -> "Correct"
-    else -> ""
-}
-
-@Composable
-private fun MiniPlayer(onOpen: () -> Unit) {
-    val player = LocalContext.current.graph.player
-    val state by player.state.collectAsStateWithLifecycle()
-    val item = state.current ?: return
-    val meta = item.mediaMetadata
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Art(meta.artworkUri, 40.dp)
-        Column(Modifier.weight(1f)) {
-            Text(meta.title?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                meta.artist?.toString().orEmpty(), style = MaterialTheme.typography.bodySmall,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-        }
-        TextButton(onClick = { player.togglePlay() }) { Text(if (state.isPlaying) "Pause" else "Play") }
-        TextButton(onClick = { player.next() }) { Text("Next") }
-    }
+    Routes.ADD -> "Add"
+    else -> "Back"
 }

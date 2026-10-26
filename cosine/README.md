@@ -120,5 +120,5 @@ Push notifications for ingest progress (Sine polls while Add is open) and the sy
 | `internal/native` | Cosine's own API for Sine |
 | `internal/auth` | Encrypted passwords (needed for Subsonic token auth), dashboard sessions |
 | `internal/subsonic` | The Subsonic API |
-| `internal/dashboard` | Admin web UI, deliberately unstyled |
+| `internal/dashboard` | Admin web UI, in Phase (spec §6.18): one stylesheet and the fonts, served from the binary |
 | `internal/server` | Wiring, plus `/cosine/v1/capabilities` for Sine |

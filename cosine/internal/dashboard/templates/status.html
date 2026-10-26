@@ -4,8 +4,8 @@
 <tr><th>Inbox</th><td>{{.Data.Inbox}}</td></tr>
 <tr><th>Tracks</th><td>{{.Data.Tracks}}</td></tr>
 <tr><th>Files</th><td>{{.Data.Objects}} ({{.Data.Size}})</td></tr>
-<tr><th>Awaiting review</th><td><a href="/review">{{.Data.Review}}</a></td></tr>
-<tr><th>Missing from the Store</th><td>{{if .Data.Missing}}<a href="/missing">{{.Data.Missing}}</a>{{else}}0{{end}}</td></tr>
+<tr><th>Awaiting review</th><td>{{if .Data.Review}}<a class="tag server" href="/review">{{.Data.Review}}</a>{{else}}0{{end}}</td></tr>
+<tr><th>Missing from the Store</th><td>{{if .Data.Missing}}<span class="tag fault"><a href="/missing">{{.Data.Missing}}</a></span>{{else}}0{{end}}</td></tr>
 <tr><th>Unused files</th><td>{{if .Data.Unused}}<a href="/unused">{{.Data.Unused}} ({{.Data.UnusedSize}})</a>{{else}}0{{end}}</td></tr>
 <tr><th>Accounts</th><td>{{.Data.Users}}</td></tr>
 </table>
@@ -14,9 +14,9 @@
 {{if .Data.Jobs}}
 <table>
 <tr><th>When</th><th>Who</th><th>Source</th><th>What</th><th>Status</th><th>Detail</th><th></th></tr>
-{{range .Data.Jobs}}<tr><td>{{.When}}</td><td>{{.Who}}</td><td>{{.Source}}</td>
+{{range .Data.Jobs}}<tr><td class="num">{{.When}}</td><td>{{.Who}}</td><td>{{.Source}}</td>
 <td>{{if .URL}}<a href="{{.URL}}" rel="noreferrer">{{.Title}}</a>{{else}}{{.Title}}{{end}}</td>
-<td>{{.Status}}{{if eq .Status "running"}} {{.Percent}}%{{end}}</td>
+<td><span class="s-{{.Status}}">{{.Status}}</span>{{if eq .Status "running"}} <span class="num">{{.Percent}}%</span><span class="progress"><span style="width: {{.Percent}}%"></span></span>{{end}}</td>
 <td>{{if eq .Status "failed"}}Couldn't fetch — {{end}}{{.Detail}}</td>
 <td>{{if .Mine}}{{if eq .Status "failed"}}<form method="post" action="/jobs/{{.ID}}/retry"><button>Retry</button></form>{{end}}
 {{if eq .Status "known"}}<form method="post" action="/jobs/{{.ID}}/retry"><input type="hidden" name="force" value="1"><button>Add anyway</button></form>{{end}}{{end}}

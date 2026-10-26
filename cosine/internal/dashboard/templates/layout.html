@@ -3,16 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B0B0C">
 <title>{{.Title}} · Cosine</title>
-<!-- Deliberately unstyled: the design language is being replaced. -->
-<style>body{font-family:system-ui,sans-serif;max-width:60rem;margin:1rem auto;padding:0 1rem}table{border-collapse:collapse}td,th{text-align:left;padding:.25rem .75rem .25rem 0}label{display:block;margin:.5rem 0}.err{color:#b00}.ok{color:#070}.bar{display:inline-block;height:.8em;background:currentColor;vertical-align:middle}button.destroy{background:#b00;color:#fff;border:0;padding:.3rem .6rem}.apart{margin-top:2rem}</style>
+<!-- Phase (§6.18): the same design language as Sine. -->
+<link rel="preload" href="/static/fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/phase.css">
 </head>
 <body>
-{{if .User}}<nav><a href="/">Status</a> · <a href="/review">Review</a> · <a href="/listening">Listening</a> · <a href="/corrections">Corrections</a> · <a href="/users">Accounts</a> · <a href="/settings">Settings</a> ·
-<form method="post" action="/logout" style="display:inline"><button>Log out {{.User.Name}}</button></form></nav>{{end}}
+<div class="page">
+<header class="top">
+<a class="mark" href="/"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="13" cy="17" r="11" fill="none" stroke="#45454B" stroke-width="1.5"/><line x1="13" y1="17" x2="20.1" y2="17" stroke="#46D3E6" stroke-width="3"/><line x1="20.1" y1="17" x2="20.1" y2="8.6" stroke="#D7F144" stroke-width="3"/><circle cx="20.1" cy="8.6" r="2.5" fill="#F3F3F0"/></svg>Cosine</a>
+{{if .User}}<div class="who"><span class="label">{{.User.Name}} · admin</span><form method="post" action="/logout"><button class="quiet">Log out</button></form></div>{{end}}
+</header>
+{{if .User}}<nav class="main" aria-label="Dashboard">
+<a href="/"{{if eq .Title "Status"}} aria-current="page"{{end}}>Status</a>
+<a href="/review"{{if eq .Title "Review"}} aria-current="page"{{end}}>Review</a>
+<a href="/listening"{{if eq .Title "Listening"}} aria-current="page"{{end}}>Listening</a>
+<a href="/corrections"{{if eq .Title "Corrections"}} aria-current="page"{{end}}>Corrections</a>
+<a href="/users"{{if eq .Title "Accounts"}} aria-current="page"{{end}}>Accounts</a>
+<a href="/settings"{{if eq .Title "Settings"}} aria-current="page"{{end}}>Settings</a>
+</nav>{{end}}
+<main>
 <h1>{{.Title}}</h1>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
 {{if .Done}}<p class="ok">{{.Done}}</p>{{end}}
 {{template "content" .}}
+</main>
+</div>
 </body>
 </html>{{end}}

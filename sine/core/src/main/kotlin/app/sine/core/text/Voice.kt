@@ -11,12 +11,15 @@ object Voice {
         if (isCosine) "Cosine unreachable. Showing downloaded music."
         else "Server unreachable. Showing downloaded music."
 
-    const val EMPTY_PLAYLIST = "No tracks in this playlist."
+    const val EMPTY_PLAYLIST = "No songs in this playlist."
     const val TRACK_UNAVAILABLE = "Not downloaded. Reconnect to play."
     const val NO_SEARCH_RESULTS = "No matches in your library."
     const val NO_DOWNLOADS = "Nothing downloaded yet."
     const val NOTHING_TO_REVIEW = "Nothing to review."
     const val CHOOSE_DOWNLOAD_FOLDER = "Choose a folder for downloads first."
+
+    /** A count of songs. People hear songs; "track" stays in the code. */
+    fun songs(count: Int) = if (count == 1) "1 song" else "$count songs"
 
     /** Taking songs out of your library (§4.1): asked first, then said. */
     fun removeQuestion(count: Int) =
@@ -57,8 +60,7 @@ object Voice {
     fun leavePlaylistExplained(owner: String?) =
         (if (owner != null) "It stays $owner's. " else "") + "The songs it brought stay in your library."
 
-    fun invitation(owner: String, songs: Int) =
-        "From $owner · " + if (songs == 1) "1 song" else "$songs songs"
+    fun invitation(owner: String, songs: Int) = "From $owner · " + songs(songs)
 
     const val ACCEPT_EXPLAINED = "Accepting puts its songs in your library, so it plays in full. You can both change it."
 
@@ -85,8 +87,7 @@ object Voice {
     /** Adding an album or playlist from a source (§3.1a). */
     const val PLAYLIST_FILED = "Each song is filed under its own artist and release, never under the playlist's name."
 
-    fun downloadQueued(count: Int) =
-        if (count == 1) "Downloading 1 track." else "Downloading $count tracks."
+    fun downloadQueued(count: Int) = "Downloading ${songs(count)}."
 
     fun overBudget(overBytes: Long) =
         "Downloads are ${formatBytes(overBytes)} over the pinned budget."
