@@ -16,6 +16,7 @@ import app.sine.core.subsonic.AlbumListType
 import app.sine.core.subsonic.SubsonicClient
 import app.sine.core.subsonic.SubsonicCredentials
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -214,6 +215,10 @@ class LiveCosineTest {
         val link = System.getenv("FETCH_URL")
         val lookup = cosine.lookup("Listen to this $link")
         assertEquals("single", lookup.kind)
+        // The same, followed as it goes: a link is one answer, the whole of it.
+        assertTrue(Capability.LOOKUP_STREAM in kind.capabilities, "$kind")
+        val followed = cosine.lookupUpdates("Listen to this $link").toList()
+        assertEquals(listOf(lookup), followed)
         val job = cosine.submit(listOf(link)).single()
         var status = job
         repeat(100) {
