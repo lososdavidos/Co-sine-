@@ -275,6 +275,13 @@ class AccountSession(
     /** A playlist's songs as the mirror has them; null when it isn't there. */
     fun mirroredPlaylistTracks(id: String): List<Track>? = playlistLibrary()?.playlist(id)?.tracks
 
+    /** Edits to playlist [id] made here that Cosine doesn't have yet (§5.2). */
+    fun unsentEdits(id: String): Int {
+        val m = mirror ?: return 0
+        val resolved = playlistLibrary()?.resolve(id) ?: id
+        return m.pending.count { PlaylistOps.touches(it, resolved) }
+    }
+
     /** Playlists other accounts shared with this one, waiting for an answer. */
     fun invites(): List<PlaylistInvite> = playlistLibrary()?.invites().orEmpty()
 

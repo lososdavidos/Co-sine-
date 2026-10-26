@@ -1,22 +1,17 @@
 package app.sine.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,10 +20,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.sine.core.cosine.Candidate
 import app.sine.core.cosine.CosineClient
 import app.sine.core.cosine.CosineException
@@ -39,6 +36,21 @@ import app.sine.core.cosine.TrackIdentity
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.data.Sourced
+import app.sine.ui.phase.PhaseColor
+import app.sine.ui.phase.PhaseField
+import app.sine.ui.phase.PhaseIcons
+import app.sine.ui.phase.PhaseLabel
+import app.sine.ui.phase.PhaseType
+import app.sine.ui.phase.Pill
+import app.sine.ui.phase.PillKind
+import app.sine.ui.phase.SectionLabel
+import app.sine.ui.phase.Signal
+import app.sine.ui.phase.Slab
+import app.sine.ui.phase.StatusLine
+import app.sine.ui.phase.Tag
+import app.sine.ui.phase.TagKind
+import app.sine.ui.phase.rowInk
+import app.sine.ui.phase.rowSurface
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -79,13 +91,16 @@ fun ReviewScreen(session: AccountSession, onOpen: (String) -> Unit) {
         var error by remember(queue) { mutableStateOf<String?>(null) }
         // The queue can shift between pages; a repeated key would crash the list.
         val shown = (queue.items + older).distinctBy { it.trackId }
-        if (shown.isEmpty()) ListMessage(Voice.NOTHING_TO_REVIEW)
-        else LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
             item {
-                Text(
-                    if (queue.total == 1) "1 track to review." else "${queue.total} tracks to review, most recently added first.",
-                    modifier = Modifier.padding(16.dp),
-                )
+                Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TopSpace()
+                    Text("Review", color = PhaseColor.Text1, style = PhaseType.display(40.sp))
+                    Text(
+                        if (shown.isEmpty()) Voice.NOTHING_TO_REVIEW else "${Voice.songs(queue.total)} to review, most recently added first.",
+                        color = PhaseColor.Text2, style = PhaseType.Body,
+                    )
+                }
             }
             items(shown, key = { it.trackId }) { item ->
                 ItemRow(
@@ -93,19 +108,20 @@ fun ReviewScreen(session: AccountSession, onOpen: (String) -> Unit) {
                     subtitle = listOf(item.identity.artist, item.why).joinToString(" · "),
                     art = null,
                     showArt = false,
+                    end = { Icon(PhaseIcons.Forward, null, tint = PhaseColor.Text3) },
                 ) { onOpen(item.trackId) }
             }
             if (shown.size < queue.total) item {
-                Column(Modifier.padding(16.dp)) {
-                    OutlinedButton(enabled = !fetching, onClick = {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Pill("Show older (${queue.total - shown.size} more)", {
                         scope.launch {
                             fetching = true
                             error = null
                             cosineCall({ error = it }) { cosine.reviewQueue(offset = shown.size) }?.let { older = older + it.items }
                             fetching = false
                         }
-                    }) { Text("Show older (${queue.total - shown.size} more)") }
-                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    }, enabled = !fetching)
+                    error?.let { StatusLine(it, signal = Signal.Fault) }
                 }
             }
         }
@@ -115,11 +131,11 @@ fun ReviewScreen(session: AccountSession, onOpen: (String) -> Unit) {
 /**
  * Correcting one Track: all candidates at once, ranked and labelled by
  * origin, with typing it yourself one tap away rather than buried (§6.12).
+ * Picking a candidate selects it; the shelf then offers to use it.
  */
 @Composable
 fun CorrectionScreen(session: AccountSession, trackId: String, onDone: () -> Unit) {
     val cosine = session.cosine ?: return Message("Review needs a Cosine server.")
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var item by remember { mutableStateOf<ReviewItem?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -133,36 +149,44 @@ fun CorrectionScreen(session: AccountSession, trackId: String, onDone: () -> Uni
     fun finish(result: ReviewItem?, what: String) {
         if (result == null) return
         session.syncSoon() // the correction moved it: the library should show where to
-        Toast.makeText(context, "$what: ${result.identity.line()}.", Toast.LENGTH_SHORT).show()
+        say("$what: ${result.identity.line()}.")
         onDone()
     }
 
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
         item {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(current.identity.title, style = MaterialTheme.typography.headlineSmall)
-                Text(current.identity.artist)
-                if (current.identity.release != current.identity.title) Text(current.identity.release)
-                Text(current.why, style = MaterialTheme.typography.bodySmall)
-                current.files.forEach { f ->
-                    Text(
-                        listOfNotNull(f.path, Voice.formatDuration(f.durationSec).takeIf { f.durationSec > 0 }, f.sourceUrl)
-                            .joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                TopSpace()
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    PhaseLabel("Correcting")
+                    Text(current.identity.title, color = PhaseColor.Text1, style = PhaseType.display(44.sp))
                 }
-                message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Slab(padding = 16.dp) {
+                    PhaseLabel("As filed now")
+                    Text(current.identity.line(), color = PhaseColor.Text1, style = PhaseType.Name)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!current.identity.reviewed) Tag("Unsure", kind = TagKind.Server)
+                        Text(current.why, Modifier.weight(1f), color = PhaseColor.Text2, style = PhaseType.Small)
+                    }
+                    current.files.forEach { f ->
+                        Text(
+                            listOfNotNull(f.path, Voice.formatDuration(f.durationSec).takeIf { f.durationSec > 0 }, f.sourceUrl)
+                                .joinToString(" · "),
+                            color = PhaseColor.Text3, style = PhaseType.Data,
+                        )
+                    }
+                }
+                message?.let { StatusLine(it, signal = Signal.Fault) }
                 if (!current.identity.reviewed) {
-                    OutlinedButton(enabled = !busy, onClick = {
+                    Pill("It's right as it is", {
                         scope.launch {
                             busy = true
                             finish(cosineCall({ message = it }) { cosine.confirm(trackId) }, "Confirmed")
                             busy = false
                         }
-                    }) { Text("It's right as it is") }
+                    }, enabled = !busy)
                 }
             }
-            HorizontalDivider()
         }
         item {
             Candidates(cosine, current, busy = busy) { query, candidate ->
@@ -172,7 +196,6 @@ fun CorrectionScreen(session: AccountSession, trackId: String, onDone: () -> Uni
                     busy = false
                 }
             }
-            HorizontalDivider()
         }
         item {
             ManualEntry(current.identity, busy = busy) { typed ->
@@ -201,43 +224,73 @@ private fun Candidates(
     var error by remember { mutableStateOf<String?>(null) }
     var searches by remember { mutableStateOf(0) }
     var query by remember { mutableStateOf(ReviewQuery()) }
+    var picked by remember { mutableStateOf<Candidate?>(null) }
 
     LaunchedEffect(searches) {
         error = null
         results = null
+        picked = null
         results = cosineCall({ error = it }) { cosine.candidates(item.trackId, query) } ?: emptyList()
     }
 
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // A picked match is a selection: the shelf offers to use it.
+    ShowSelection(
+        picked?.let { c ->
+            ShelfSelection(
+                "1 match selected",
+                listOf(ShelfAction("Use this match", PillKind.Primary) { if (!busy) onChoose(query, c) }),
+                onClear = { picked = null },
+                note = "Moves the file, for every account.",
+            )
+        },
+    )
+
+    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeader("Matches")
-        OutlinedTextField(artist, { artist = it }, label = { Text("Artist") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(title, { title = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(album, { album = it }, label = { Text("Album") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Button(onClick = {
-            query = ReviewQuery(artist.trim(), title.trim(), album.trim())
-            searches++
-        }) { Text("Search the catalogues") }
+        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PhaseField(artist, { artist = it }, label = "Artist")
+            PhaseField(title, { title = it }, label = "Title")
+            PhaseField(album, { album = it }, label = "Album")
+            Pill("Search the catalogues", {
+                query = ReviewQuery(artist.trim(), title.trim(), album.trim())
+                searches++
+            }, icon = PhaseIcons.Search)
+        }
 
         val list = results
         when {
-            error != null -> Text(error!!)
-            list == null -> Text("Searching…")
-            list.isEmpty() -> Text("No matches. For unreleased material, type the details below.")
-            else -> list.forEach { c ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(listOfNotNull(c.artist, c.release.takeIf { it != c.title }, c.title).joinToString(" — "))
-                        Text(
-                            listOfNotNull(
-                                c.trackArtist,
-                                c.year.takeIf { it > 0 }?.toString(),
-                                "${(c.confidence * 100).toInt()}% match",
-                                Voice.sourceName(c.source),
-                            ).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+            error != null -> StatusLine(error!!, Modifier.padding(horizontal = 20.dp), signal = Signal.Fault)
+            list == null -> Text("Searching…", Modifier.padding(horizontal = 20.dp), color = PhaseColor.Text2, style = PhaseType.Body)
+            list.isEmpty() -> Text("No matches. For unreleased material, type the details below.", Modifier.padding(horizontal = 20.dp), color = PhaseColor.Text2, style = PhaseType.Body)
+            else -> Column {
+                SectionLabel("Candidates", end = "Ranked together")
+                list.forEach { c ->
+                    val on = picked == c
+                    Row(
+                        Modifier
+                            .rowSurface(on)
+                            .selectable(selected = on, onClick = { picked = if (on) null else c })
+                            .heightIn(min = 64.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(c.title, color = rowInk(on, false), style = PhaseType.Name.copy(fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium))
+                            Text(
+                                listOfNotNull(
+                                    c.trackArtist ?: c.artist,
+                                    c.release.takeIf { it != c.title },
+                                    c.year.takeIf { it > 0 }?.toString(),
+                                ).joinToString(" · "),
+                                color = rowInk(on, false, secondary = true), style = PhaseType.Small,
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("${(c.confidence * 100).toInt()}%", color = rowInk(on, false, secondary = true), style = PhaseType.Data)
+                            PhaseLabel(Voice.sourceName(c.source), color = rowInk(on, false, secondary = true))
+                        }
                     }
-                    TextButton(enabled = !busy, onClick = { onChoose(query, c) }) { Text("Use this") }
                 }
             }
         }
@@ -253,26 +306,21 @@ private fun ManualEntry(id: TrackIdentity, busy: Boolean, onSave: (ManualIdentit
     var year by rememberSaveable { mutableStateOf(if (id.year > 0) id.year.toString() else "") }
     val number = KeyboardOptions(keyboardType = KeyboardType.Number)
 
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // For unreleased material this isn't a fallback; it's the only honest answer (§6.12).
         SectionHeader("Type it yourself")
-        OutlinedTextField(artist, { artist = it }, label = { Text("Artist") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(title, { title = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(
-            release, { release = it }, label = { Text("Release") }, placeholder = { Text("Empty for a single") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(trackNo, { trackNo = it.filter(Char::isDigit) }, label = { Text("Track") },
-                singleLine = true, keyboardOptions = number, modifier = Modifier.weight(1f))
-            OutlinedTextField(year, { year = it.filter(Char::isDigit) }, label = { Text("Year") },
-                singleLine = true, keyboardOptions = number, modifier = Modifier.weight(1f))
-        }
-        Button(
-            enabled = !busy && artist.isNotBlank() && title.isNotBlank(),
-            onClick = {
+        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PhaseField(artist, { artist = it }, label = "Artist")
+            PhaseField(title, { title = it }, label = "Title")
+            PhaseField(release, { release = it }, label = "Release", placeholder = "Empty for a single")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PhaseField(trackNo, { trackNo = it.filter(Char::isDigit) }, Modifier.weight(1f), label = "Track", keyboardOptions = number)
+                PhaseField(year, { year = it.filter(Char::isDigit) }, Modifier.weight(1f), label = "Year", keyboardOptions = number)
+            }
+            Pill("Save", {
                 onSave(ManualIdentity(artist.trim(), title.trim(), release.trim(), trackNo.toIntOrNull() ?: 0, year.toIntOrNull() ?: 0))
-            },
-        ) { Text("Save") }
-        Text("Corrections apply for every account.", style = MaterialTheme.typography.bodySmall)
+            }, enabled = !busy && artist.isNotBlank() && title.isNotBlank())
+            Text("Corrections apply for every account.", color = PhaseColor.Text2, style = PhaseType.Small)
+        }
     }
 }

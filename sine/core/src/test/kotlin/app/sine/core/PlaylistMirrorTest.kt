@@ -37,6 +37,19 @@ class PlaylistMirrorTest {
     private val newId = { "op${++ops}" }
 
     @Test
+    fun `an op belongs to the playlist it makes or changes`() {
+        val made = PlaylistOps.create("c1", "Late trains", listOf("tr-1"))
+        val local = PlaylistOps.localId(made.id)
+        val renamed = PlaylistOps.on(local, "op1", PlaylistOps.RENAME)
+        val elsewhere = PlaylistOps.on("pl-9", "op2", PlaylistOps.DELETE)
+        assertTrue(PlaylistOps.touches(made, local))
+        assertTrue(PlaylistOps.touches(renamed, local))
+        assertTrue(PlaylistOps.touches(elsewhere, "pl-9"))
+        assertEquals(listOf(false, false), listOf(made, renamed).map { PlaylistOps.touches(it, "pl-9") })
+        assertEquals(false, PlaylistOps.touches(elsewhere, local))
+    }
+
+    @Test
     fun `moves match Cosine's`() {
         // The same cases as Cosine's TestMove.
         val cases = listOf(
