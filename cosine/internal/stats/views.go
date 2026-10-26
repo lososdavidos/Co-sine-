@@ -52,7 +52,8 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 		opt.Limit = 50
 	}
 	now := s.now()
-	from, to := int64(0), now.UnixMilli()
+	// to is exclusive: a play recorded this very millisecond counts.
+	from, to := int64(0), now.UnixMilli()+1
 	var where, order string
 	switch name {
 	case ViewMostPlayed:
