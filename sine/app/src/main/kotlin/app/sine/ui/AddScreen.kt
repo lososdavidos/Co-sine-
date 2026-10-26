@@ -18,7 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,8 +49,10 @@ import app.sine.core.server.Capability
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.graph
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseField
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseShape
 import app.sine.ui.phase.PhaseType
@@ -303,7 +304,10 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
 private fun CollectionHeading(l: Lookup, keepPlaylist: Boolean, onKeepPlaylist: (Boolean) -> Unit) {
     val count = Voice.songs(l.items.size)
     Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Tag(if (l.isAlbum) "Album" else if (l.isPlaylist) "Playlist" else "Collection")
+        Tag(
+            if (l.isAlbum) "Album" else if (l.isPlaylist) "Playlist" else "Collection",
+            icon = if (l.isAlbum) PhaseIcons.Album else if (l.isPlaylist) PhaseIcons.Playlist else PhaseIcons.Library,
+        )
         Text(l.title ?: "Untitled", color = PhaseColor.Text1, style = PhaseType.display(32.sp))
         if (l.isAlbum) l.artist?.let { Text(it, color = PhaseColor.Text2, style = PhaseType.Body) }
         Text(
@@ -337,7 +341,7 @@ private fun LazyListScope.collectionResults(l: Lookup, onOpen: (AddItem) -> Unit
             item.tracks.takeIf { it > 0 }?.let { Voice.songs(it) },
             item.source.ifBlank { null },
         ).joinToString(" · ")
-        ItemRow(item.title, details, item.thumbnail, end = { Icon(PhaseIcons.Forward, null, tint = PhaseColor.Text3) }) { onOpen(item) }
+        ItemRow(item.title, details, item.thumbnail, end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) }) { onOpen(item) }
     }
 }
 
@@ -369,7 +373,7 @@ private fun ResultRow(item: AddItem, checked: Boolean, onToggle: () -> Unit) {
                 note != null && note.startsWith("Same") -> StatusLine(note, signal = Signal.Server)
                 note != null -> Text(note, color = PhaseColor.Text3, style = PhaseType.Small)
             }
-            if (item.inLibrary) Tag("In your library", Modifier.padding(top = 2.dp))
+            if (item.inLibrary) Tag(null, Modifier.padding(top = 2.dp), icon = PhaseIcons.Library, contentDescription = "In your library")
         }
     }
 }
@@ -389,10 +393,10 @@ private fun JobRow(job: IngestJob, onRetry: () -> Unit, onForce: () -> Unit, onC
             }
             if (job.status == "running") Text("${(job.progress * 100).toInt()}%", color = PhaseColor.Text2, style = PhaseType.Data)
             when {
-                job.isFailed -> Pill("Retry", onRetry, height = 40.dp)
+                job.isFailed -> Pill(null, onRetry, height = 40.dp, icon = PhaseIcons.Retry, contentDescription = "Retry")
                 job.isKnown -> Pill("Add anyway", onForce, height = 40.dp)
             }
-            if (onCorrect != null) Pill("Correct", onCorrect, height = 40.dp)
+            if (onCorrect != null) Pill(null, onCorrect, height = 40.dp, icon = PhaseIcons.Edit, contentDescription = "Correct")
         }
         // Fetching is the server at work: a Cosine bar.
         if (job.status == "running") {

@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,8 +35,10 @@ import app.sine.core.cosine.TrackIdentity
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.data.Sourced
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseField
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseType
@@ -108,7 +109,7 @@ fun ReviewScreen(session: AccountSession, onOpen: (String) -> Unit) {
                     subtitle = listOf(item.identity.artist, item.why).joinToString(" · "),
                     art = null,
                     showArt = false,
-                    end = { Icon(PhaseIcons.Forward, null, tint = PhaseColor.Text3) },
+                    end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) },
                 ) { onOpen(item.trackId) }
             }
             if (shown.size < queue.total) item {

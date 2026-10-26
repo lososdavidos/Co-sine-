@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 164 resolved decisions · last updated 2026-10-26 (Phase's two blues, §6.1; motion and gestures, §6.16; Home tiles, §6.4)
+**Status:** COMPLETE DRAFT · 166 resolved decisions · last updated 2026-10-26 (icons carry the actions, slightly 3D, §6.1; Phase's two blues, §6.1; motion and gestures, §6.16; Home tiles, §6.4)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -75,7 +75,7 @@ server running.
 **G7 — One design language, applied properly.**
 Phase. Monochrome: a near-black ground and greys, with two blues of one hue —
 Sine (blue) for you, now, and Cosine (deep blue) for the server at work — and
-red for faults; type doing the work; no glass. See §6.
+red for faults; type for names, slightly 3D icons for actions; no glass. See §6.
 
 **G8 — Portable to iOS later.**
 Nothing in the client design bets on Android-only capability; nothing on the
@@ -1073,7 +1073,9 @@ These are not open. They arrive with the system and shape every screen below.
 
 | Rule | Consequence for Sine |
 |---|---|
-| **Type carries the interface** | Names are set large in Instrument Sans at width 75, bold; data — lengths, counts, years, sources — small in Martian Mono. Navigation is words. Icons are kept for transport, where everyone knows them, and for marks too small for a word. |
+| **Type carries the names** | Names are set large in Instrument Sans at width 75, bold; data — lengths, counts, years, sources — small in Martian Mono. Status is a sentence, and a question names its verb and its count. |
+| **Icons carry the actions** | Navigation, transport and what you do to a thing — download, add to a playlist, pin, share, rename, reorder, resize, remove — are icons, each in a pill. Where you are is named beside its icon. An icon button held says its name in the shelf, and a screen reader hears that name. Words stay where an icon would be a guess: a form's button, a question and its answers, the one decision a selection is for, and the pill at the foot of a page that removes it. Minimal, but never a row of riddles. `REVISED` (was: navigation is words; icons only for transport). |
+| **Icons are slightly 3D** | Each is lit from above: its face fades from light to a shade darker; the same shape sits a little lower (6% of its size) in a darker tone, which is its depth; and on a coloured face a hairline of light runs along its upper edges. A millimetre of relief, never a render: no blur, no perspective, no second light. Solid where it's a thing (a pin, a disc, a person, a bin), heavy round lines where it's a gesture (download, reorder, shuffle). The depth is picked for the surface: ink on a blue or red pill casts a deeper blue or red, ink on the light pill a grey. The dashboard draws the same icons the same way. |
 | **Monochrome, with two blues** | **Sine** (blue, `#53A4FF`, oklch 0.71 0.155 253) is you, now: what's playing, what's selected, the one action a screen is for. **Cosine** (deep blue, `#1070C5`, oklch 0.54 0.155 252: the same wave, shifted, as the names say) is the server at work: fetching, matching, syncing, waiting for your review. Both sit at hue 252, short of the 260s where blue starts to read violet, and the greys carry a trace of the same hue rather than none. Sine takes black ink; Cosine, too deep for it, takes Text 1. `REVISED` (was: lime and sky, a quarter turn apart). |
 | **Red is for faults** | `#F75E51`: broken or missing, a fetch that failed, and the button that removes or deletes. Never decoration. Everything that isn't a signal is grey or artwork. |
 | **Artwork is the only colour that varies** | Covers are shown whole, and blurred into headers behind a scrim that never changes. Never sampled into a palette, so the signals mean the same beside any cover. |
@@ -1109,7 +1111,7 @@ that order: going right, the next page slides in from the right over the
 current one, which blurs underneath; going left, the current page slides away
 to the right and the one beneath comes back into focus. That is the same
 movement as opening a page and going back, so one gesture means one thing
-everywhere. Tapping a word in the bar runs the same slide in the same
+everywhere. Tapping an icon in the bar runs the same slide in the same
 direction, skipping the page between when there is one, and Android's back
 from Search or Library goes to Home the same way. Past either end, the page
 doesn't move.
@@ -1126,7 +1128,8 @@ not a permanent destination competing with it.
 is currently playing, not a place you navigate to.
 
 Both of those keep the bar at three items, which matters: a 52px bar with 16px
-padding does not hold five things without becoming a row of unlabelled icons.
+padding does not hold five things without becoming a row of unnamed icons. At
+three, the place you're in still has room for its name beside its icon.
 
 ### 6.3 The now-playing bar
 
@@ -1163,7 +1166,10 @@ that ships broken:
   shove the list.
 
 `NOTE` Built (0.5.2): the shelf measures itself and every list reserves what it
-covers. Navigation is three words; where you are is the light pill. The shelf
+covers. Navigation is three icons; where you are is the light pill, named
+(`REVISED`: was three words). With a selection, its actions are icons side by
+side, held to hear their names; a selection with one action, the decision it's
+for, keeps that action's words, and so does a question. The shelf
 also talks back. After an action, a message sits above navigation for four
 seconds — with Cosine's dot when it's about the server's work, red when
 something failed — and tapping it puts it away sooner; navigation stays
@@ -1342,8 +1348,8 @@ first spot from the top where it fits, squares on a multiple of their width.
 - **Tiles:** Now playing; Shuffle all; On this phone, which opens a list of
   what's downloaded; Review queue; Adding, which shows what Cosine is fetching;
   and any artist, album or playlist, smart ones included.
-- **Pinning:** Pin to Home sits in the header of an artist's, album's or
-  playlist's page. Add tile on Home lists the rest.
+- **Pinning:** Pin to Home, the pin, sits in the header of an artist's,
+  album's or playlist's page. Add tile on Home lists the rest.
 - **Selected, the shelf offers:** Resize; Earlier and Later, which move the
   tile one place, while dragging it moves it anywhere; Shuffle on tap or Open
   on tap, for a pinned tile; and Unpin.
@@ -1619,7 +1625,8 @@ Three things follow that are worth writing down:
 
 - `REVISED` **It's a person, so it's a circle.** (Was: a glass control.) Your
   initial on Lift — on Float over artwork — beside the screen's title or the
-  back pill, 20dp in from the edge. No filter.
+  back button, 20dp in from the edge. No filter. The back button is an icon
+  (a cross on a form), naming where it goes when held.
 - **The menu it opens is Float**, like every menu. Choosing Account or
   General then navigates to a **page**, not a dialog — a menu opening a dialog
   would be an overlay opening an overlay, which is exactly the rule that shaped
@@ -2038,10 +2045,12 @@ not silently keep gigabytes.
 | — | Smart playlists offline | Sent with the sync as last worked out, again only when they change |
 | — | Last.fm account | One API account per server, entered by its admin; each account approves Cosine on Last.fm |
 | — | Scrobbling start | Plays from the moment an account connects; earlier history isn't sent |
-| — | Design language | Phase replaces Graphit v0.7 (0.5.2): two signals, red for faults, type doing the work, no glass |
+| — | Design language | Phase replaces Graphit v0.7 (0.5.2): two signals, red for faults, type for names and icons for actions, no glass |
 | — | Signals | `REVISED` Monochrome with two blues of one hue (oklch 252, never toward violet): Sine `#53A4FF` with black ink, Cosine `#1070C5` with light ink (was: lime and sky) |
 | — | Ground | `#0A0B0C`, not pure black; depth by light: Raised, Float, Lift; greys tinted faintly toward the blues, not violet |
 | — | Row numbers | At least two digits, in a column as wide as the list's widest number |
+| — | Icons | `REVISED` Icons carry navigation, transport and actions; words carry names, status, questions and forms; where you are is named beside its icon (was: navigation is words) |
+| — | Icon style | Slightly 3D: lit from above, a crisp darker copy below as depth, a rim of light on coloured faces; no blur; Sine and the dashboard alike |
 | — | Type | Instrument Sans (widths 75 to 100) and Martian Mono, bundled under the OFL |
 | — | Shape | Square is read, circle is a person, pill is pressed, slab holds |
 | — | Status marks | A tag asks you to look; a dot starts a sentence of status |

@@ -21,7 +21,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -53,9 +52,11 @@ import app.sine.data.AccountSession
 import app.sine.download.Downloads
 import app.sine.graph
 import app.sine.ui.phase.Chip
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.Initial
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseField
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseType
 import app.sine.ui.phase.Pill
@@ -160,7 +161,7 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
             val folder = settings.downloadTreeUri?.let { Uri.parse(it).lastPathSegment?.substringAfter(':') }
             ItemRow(
                 "Download folder", folder ?: "Not chosen", null, showArt = false,
-                end = { Icon(PhaseIcons.Forward, null, tint = PhaseColor.Text3) },
+                end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) },
             ) { pickFolder.launch(null) }
         }
         item {

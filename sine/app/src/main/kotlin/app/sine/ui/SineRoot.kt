@@ -26,7 +26,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.graph
+import app.sine.ui.phase.LocalSayName
 import app.sine.ui.phase.PhaseColor
+import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseTheme
 import app.sine.ui.phase.Signal
 import kotlinx.coroutines.delay
@@ -98,11 +100,11 @@ fun SineRoot() {
     }
 }
 
-// Three destinations (§6.2), words in the shelf. Add is a Library action, Jam lives in now-playing.
+// Three destinations (§6.2), icons in the shelf, the one you're in named. Add is a Library action, Jam lives in now-playing.
 private val destinations = listOf(
-    Destination(Routes.HOME, "Home"),
-    Destination(Routes.SEARCH, "Search"),
-    Destination(Routes.LIBRARY, "Library"),
+    Destination(Routes.HOME, "Home", PhaseIcons.Home),
+    Destination(Routes.SEARCH, "Search", PhaseIcons.Search),
+    Destination(Routes.LIBRARY, "Library", PhaseIcons.Library),
 )
 
 @Composable
@@ -147,7 +149,8 @@ private fun MainScaffold(session: AccountSession) {
         if (offline) say(Voice.serverUnreachable(session.account.isCosine), Signal.Server)
     }
 
-    CompositionLocalProvider(LocalShelf provides shelf, LocalPages provides pages) {
+    // An icon button held says its name in the shelf.
+    CompositionLocalProvider(LocalShelf provides shelf, LocalPages provides pages, LocalSayName provides { say(it) }) {
         PageHost(
             pages,
             shelf = {
@@ -172,7 +175,8 @@ private fun MainScaffold(session: AccountSession) {
                     Screen(session, pages, page)
                     if (page.route !in pages.destinations && !page.isSheet && page.route != Routes.ADD_ACCOUNT) {
                         DetailBar(
-                            back = if (page.form != null) "Cancel" else backLabel(pages.below(page)?.route),
+                            back = backLabel(pages.below(page)?.route),
+                            cancel = page.form != null,
                             onBack = { pages.popBackStack() },
                             showAccount = page.route != Routes.SETTINGS,
                             modifier = Modifier.align(Alignment.TopCenter),
@@ -208,7 +212,7 @@ private fun Screen(session: AccountSession, pages: Pages, page: Page) {
     }
 }
 
-/** The back pill names where it goes when it can; a page about one thing says Back. */
+/** Where the back button goes, said when it's held and to a screen reader; a page about one thing says Back. */
 private fun backLabel(route: String?) = when {
     route == Routes.HOME -> "Home"
     route == Routes.SEARCH -> "Search"

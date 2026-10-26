@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,10 +58,12 @@ import app.sine.data.NotAvailableOffline
 import app.sine.data.PlaylistChanged
 import app.sine.data.PlaylistGone
 import app.sine.ui.phase.Chip
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.Initial
 import app.sine.ui.phase.People
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseField
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseShape
@@ -144,9 +145,9 @@ internal fun PlaylistList(session: AccountSession, nav: Pages) {
                                 attemptChange(context, session, edit = true) { session.createPlaylist(name); null }
                             }
                         }
-                    }, kind = PillKind.Outline, icon = PhaseIcons.Plus, height = 40.dp)
+                    }, kind = PillKind.Outline, icon = PhaseIcons.PlaylistAdd, height = 40.dp)
                     if (session.canEditSmart) {
-                        Pill("New smart playlist", { nav.form { SmartPlaylistForm(session, SmartRules.starting("added")) } }, kind = PillKind.Outline, icon = PhaseIcons.Plus, height = 40.dp)
+                        Pill("New smart playlist", { nav.form { SmartPlaylistForm(session, SmartRules.starting("added")) } }, kind = PillKind.Outline, icon = PhaseIcons.Wave, height = 40.dp)
                     }
                 }
             }
@@ -207,7 +208,7 @@ private fun SmartMark() {
     Box(
         Modifier.size(44.dp).clip(PhaseShape.Square).background(PhaseColor.Raised),
         contentAlignment = Alignment.Center,
-    ) { Icon(PhaseIcons.Wave, null, Modifier.size(28.dp), tint = PhaseColor.Text2) }
+    ) { PhaseIcon(PhaseIcons.Wave, null, size = 28.dp, tone = IconTone.Dim) }
 }
 
 @Composable
@@ -282,18 +283,21 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: Pages) {
                 when {
                     order != null -> Unit
                     editable -> {
-                        if (tracks.size > 1) Pill("Reorder", { order = detail.tracks.indices.toList() }, kind = PillKind.Quiet, height = 40.dp)
-                        Pill("Rename", {
+                        if (tracks.size > 1) Pill(null, { order = detail.tracks.indices.toList() }, kind = PillKind.Quiet, icon = PhaseIcons.Reorder, height = 40.dp, contentDescription = "Reorder")
+                        Pill(null, {
                             nav.form {
                                 NameForm("Rename playlist", p.name, "Rename") { name ->
                                     attemptChange(context, session, edit = true) { session.renamePlaylist(p.id, name); null }
                                 }
                             }
-                        }, kind = PillKind.Quiet, height = 40.dp)
-                        Pill(if (p.mine) "Delete" else "Leave", ::askDelete, kind = PillKind.QuietFault, height = 40.dp)
+                        }, kind = PillKind.Quiet, icon = PhaseIcons.Edit, height = 40.dp, contentDescription = "Rename")
+                        Pill(
+                            null, ::askDelete, kind = PillKind.QuietFault, icon = if (p.mine) PhaseIcons.Trash else PhaseIcons.Leave, height = 40.dp,
+                            contentDescription = if (p.mine) "Delete" else "Leave",
+                        )
                     }
                     p.readonly && p.isCosineSmart && session.canEditPlaylists ->
-                        Pill("Delete", ::askDelete, kind = PillKind.QuietFault, height = 40.dp)
+                        Pill(null, ::askDelete, kind = PillKind.QuietFault, icon = PhaseIcons.Trash, height = 40.dp, contentDescription = "Delete")
                 }
             },
         ) {
@@ -308,27 +312,27 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: Pages) {
                     Pill("Cancel", { order = null }, kind = PillKind.Quiet)
                 }
                 editable -> {
-                    if (p.mine && session.canShare) Pill("Share", { nav.form { ShareForm(session, p.id) } })
+                    if (p.mine && session.canShare) Pill(null, { nav.form { ShareForm(session, p.id) } }, icon = PhaseIcons.Share, contentDescription = "Share")
                 }
                 p.readonly -> {
-                    if (p.isCosineSmart && session.canEditSmart) Pill("Edit rule", {
+                    if (p.isCosineSmart && session.canEditSmart) Pill(null, {
                         scope.launch {
                             attemptChange(context, session) {
                                 session.smartRule(p.id)?.let { rule -> nav.form { SmartPlaylistForm(session, rule) } }
                                 null
                             }
                         }
-                    })
+                    }, icon = PhaseIcons.Rule, contentDescription = "Edit rule")
                     // A smart playlist is never shared or hand-edited; this
                     // is the honest step to one that can be (§2.4).
-                    if (session.canEditPlaylists && tracks.isNotEmpty()) Pill("Save as playlist", {
+                    if (session.canEditPlaylists && tracks.isNotEmpty()) Pill(null, {
                         val ids = tracks.map { it.id }
                         nav.form {
                             NameForm("Save as playlist", p.name, "Save") { name ->
                                 attemptChange(context, session) { session.createPlaylist(name, ids); "Saved as a playlist." }
                             }
                         }
-                    })
+                    }, icon = PhaseIcons.PlaylistKeep, contentDescription = "Save as playlist")
                 }
             }
         }
