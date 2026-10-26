@@ -27,7 +27,7 @@ Then point Sine, or any Subsonic client, at `http://<host>:4534`.
 | `--data` | `COSINE_DATA` | `./data` | `cosine.db`, `secret.key`, cached artwork |
 | `--listen` | `COSINE_LISTEN` | `:4534` | Next to Navidrome's 4533, so both can run during the switch |
 
-Install **yt-dlp** to add music from links and searches; without it that feature is switched off and not advertised to Sine. `COSINE_YTDLP` points at a specific binary. Keep it updated (`yt-dlp -U`): sites change and yt-dlp follows them.
+Install **yt-dlp** to add music from links and searches; without it that feature is switched off and not advertised to Sine. `COSINE_YTDLP` points at a specific binary. Keep it updated (`yt-dlp -U`): sites change and yt-dlp follows them. One search in Add runs yt-dlp about ten times, so Cosine runs only a few at once: one per 256 MB of memory, 4 to 12. `COSINE_YTDLP_PROCESSES` sets the number. yt-dlp unpacks itself into `data/tmp`, not `/tmp`, which on Debian 13 is held in memory.
 
 Install `ffprobe` (from ffmpeg) to get track durations for Inbox files. Durations for links come from yt-dlp.
 

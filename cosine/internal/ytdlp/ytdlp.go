@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // Runner invokes yt-dlp. The zero value is unusable; see Find.
@@ -21,23 +23,78 @@ type Runner struct {
 	Bin string
 	// ExtraArgs are prepended to every invocation (tests, cookies, proxies).
 	ExtraArgs []string
+	// TempDir is where yt-dlp unpacks itself and keeps its temporary
+	// files. Empty: the system's, which on Debian 13 is memory.
+	TempDir string
+
+	// slots bounds how many yt-dlp processes run at once, across every
+	// copy of the Runner; nil: no bound.
+	slots chan struct{}
 }
 
-// Find locates yt-dlp: COSINE_YTDLP, then PATH.
+// Find locates yt-dlp: COSINE_YTDLP, then PATH. It runs at most
+// COSINE_YTDLP_PROCESSES at once, or as many as the memory allows.
 func Find() (Runner, error) {
 	if p := os.Getenv("COSINE_YTDLP"); p != "" {
-		return Runner{Bin: p}, nil
+		return Runner{Bin: p}.Bounded(processes()), nil
 	}
 	p, err := exec.LookPath("yt-dlp")
 	if err != nil {
 		return Runner{}, errors.New("yt-dlp is not installed")
 	}
-	return Runner{Bin: p}, nil
+	return Runner{Bin: p}.Bounded(processes()), nil
+}
+
+// Bounded returns r running at most n yt-dlp processes at once, across
+// every copy of it; the rest wait their turn.
+func (r Runner) Bounded(n int) Runner {
+	r.slots = make(chan struct{}, n)
+	return r
+}
+
+// processes is how many yt-dlp processes may run at once: one for each
+// 256 MB of memory, from 4 to 12. Each is a Python, for YouTube with a
+// Deno beside it, and one search in Add starts ten: unbounded, a few
+// searches can run a small container out of memory. 4 leaves a search room
+// beside the two downloads.
+func processes() int {
+	if n, err := strconv.Atoi(os.Getenv("COSINE_YTDLP_PROCESSES")); err == nil && n > 0 {
+		return n
+	}
+	n := 4
+	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			var kb int
+			if _, err := fmt.Sscanf(line, "MemTotal: %d kB", &kb); err == nil {
+				n = kb >> 18
+				break
+			}
+		}
+	}
+	return min(max(n, 4), 12)
+}
+
+// slot waits for a process slot; done frees it.
+func (r Runner) slot(ctx context.Context) (done func(), err error) {
+	if r.slots == nil {
+		return func() {}, nil
+	}
+	select {
+	case r.slots <- struct{}{}:
+		return func() { <-r.slots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (r Runner) Available() bool { return r.Bin != "" }
 
 func (r Runner) Version(ctx context.Context) string {
+	done, err := r.slot(ctx)
+	if err != nil {
+		return ""
+	}
+	defer done()
 	out, err := r.command(ctx, "--version").Output()
 	if err != nil {
 		return ""
@@ -202,9 +259,32 @@ func (i Info) CoverURL() string {
 	return best
 }
 
+// killAfter is how long yt-dlp has to stop, once asked, before it is killed.
+var killAfter = 5 * time.Second
+
 func (r Runner) command(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, r.Bin, append(append([]string{}, r.ExtraArgs...), args...)...)
 	cmd.Env = append(os.Environ(), "PYTHONUNBUFFERED=1")
+	if r.TempDir != "" {
+		cmd.Env = append(cmd.Env, "TMPDIR="+r.TempDir)
+	}
+	// yt-dlp is several processes: the standalone build is a launcher that
+	// unpacks Python and runs it, and Python runs Deno and ffmpeg. Killing
+	// the launcher alone, as CommandContext does, leaves the rest running
+	// and the unpacked copy behind. So they get a process group of their
+	// own and are stopped together: asked first, which lets the launcher
+	// tidy up, then killed if still there killAfter later.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		group := -cmd.Process.Pid
+		time.AfterFunc(killAfter, func() { syscall.Kill(group, syscall.SIGKILL) })
+		err := syscall.Kill(group, syscall.SIGTERM)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	cmd.WaitDelay = killAfter
 	return cmd
 }
 
@@ -230,6 +310,11 @@ func (r Runner) Search(ctx context.Context, prefix, query string, n int) ([]Info
 }
 
 func (r Runner) json(ctx context.Context, args ...string) (Info, error) {
+	done, err := r.slot(ctx)
+	if err != nil {
+		return Info{}, err
+	}
+	defer done()
 	var stdout, stderr bytes.Buffer
 	cmd := r.command(ctx, args...)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -258,6 +343,11 @@ const (
 // with a zero duration and a sidx per segment, which players read as 10 s
 // long. ffmpeg joins them into one plain MP4 instead, copying the audio.
 func (r Runner) Download(ctx context.Context, url, dir string, progress func(float64)) (string, error) {
+	done, err := r.slot(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer done()
 	cmd := r.command(ctx,
 		"--format", "bestaudio/best",
 		"--no-playlist",
