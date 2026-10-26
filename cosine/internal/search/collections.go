@@ -21,35 +21,54 @@ const (
 
 // How many albums and playlists each source offers.
 const (
-	musicAlbums      = 2
 	youTubePlaylists = 3
 	bandcampAlbums   = 3
 	soundCloudSets   = 3
 )
 
 // Collections finds albums and playlists for a query on every source that
-// can be searched for them, side by side: YouTube Music's albums and
-// YouTube's playlists through yt-dlp, Bandcamp's albums through its own
-// search, and SoundCloud's albums and playlists through its API when a
-// client ID is set (yt-dlp searches SoundCloud for tracks only). Those
-// that are what was asked for come first, albums before playlists.
-// Degrades, never fails (Q73).
-func (s *Service) Collections(ctx context.Context, query string) []Result {
-	var parts [4][]Result
+// can be searched for them, side by side: YouTube's playlists through
+// yt-dlp, Bandcamp's albums through its own search, and SoundCloud's
+// albums and playlists through its API when a client ID is set (yt-dlp
+// searches SoundCloud for tracks only). Those that are what was asked for
+// come first, albums before playlists. found, when set, is told everything
+// found so far each time a source answers. Degrades, never fails (Q73).
+func (s *Service) Collections(ctx context.Context, query string, found func([]Result)) []Result {
+	var mu sync.Mutex
+	var parts [3][]Result
+	set := func(i int, r []Result) {
+		mu.Lock()
+		defer mu.Unlock()
+		parts[i] = r
+		if found != nil && len(r) > 0 {
+			found(rankCollections(query, parts[:]))
+		}
+	}
 	var wg sync.WaitGroup
 	if y, ok := s.YtDlp.(YtDlpSearch); ok {
-		wg.Go(func() { parts[0] = y.albums(ctx, query, musicAlbums) })
-		wg.Go(func() { parts[1] = y.playlists(ctx, query, youTubePlaylists) })
+		wg.Go(func() { set(0, y.playlists(ctx, query, youTubePlaylists)) })
 	}
 	if s.Bandcamp != nil {
-		wg.Go(func() { parts[2], _ = s.Bandcamp(ctx, query, bandcampAlbums) })
+		wg.Go(func() {
+			r, _ := s.Bandcamp(ctx, query, bandcampAlbums)
+			set(1, r)
+		})
 	}
 	if id, _ := s.DB.Setting(ctx, db.SettingSoundCloudID); id != "" && s.NewAPI != nil {
 		if api, ok := s.NewAPI(id, "").(SourceAPIs); ok && api.SoundCloud != nil {
-			wg.Go(func() { parts[3], _ = api.SoundCloud.Sets(ctx, query, soundCloudSets) })
+			wg.Go(func() {
+				r, _ := api.SoundCloud.Sets(ctx, query, soundCloudSets)
+				set(2, r)
+			})
 		}
 	}
 	wg.Wait()
+	return rankCollections(query, parts[:])
+}
+
+// rankCollections puts first those that are what was asked for, albums
+// before playlists.
+func rankCollections(query string, parts [][]Result) []Result {
 	var all []Result
 	for _, p := range parts {
 		all = append(all, p...)
@@ -78,46 +97,9 @@ func (s *Service) Collections(ctx context.Context, query string) []Result {
 	return out
 }
 
-// MusicAlbumsURL is YouTube Music's search, Albums section.
-func MusicAlbumsURL(query string) string {
-	return "https://music.youtube.com/search?q=" + url.QueryEscape(query) + "#albums"
-}
-
 // YouTubePlaylistsURL is YouTube's search filtered to playlists.
 func YouTubePlaylistsURL(query string) string {
 	return "https://www.youtube.com/results?search_query=" + url.QueryEscape(query) + "&sp=EgIQAw%253D%253D"
-}
-
-// albums searches YouTube Music's Albums: a label's own upload of each
-// release, track by track. The search names only an id, so each is
-// described in full, side by side.
-func (y YtDlpSearch) albums(ctx context.Context, query string, n int) []Result {
-	found, err := y.Runner.SearchURL(ctx, MusicAlbumsURL(query), n)
-	if err != nil {
-		return nil
-	}
-	described := make([]Result, len(found))
-	var wg sync.WaitGroup
-	for i, e := range found {
-		wg.Go(func() {
-			info, err := y.Runner.Probe(ctx, e.Link())
-			if err != nil || len(info.Entries) == 0 {
-				return
-			}
-			described[i] = Result{
-				Kind: info.Kind(), Title: info.CollectionTitle(), Uploader: resolve.CleanArtist(info.CollectionArtist()),
-				URL: info.Link(), Thumbnail: info.CoverURL(), Source: SourceYouTubeMusic, Tracks: len(info.Entries),
-			}
-		})
-	}
-	wg.Wait()
-	var out []Result
-	for _, r := range described {
-		if r.URL != "" && r.Kind == KindAlbum {
-			out = append(out, r)
-		}
-	}
-	return out
 }
 
 // playlists searches YouTube for playlists. Many are someone's copy of an

@@ -23,8 +23,9 @@ type Runner struct {
 	Bin string
 	// ExtraArgs are prepended to every invocation (tests, cookies, proxies).
 	ExtraArgs []string
-	// TempDir is where yt-dlp unpacks itself and keeps its temporary
-	// files. Empty: the system's, which on Debian 13 is memory.
+	// TempDir is where yt-dlp keeps its temporary files, and the
+	// single-file build unpacks itself. Empty: the system's, which on
+	// Debian 13 is memory.
 	TempDir string
 
 	// slots bounds how many yt-dlp processes run at once, across every

@@ -45,7 +45,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Smart playlists:** every account starts with Recently added, Most played this year, Recently played, Forgotten, Never played and This time last year, worked out from your own listening each time you open one. Make your own from the same rules ("New smart playlist"), change a rule, or save one as an ordinary playlist to choose its songs yourself. Other Subsonic apps list them as read-only playlists.
 
-**Albums and playlists from the sources:** searching in Add also finds albums and playlists: YouTube playlists, Bandcamp albums, and SoundCloud albums and playlists when a SoundCloud client ID is set in the dashboard. (YouTube Music albums too, when YouTube Music lists them: it currently shows albums and songs only to signed-in listeners.)
+**Albums and playlists from the sources:** searching in Add also finds albums and playlists: YouTube playlists, Bandcamp albums, and SoundCloud albums and playlists when a SoundCloud client ID is set in the dashboard. Each source's results show as soon as it answers.
 
 **The song as released:** search results that are the song you searched for say how their length compares with the release ("Same length as the release", "0:36 longer than the release"), using Deezer's listing of it, and those of the release's length come first, the artist's own upload before others. Pick one to see its songs, or paste its link. An album lends its songs its name and track order. A playlist is never filed as an album: each song goes under its own artist and release, and the playlist becomes a playlist in your library, in the source's order, including the songs you already had (untick "Keep it as a playlist" to just take the songs).
 

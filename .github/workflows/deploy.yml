@@ -47,13 +47,22 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/src" -w /src ${{ matrix.image }} bash -euxc '
             apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
+            # What earlier installers left: the single-file build, self-updating.
+            printf "#!/bin/sh\necho 2020.01.01\n" >/usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp
             ./deploy/install.sh --binary ./cosine-linux-amd64 --with-fingerprinting
+            # Replaced by the folder build, which runs for the service account
+            # and which the daily updater finds current.
+            grep -q /opt/yt-dlp/current /usr/local/bin/yt-dlp
+            test "$(readlink /opt/yt-dlp/current)" = "$(runuser -u cosine -- yt-dlp --version)"
+            /opt/cosine/libexec/update-yt-dlp | grep -q "already the latest"
+            grep -q "ExecStart=/opt/cosine/libexec/update-yt-dlp" /etc/systemd/system/yt-dlp-update.service
             out="$(./deploy/install.sh --binary ./cosine-linux-amd64)"; echo "$out"
             grep -q "Kept your existing settings" <<<"$out"
             grep -q "Already installed:" <<<"$out"         # a rerun skips apt
             grep -q "already the latest" <<<"$out"          # and current downloads
             out="$(./deploy/install.sh --binary ./cosine-linux-amd64 --reinstall)"; echo "$out"
             if grep -qi "already" <<<"$out"; then echo "--reinstall skipped something"; exit 1; fi
+            test "$(ls /opt/yt-dlp)" = "$(printf "%s\n" "$(readlink /opt/yt-dlp/current)" current)"  # one version, reinstalled
             command -v yt-dlp deno ffprobe fpcalc sqlite3
             systemd-analyze verify /etc/systemd/system/cosine.service /etc/systemd/system/*.timer 2>/dev/null || true
             runuser -u cosine -- env $(grep -v "^#" /etc/cosine/cosine.env | xargs) /opt/cosine/bin/cosine &

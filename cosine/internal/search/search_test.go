@@ -97,25 +97,25 @@ func TestServiceFallsBackSilently(t *testing.T) {
 		return fake{res: []Result{{Title: "from api"}}, err: apiErr}
 	}}
 
-	_, backend, _ := s.Search(ctx, "q", 5)
+	_, backend, _ := s.Search(ctx, "q", 5, nil)
 	if backend != BackendYtDlp {
 		t.Fatal("default backend is yt-dlp")
 	}
 
 	d.SetSetting(ctx, db.SettingSearchBackend, BackendAPI)
-	_, backend, _ = s.Search(ctx, "q", 5)
+	_, backend, _ = s.Search(ctx, "q", 5, nil)
 	if backend != BackendYtDlp || !strings.Contains(s.Status(), "no keys") {
 		t.Fatal("no keys should fall back and say so:", s.Status())
 	}
 
 	d.SetSetting(ctx, db.SettingSoundCloudID, "cid")
-	res, backend, _ := s.Search(ctx, "q", 5)
+	res, backend, _ := s.Search(ctx, "q", 5, nil)
 	if backend != BackendAPI || res[0].Title != "from api" {
 		t.Fatal(backend, res)
 	}
 
 	apiErr = errors.New("HTTP 403")
-	res, backend, err = s.Search(ctx, "q", 5)
+	res, backend, err = s.Search(ctx, "q", 5, nil)
 	if err != nil || backend != BackendYtDlp || res[0].Title != "from yt-dlp" || !strings.Contains(s.Status(), "HTTP 403") {
 		t.Fatal("API failure must degrade to yt-dlp:", backend, s.Status())
 	}

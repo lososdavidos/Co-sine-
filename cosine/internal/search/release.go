@@ -11,18 +11,15 @@ import (
 
 // ByRelease orders search results by how well each is the song as released
 // (§6.10). The released length comes from a catalogue of released music
-// (released, when one was asked), else from a label's own upload of the
-// song among the results (a YouTube Music song). Every result that is the
-// same song is marked with it: those of that length come first, the
-// artist's own uploads before others, and those much longer or shorter (a
-// music video's intro, a 12-minute extended upload) go below everything
-// else. Previews, which can't be added, go last.
-func ByRelease(query string, results []Result, released *Result) []Result {
-	ref, ok := release(query, results)
+// (released; nil when none answered). Every result that is the same song
+// is marked with it: those of that length come first, the artist's own
+// uploads before others, and those much longer or shorter (a music video's
+// intro, a 12-minute extended upload) go below everything else. Previews,
+// which can't be added, go last.
+func ByRelease(results []Result, released *Result) []Result {
+	var ref Result
 	if released != nil {
-		ref, ok = *released, true
-	}
-	if ok {
+		ref = *released
 		for i := range results {
 			if !results[i].Preview && sameSong(ref, results[i]) { // a preview says so already
 				results[i].ReleaseSec = ref.DurationSec
@@ -101,16 +98,6 @@ func AskedRelease(query string, found []Released) (Result, bool) {
 // sameLength is how far apart two lengths can be and still be the same
 // take: a longer fade, a second of silence.
 const sameLength = 6
-
-// release finds the label's upload of the song asked for.
-func release(query string, results []Result) (Result, bool) {
-	for _, r := range results {
-		if r.Source == SourceYouTubeMusic && r.DurationSec > 0 && Asked(query, r) {
-			return r, true
-		}
-	}
-	return Result{}, false
-}
 
 // sameSong reports whether a result is the released song rather than a
 // remix, a cover or another song of the same name. An upload that names

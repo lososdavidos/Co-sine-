@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"sync"
 
@@ -40,9 +39,6 @@ type Result struct {
 	// Asked: a collection that is what the search asked for.
 	Asked bool `json:"asked,omitempty"`
 }
-
-// Sources a result can come from, besides yt-dlp's extractor names.
-const SourceYouTubeMusic = "youtube music"
 
 // LooksLikePreview is what a search result can tell without fetching the
 // track: SoundCloud reports a preview's length as exactly 30 seconds.
@@ -77,7 +73,9 @@ type Service struct {
 }
 
 // Search returns results and the name of the backend that produced them.
-func (s *Service) Search(ctx context.Context, query string, n int) ([]Result, string, error) {
+// found, when set, is told what yt-dlp's search has found so far, each
+// time a site answers; the source APIs answer all at once.
+func (s *Service) Search(ctx context.Context, query string, n int, found func([]Result)) ([]Result, string, error) {
 	want, _ := s.DB.Setting(ctx, db.SettingSearchBackend)
 	if want == BackendAPI {
 		sc, _ := s.DB.Setting(ctx, db.SettingSoundCloudID)
@@ -99,6 +97,12 @@ func (s *Service) Search(ctx context.Context, query string, n int) ([]Result, st
 	if s.YtDlp == nil {
 		return nil, "", errors.New("yt-dlp is not installed")
 	}
+	if y, ok := s.YtDlp.(interface {
+		Each(context.Context, string, int, func([]Result)) ([]Result, error)
+	}); ok {
+		res, err := y.Each(ctx, query, n, found)
+		return res, BackendYtDlp, err
+	}
 	res, err := s.YtDlp.Search(ctx, query, n)
 	return res, BackendYtDlp, err
 }
@@ -119,10 +123,10 @@ func (s *Service) setStatus(v string) {
 	s.mu.Unlock()
 }
 
-// YtDlpSearch queries SoundCloud, YouTube and YouTube Music's songs
-// through yt-dlp at once. A label's own upload of the song asked for comes
-// first; then SoundCloud and YouTube, interleaved, SoundCloud first because
-// much of this library lives there.
+// YtDlpSearch queries SoundCloud and YouTube through yt-dlp at once, and
+// interleaves them, SoundCloud first because much of this library lives
+// there. YouTube Music's Songs and Albums are not searched: signed out,
+// they list nothing.
 type YtDlpSearch struct{ Runner ytdlp.Runner }
 
 type part struct {
@@ -131,7 +135,15 @@ type part struct {
 }
 
 func (y YtDlpSearch) Search(ctx context.Context, query string, n int) ([]Result, error) {
-	run := func(prefix, source string) part {
+	return y.Each(ctx, query, n, nil)
+}
+
+// Each is Search, telling found, when set, everything found so far each
+// time a site answers.
+func (y YtDlpSearch) Each(ctx context.Context, query string, n int, found func([]Result)) ([]Result, error) {
+	var mu sync.Mutex
+	var sc, yt part
+	run := func(prefix, source string, into *part) {
 		entries, err := y.Runner.Search(ctx, prefix, query, n)
 		out := make([]Result, 0, len(entries))
 		for _, e := range entries {
@@ -141,72 +153,21 @@ func (y YtDlpSearch) Search(ctx context.Context, query string, n int) ([]Result,
 				Preview: LooksLikePreview(source, e.Duration),
 			})
 		}
-		return part{out, err}
+		mu.Lock()
+		defer mu.Unlock()
+		*into = part{out, err}
+		if found != nil && len(out) > 0 {
+			found(interleave(sc.res, yt.res))
+		}
 	}
-	var sc, yt, songs part
 	var wg sync.WaitGroup
-	wg.Go(func() { sc = run("scsearch", "soundcloud") })
-	wg.Go(func() { yt = run("ytsearch", "youtube") })
-	wg.Go(func() { songs = y.songs(ctx, query) })
+	wg.Go(func() { run("scsearch", "soundcloud", &sc) })
+	wg.Go(func() { run("ytsearch", "youtube", &yt) })
 	wg.Wait()
-	if sc.err != nil && yt.err != nil && songs.err != nil {
+	if sc.err != nil && yt.err != nil {
 		return nil, sc.err
 	}
-	// YouTube Music always answers with something; songs that aren't what
-	// was asked for go last.
-	var asked, others []Result
-	for _, r := range songs.res {
-		if Asked(query, r) {
-			asked = append(asked, r)
-		} else {
-			others = append(others, r)
-		}
-	}
-	out := append(asked, interleave(sc.res, yt.res)...)
-	return append(out, others...), nil
-}
-
-// musicSongs is how many YouTube Music songs are described in full.
-const musicSongs = 3
-
-// MusicSearchURL is YouTube Music's search, Songs section.
-func MusicSearchURL(query string) string {
-	return "https://music.youtube.com/search?q=" + url.QueryEscape(query) + "#songs"
-}
-
-// songs searches YouTube Music's Songs: what labels upload of each release,
-// track by track, to an "Artist - Topic" channel. It is the album audio,
-// without a music video's intro, at the release's length, and it carries
-// the release's artist, title and album. The search lists only ids and
-// titles, so the first few are described in full, side by side.
-func (y YtDlpSearch) songs(ctx context.Context, query string) part {
-	found, err := y.Runner.SearchURL(ctx, MusicSearchURL(query), musicSongs)
-	if err != nil {
-		return part{err: err}
-	}
-	described := make([]Result, len(found))
-	var wg sync.WaitGroup
-	for i, e := range found {
-		wg.Go(func() {
-			info, err := y.Runner.Probe(ctx, e.Link())
-			if err != nil || info.Duration <= 0 {
-				return // one that can't be described isn't offered
-			}
-			described[i] = Result{
-				Title: firstNonEmpty(info.Track, info.Title), Uploader: firstNonEmpty(info.Artist, resolve.CleanArtist(info.Poster())),
-				URL: info.Link(), Thumbnail: info.CoverURL(), Source: SourceYouTubeMusic,
-				DurationSec: int(info.Duration + 0.5), Plays: info.ViewCount,
-			}
-		})
-	}
-	wg.Wait()
-	var out []Result
-	for _, r := range described {
-		if r.URL != "" {
-			out = append(out, r)
-		}
-	}
-	return part{res: out}
+	return interleave(sc.res, yt.res), nil
 }
 
 // Asked reports whether a result is what a search asked for: its artist and

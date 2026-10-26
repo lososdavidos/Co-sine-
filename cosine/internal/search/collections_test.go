@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
@@ -14,12 +15,7 @@ import (
 
 func TestAlbumsAndPlaylistsFromEverySource(t *testing.T) {
 	q := "halsey hopeless fountain kingdom"
-	album := "https://music.youtube.com/browse/MPREb_hfk"
 	bin, _ := testutil.FakeYtDlp(t, map[string]any{
-		MusicAlbumsURL(q): map[string]any{"_type": "playlist", "entries": []map[string]any{{"_type": "url", "url": album}}},
-		album: map[string]any{"_type": "playlist", "id": "OLAK5uy_hfk", "title": "Album - hopeless fountain kingdom",
-			"channel": "Halsey - Topic", "webpage_url": "https://www.youtube.com/playlist?list=OLAK5uy_hfk", "extractor_key": "YoutubeTab",
-			"entries": []map[string]any{{"url": "a"}, {"url": "b"}, {"url": "c"}}},
 		YouTubePlaylistsURL(q): map[string]any{"_type": "playlist", "entries": []map[string]any{
 			{"_type": "url", "url": "https://www.youtube.com/playlist?list=PLgym", "title": "gym mix", "uploader": "someone"},
 			{"_type": "url", "url": "https://www.youtube.com/playlist?list=PLfan", "title": "Halsey - hopeless fountain kingdom (Full Album)", "uploader": "a fan"},
@@ -59,25 +55,23 @@ func TestAlbumsAndPlaylistsFromEverySource(t *testing.T) {
 		return out
 	}
 	// Without a SoundCloud client ID, SoundCloud's sets aren't searched.
-	got := s.Collections(ctx, q)
-	want := []string{"album:hopeless fountain kingdom", "playlist:Halsey - hopeless fountain kingdom (Full Album)", "album:Tides EP", "playlist:gym mix"}
-	if len(got) != len(want) {
+	var shown [][]Result
+	got := s.Collections(ctx, q, func(r []Result) { shown = append(shown, r) })
+	want := []string{"playlist:Halsey - hopeless fountain kingdom (Full Album)", "album:Tides EP", "playlist:gym mix"}
+	if strings.Join(titles(got), ", ") != strings.Join(want, ", ") {
 		t.Fatal(titles(got))
 	}
-	for i := range want {
-		if titles(got)[i] != want[i] {
-			t.Fatal(titles(got))
-		}
-	}
-	first := got[0]
-	if first.Uploader != "Halsey" || first.Tracks != 3 || first.Source != SourceYouTubeMusic || !first.Asked ||
-		first.URL != "https://www.youtube.com/playlist?list=OLAK5uy_hfk" || got[3].Asked {
+	if !got[0].Asked || got[1].Asked || got[2].Asked {
 		t.Fatalf("%+v", got)
+	}
+	// Each source shows as it answers, the last showing is all of it.
+	if len(shown) != 2 || len(shown[0]) == 3 || strings.Join(titles(shown[1]), ", ") != strings.Join(want, ", ") {
+		t.Fatal(shown)
 	}
 
 	d.SetSetting(ctx, db.SettingSoundCloudID, "cid")
-	got = s.Collections(ctx, q)
-	if len(got) != 6 || got[1].Source != "soundcloud" || got[1].Kind != KindAlbum || got[1].Tracks != 13 || got[5].Title != "sad girl autumn" {
+	got = s.Collections(ctx, q, nil)
+	if len(got) != 5 || got[0].Source != "soundcloud" || got[0].Kind != KindAlbum || got[0].Tracks != 13 || got[4].Title != "sad girl autumn" {
 		t.Fatal(titles(got))
 	}
 }
