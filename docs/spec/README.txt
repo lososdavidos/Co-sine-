@@ -1,8 +1,8 @@
 Sine & Cosine — specification bundle
 ====================================
 
-SPEC.md           The specification. Single source of truth, 161 resolved
-                  decisions and one open question (§10). Edit this.
+SPEC.md           The specification. Single source of truth, 162 resolved
+                  decisions. Edit this.
 
 sine-cosine.html  The published page, generated from SPEC.md. Self-contained
                   except for the Google Fonts link (Instrument Sans, Martian Mono).

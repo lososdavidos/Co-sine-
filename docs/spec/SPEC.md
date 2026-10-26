@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 161 resolved decisions, 1 open · last updated 2026-10-26 (motion and gestures, §6.16; Home tiles, §6.4)
+**Status:** COMPLETE DRAFT · 162 resolved decisions · last updated 2026-10-26 (motion and gestures, §6.16; Home tiles, §6.4)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -1179,18 +1179,20 @@ device: phone and desktop each have their own (§6.15). It survives a reinstall
 or a new phone. Changes made offline stay on the phone and go with the next
 sync.
 
-`RESOLVED` **Tiles are live in content, not in motion.** Artwork cycles, counts
-update, the current track changes. Tiles do not flip, slide or animate between
-faces. A grid of animating blocks fights everything else in Phase, and the
-liveness people actually value is the content being current. Pages slide
-(§6.16); tiles are the exception, because their content changes and they don't
-go anywhere.
+`REVISED` **Tiles stay put; what's inside them moves.** (Was: live in content,
+not in motion — no flipping, sliding or animating between faces.) Artwork
+cycles, counts update, the current track changes, and the parts inside a tile
+may slide, spin, fade or move any other way while they do: a cover sliding in
+over the last one, a count rolling over to its new number, a title fading
+through. The tile itself — its place in the grid, its size, its edges — moves
+only when you move it (§6.4.4). Home is the one place motion is for liveliness
+rather than feedback. Phase's other rules hold inside a tile all the same:
+artwork stays scrimmed, colour stays a signal, ink stays black on the signals.
 
 `RESOLVED` **How often.** A tile that cycles shows its next cover every 8 to 10
-seconds, staggered so neighbours don't change together. Tiles cycle only while
-Home is on screen, and not at all with Android's animations removed.
-
-`OPEN` **Whether a cover changes by a short fade or a cut** (§10).
+seconds, staggered so neighbours don't move together. Tiles move only while
+Home is on screen, and not at all with Android's animations removed: their
+content still changes, at once.
 
 #### 6.4.1 Tile catalogue
 
@@ -1746,10 +1748,14 @@ same from Android 8 up, with no separate path below API 31.
 | A page, a destination or the sheet, by tap | Slide: 300ms, easing out |
 | The same, let go mid-gesture | From the finger's speed to rest, no overshoot |
 
+`RESOLVED` **Inside a tile, anything moves** (§6.4): slide, spin, fade. The
+tile doesn't, and none of it follows these tokens; it only has to stay
+staggered and stop when Home is off screen.
+
 `RESOLVED` **With Android's animations removed,** a tap changes the page at
 once. A page moved by hand still follows the finger, because that is the
 person moving it rather than an animation, and on release it jumps to where it
-was going. Tiles don't cycle (§6.4).
+was going. Tiles change their content without moving (§6.4).
 
 Two consequences accepted deliberately:
 
@@ -1931,7 +1937,7 @@ not silently keep gigabytes.
 | — | Context actions | Long-press selection + action row in the shelf; multi-select free |
 | — | Home | Metro-style tile grid, solid slabs, black ink on the signals |
 | — | Home layout | Fully user-arranged: pin, resize, reorder. No fixed design |
-| — | Tile liveness | Content cycles; no flip or slide animations |
+| — | Tile liveness | Content cycles; the tile stays put, the parts inside it may slide, spin or fade |
 | — | Play history | Never pruned — retrospective tiles depend on it |
 | — | Segments | Remembered per visit; Search is always global |
 | — | Tile grid | 4 columns; 1×1, 2×2, 4×2 |
@@ -2006,7 +2012,8 @@ not silently keep gigabytes.
 | — | Adding tiles | Generated tiles and smart playlists from Home's Add tile action |
 | — | Tile sizes | 1×1 the cover or count; 2×2 adds the name; 4×2 a second line |
 | — | Tiles not yet possible | Resume, Jam and Favourites aren't offered until their features exist |
-| — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; none with animations removed |
+| — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; with animations removed, content changes without moving |
+| — | Tile motion | Home is the one place motion is for liveliness; Phase's colour and scrim rules still hold inside a tile |
 
 ---
 
@@ -2129,11 +2136,8 @@ from the first endpoint rather than remembered at version four.
 
 ## 10. Open questions
 
-One question is open. Every other question in this document is answered, and
-every proposal in §8 stands except the cover-art scope, which was overturned in
-§3.2a.
-
-| # | Question | Where it matters |
-|---|---|---|
-| Q86 | When a Home tile shows its next cover, is the change a short fade or a cut? §6.4 says tiles don't animate between faces, and a fade could read either way. | §6.4, §6.16 |
+Nothing is open. Every question in this document is answered, and every proposal
+in §8 stands except the cover-art scope, which was overturned in §3.2a. The
+last one asked, whether a tile's cover changes by a fade or a cut, was answered
+wider than asked: anything inside a tile may move (§6.4).
 
