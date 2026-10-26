@@ -98,7 +98,7 @@ func TestPlaylistsOfflineAndShared(t *testing.T) {
 		len(p["tracks"].([]any)) != 2 || p["tracks"].([]any)[0] != b {
 		t.Fatal(p)
 	}
-	if len(synced["smart"].([]any)) != 6 || synced["smartTag"] == "" {
+	if len(synced["smart"].([]any)) != 8 || synced["smartTag"] == "" {
 		t.Fatal(synced["smart"], synced["smartTag"])
 	}
 	if code, _ := call(t, srv, "POST", "/cosine/v1/playlists/ops", tok, map[string]any{"ops": []map[string]any{{"op": "add"}}}); code != http.StatusBadRequest {

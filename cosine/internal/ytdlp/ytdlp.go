@@ -135,6 +135,9 @@ type Info struct {
 		FormatID string `json:"format_id"`
 	} `json:"formats"` // only when a single item is described in full
 
+	// raw is yt-dlp's description as it gave it (Probe), for downloading
+	// without asking the site again (DownloadInfo).
+	raw []byte
 }
 
 type Thumbnail struct {
@@ -326,6 +329,7 @@ func (r Runner) json(ctx context.Context, args ...string) (Info, error) {
 	if err := json.Unmarshal(stdout.Bytes(), &info); err != nil {
 		return Info{}, fmt.Errorf("unreadable yt-dlp output: %w", err)
 	}
+	info.raw = stdout.Bytes()
 	return info, nil
 }
 
@@ -344,12 +348,31 @@ const (
 // with a zero duration and a sidx per segment, which players read as 10 s
 // long. ffmpeg joins them into one plain MP4 instead, copying the audio.
 func (r Runner) Download(ctx context.Context, url, dir string, progress func(float64)) (string, error) {
+	return r.download(ctx, dir, progress, "--", url)
+}
+
+// DownloadInfo is Download from what Probe found, without asking the site
+// again: the formats it lists are good for hours. It halves the requests a
+// song costs, and YouTube refuses an address that asks too often (#28).
+func (r Runner) DownloadInfo(ctx context.Context, info Info, dir string, progress func(float64)) (string, error) {
+	if len(info.raw) == 0 || len(info.Formats) == 0 {
+		return r.Download(ctx, info.Link(), dir, progress)
+	}
+	src := filepath.Join(dir, "cosine-probe.info.json")
+	if err := os.WriteFile(src, info.raw, 0o600); err != nil {
+		return "", err
+	}
+	defer os.Remove(src)
+	return r.download(ctx, dir, progress, "--load-info-json", src)
+}
+
+func (r Runner) download(ctx context.Context, dir string, progress func(float64), source ...string) (string, error) {
 	done, err := r.slot(ctx)
 	if err != nil {
 		return "", err
 	}
 	defer done()
-	cmd := r.command(ctx,
+	cmd := r.command(ctx, append([]string{
 		"--format", "bestaudio/best",
 		"--no-playlist",
 		"--fixup", "never",
@@ -358,10 +381,10 @@ func (r Runner) Download(ctx context.Context, url, dir string, progress func(flo
 		"--no-warnings",
 		"--newline",
 		"--progress",
-		"--progress-template", "download:"+progressTag+"%(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s",
-		"--print", "after_move:"+fileTag+"%(filepath)s",
-		"--output", filepath.Join(dir, "%(id)s.%(ext)s"),
-		"--", url)
+		"--progress-template", "download:" + progressTag + "%(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s",
+		"--print", "after_move:" + fileTag + "%(filepath)s",
+		"--output", filepath.Join(dir, "%(id)s.%(ext)s")},
+		source...)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", err

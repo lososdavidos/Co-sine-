@@ -415,7 +415,7 @@ private fun MoveRow(track: Track, index: Int, count: Int, onMove: (Int, Int) -> 
 internal fun Set<String>.toggle(id: String) = if (id in this) this - id else this + id
 
 /** The actions on selected songs (§6.5): what the shelf offers while they're selected. */
-private fun trackSelection(
+internal fun trackSelection(
     context: Context,
     session: AccountSession,
     chosen: List<Track>,
@@ -431,6 +431,11 @@ private fun trackSelection(
     val player = context.graph.player
     val actions = buildList {
         add(ShelfAction("Play", icon = PhaseIcons.Play) { player.play(session, chosen); onClear() })
+        add(ShelfAction("Add to queue", icon = PhaseIcons.QueueAdd) {
+            val n = player.addToQueue(session, chosen)
+            say(if (n == 0) Voice.TRACK_UNAVAILABLE else if (n == 1) "Added to the queue." else "$n songs added to the queue.")
+            onClear()
+        })
         add(ShelfAction("Download", icon = PhaseIcons.OnPhone) {
             chosen.filterNot { it.id in session.downloads }.forEach {
                 startDownload(context, session, DownloadNode.OfTrack(it.id), chosen, nav, quiet = true)

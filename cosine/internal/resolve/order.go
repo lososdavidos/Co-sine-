@@ -1,8 +1,10 @@
 package resolve
 
 import (
+	"fmt"
 	"math"
 	"sort"
+	"strings"
 )
 
 // Home is how good a home a release is for the song a file holds (§3.2).
@@ -11,61 +13,54 @@ import (
 type Home struct {
 	Named      bool // the release the file names, the artist's own
 	Unofficial bool // a bootleg, a promo, a pseudo-release
-	// Kind is the sort of release, lower better: an album, an EP, a single,
-	// and compilations, soundtracks and live albums after them.
+	// Compiled is a compilation, a soundtrack, a live album or a mix: not
+	// the artist's own release of the song, however early.
+	Compiled bool
+	// Kind is the sort of release, lower better: an album, an EP, a single.
 	Kind int
-	Year int // 0: not known
+	Year int    // 0: not known
+	Date string // the day it came out ("2016-07-29"), where the catalogue says
 }
 
-// firstYears is how long after a song first came out a release of it still
-// counts as a first one: a lead single often comes the year before its album.
-const firstYears = 1
-
-// Before reports whether a is a better home than b for a song first out in
-// first (0: not known). The release the file names comes first, then an
-// official one. Then the song's first releases (its first year and the
-// next) before later ones, and the later the worse: the first release a
-// song came out on is the likeliest original, and a greatest hits or a
-// reissue years after it the least. Among the first releases, the kind
-// decides (the album over its single), then the earlier.
-func (a Home) Before(b Home, first int) bool {
+// Before reports whether a is a better home than b. The release the file
+// names comes first, then an official one, then the artist's own release
+// before a compilation or a live album of it. Then the earlier: the first
+// release a song came out on is the likeliest original ("Closer" was a
+// single nine months before its album), a reissue or a greatest hits years
+// on the least. Between releases out the same day, or the same year where
+// the day isn't known, the album, then the EP, then the single.
+func (a Home) Before(b Home) bool {
 	if a.Named != b.Named {
 		return a.Named
 	}
 	if a.Unofficial != b.Unofficial {
 		return b.Unofficial
 	}
-	lateA, lateB := a.late(first), b.late(first)
-	if lateA != lateB {
-		return lateB
+	if a.Compiled != b.Compiled {
+		return b.Compiled
 	}
-	if lateA && a.year() != b.year() {
-		return a.year() < b.year()
+	if wa, wb := a.when(), b.when(); wa != wb {
+		return wa < wb
 	}
-	if a.Kind != b.Kind {
-		return a.Kind < b.Kind
-	}
-	return a.year() < b.year()
+	return a.Kind < b.Kind
 }
 
-func (h Home) year() int {
-	if h.Year == 0 {
-		return math.MaxInt
+// when is a key that sorts homes by when they came out: by year, and then
+// by the day, a release known only by its year after those that year
+// known to the day, and one of no known year last.
+func (h Home) when() string {
+	if h.Year <= 0 {
+		return "~"
 	}
-	return h.Year
-}
-
-func (h Home) late(first int) bool { return first > 0 && h.year() > first+firstYears }
-
-// First is the earliest known year among homes; 0 when none is known.
-func First(homes ...Home) int {
-	first := 0
-	for _, h := range homes {
-		if h.Year > 0 && (first == 0 || h.Year < first) {
-			first = h.Year
-		}
+	year := fmt.Sprintf("%04d", h.Year)
+	date := h.Date
+	if i := strings.Index(date, "-00"); i >= 0 {
+		date = date[:i] // Discogs's "2013-00-00": the month and day aren't known
 	}
-	return first
+	if strings.HasPrefix(date, year) {
+		return date + "~"
+	}
+	return year + "~"
 }
 
 // Placed is an identity with its release's Home and the track's length
@@ -98,19 +93,16 @@ func Order(cands []Placed) []Result {
 			continue
 		}
 		var song []Placed
-		var homes []Home
 		for j := i; j < len(cands); j++ {
 			if !used[j] && copyOf(lead, cands[j]) {
 				used[j] = true
 				song = append(song, cands[j])
-				homes = append(homes, cands[j].Home)
 			}
 		}
-		first := First(homes...)
 		sort.SliceStable(song, func(a, b int) bool {
 			ha, hb := song[a].Home, song[b].Home
-			if ha.Before(hb, first) || hb.Before(ha, first) {
-				return ha.Before(hb, first)
+			if ha.Before(hb) || hb.Before(ha) {
+				return ha.Before(hb)
 			}
 			return song[a].TrackNo > 0 && song[b].TrackNo == 0 // one that says where the track sits
 		})

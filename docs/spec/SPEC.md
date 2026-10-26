@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 166 resolved decisions · last updated 2026-10-26 (icons carry the actions, slightly 3D, §6.1; Phase's two blues, §6.1; motion and gestures, §6.16; Home tiles, §6.4)
+**Status:** COMPLETE DRAFT · 175 resolved decisions · last updated 2026-10-26 (the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -330,9 +330,11 @@ song it followed.
 
 `NOTE` Built: a smart playlist is a saved rule — one of the statistics views
 (most played in a period, recently played, not played in N months, never
-played, this time last year, added in the last N days) with its one setting.
-Every account starts with one of each and can make, change, rename or delete
-them; a deleted one does not come back. Over the Subsonic API they are listed
+played, this time last year, added in the last N days, liked) with its one
+setting. Every account starts with one of each, and Favourites (most played in
+the last 30 days: your current favourites), and can make, change, rename or
+delete them; a deleted one does not come back. Defaults added later reach older
+accounts once. Over the Subsonic API they are listed
 beside manual playlists as read-only (OpenSubsonic's `readonly`), with the
 rule in words as their comment, and their songs are worked out each time one
 is opened. Sine's "Save as playlist" is the conversion to a manual playlist.
@@ -435,6 +437,14 @@ the concrete form of G4, and the replacement for the yt-dlp/beets cron pipeline.
 `RESOLVED` **Any source yt-dlp supports.** SoundCloud, YouTube, Bandcamp,
 Mixcloud and the rest — yt-dlp maintains the extractors, the server doesn't
 maintain a whitelist.
+
+`RESOLVED` **A site's refusal is waited out, not a failure.** YouTube refuses an
+address that asks too often (HTTP 403 or 429, or a sign-in "to confirm you're
+not a bot"), and a large album or playlist ran into it part way. A refused job
+goes back in the queue saying so ("Trying again in 2 minutes"), and every
+download waits out a pause of a minute, doubling with each refusal in a row; a
+job refused six times fails with the reason. Each song is downloaded from what
+the probe already found, so it asks the site once, not twice.
 
 `RESOLVED` **Search has two switchable backends,** selected in the dashboard:
 
@@ -539,23 +549,34 @@ so low-confidence entries are visible and correctable rather than silently
 wrong. `OPEN` — how confidence is expressed in the UI.
 
 `RESOLVED` **The artist's own release, not a compilation the source names.** A
-song is filed under the album it has been on, else its EP, else its single;
-compilations, soundtracks and live albums come last, and an album the file
-itself names goes first. A named compilation is the exception: YouTube credits a
+song is filed under the artist's own release it first came out on (an album, an
+EP or a single); compilations, soundtracks and live albums come last, however
+early, and an album the file itself names goes first. A named compilation is the exception: YouTube credits a
 video to whichever release claimed it ("Hot Party Winter 2018") and a ripped
 "NOW" CD names one too, so it only goes ahead of other compilations. A song that
 was only ever on compilations is filed under Various Artists (Q74).
 
 `RESOLVED` **The first release is the original.** Between copies of one song on
 different releases (the same title, a length that agrees or isn't known, a close
-score), a release from the song's first year or the next comes before any
-later one, and the later the worse: a greatest hits or a reissue years on is the
-least likely original. Among the first releases the album still beats its
-single, so a lead single out the year before its album doesn't take its place.
-Every catalogue orders its answers this way, so a copy whose length a catalogue
-happens to give doesn't win on that alone. Discogs gives no formats for a
-master; its pressings in the search say whether it is a compilation, and the
-earliest are looked up first ("Timber" went to Pitbull's 2017 Greatest Hits).
+score), the earliest of the artist's own comes first, and the later the worse: a
+greatest hits or a reissue years on is the least likely original. A lead single
+out before its album wins ("Closer" was a single nine months before the
+Chainsmokers' album). The day decides where the catalogue gives it; between
+releases out the same day, or the same year where only the year is known, the
+album beats the EP and the single. Every catalogue orders its answers this way,
+so a copy whose length a catalogue happens to give doesn't win on that alone.
+Discogs gives no formats for a master; its pressings in the search say whether
+it is a compilation, and the earliest are looked up first ("Timber" went to
+Pitbull's 2017 Greatest Hits).
+
+`RESOLVED` **A credit is asked for two ways.** MusicBrainz is searched for the
+artist as the file credits them or for the lead artist alone, and for the title
+without its "(feat. X)": MusicBrainz credits "Closer" to "The Chainsmokers ft.
+Halsey", and a file's "feat." found only compilations credited that way. A hit
+has more recordings than a search page holds, most of them its copies on
+compilations, and its own can be past the page ("September" by Earth, Wind &
+Fire); when a page comes back full, the recordings that came out on a single
+are asked for too.
 
 `RESOLVED` **A remix is another track.** A catalogue title that names a version
 — remix, rework, VIP, cover, live, acoustic, instrumental, karaoke, nightcore,
@@ -1243,7 +1264,8 @@ same long-press selection used everywhere else:
 | **Forgotten** | In your Library, not played in N months |
 | **Never played** | Ingested and never once opened |
 | **Downloaded** | What is available offline right now |
-| **Favourites** | Starred Tracks |
+| **Liked songs** | Songs you liked, the latest first: two taps on Add to playlist in Now playing, or a star from any Subsonic app |
+| **Favourites** | Your current favourites: what you've played most in the last 30 days |
 | **Review queue** | Live count of Tracks awaiting a resolver correction; tapping opens it |
 | **Ingest activity** | What Cosine is fetching, with progress and failures |
 | **Jam** | Active session, or an invite to start one |
@@ -1252,7 +1274,7 @@ same long-press selection used everywhere else:
 playing, which contradicted §6.4.5: a tile keeps its place.)
 
 `RESOLVED` **A list tile opens its list.** Recently added, Most played, This
-time last year, Forgotten, Never played, Downloaded and Favourites open the way
+time last year, Forgotten, Never played, Downloaded, Liked songs and Favourites open the way
 a playlist does; a tile's shuffle variant plays instead. Shuffle all, Now
 playing and Resume play. Review queue, Ingest activity and Jam open what they
 summarise.
@@ -1260,17 +1282,18 @@ summarise.
 `RESOLVED` **A list tile is a smart playlist** (§2.4), and its rule is the
 smart playlist's. Most played's window — 30 days, this year or all time — is
 the one its smart playlist has; for another window, make that smart playlist
-and pin it too. The six every account starts with (Recently added, Most played
-this year, Recently played, Forgotten, Never played, This time last year) are
-pinnable as they are.
+and pin it too. The eight every account starts with (Recently added, Most played
+this year, Recently played, Forgotten, Never played, This time last year, Liked
+songs, Favourites) are pinnable as they are.
 
 `RESOLVED` **Generated tiles are added from Home.** An Add tile action lists
 them alongside your smart playlists. Pinned items still come from their own
 screens.
 
-`RESOLVED` **Resume, Jam and Favourites wait for their features.** Resume
-needs per-Device sessions (§4B), Jam needs Jam (§4C), and Favourites needs a
-way to star a song in Sine. Until then those tiles aren't offered.
+`REVISED` **Resume and Jam wait for their features.** (Was: Favourites waited
+too, for a way to star a song in Sine; two taps on Add to playlist now like
+one, §6.6.) Resume needs per-Device sessions (§4B) and Jam needs Jam (§4C).
+Until then those tiles aren't offered.
 
 `NOTE` The retrospective tiles — *this time last year*, *forgotten*, *most played
 this year* — are only possible because plays are stored as append-only
@@ -1394,7 +1417,10 @@ Three panes, and the questionable fourth is gone.
 row selects it — the whole row fills Sine with black ink (§6.1) — and the
 shelf's contents swap to the available actions for that
 selection. No overlay is opened, so nothing conflicts, and multi-select comes
-free: long-press one row, tap others, act on all of them.
+free: long-press one row, tap others, act on all of them. Every song row works
+this way, search results and the queue included. For songs the actions are
+Play, Add to queue (to the end of what's playing, or play them if nothing is),
+Download, Add to playlist and, where it applies, Remove.
 
 This also means the shelf has three states, not two:
 
@@ -1429,19 +1455,33 @@ its own, and Close or back slides it down. Open, it covers the whole screen. A
 downward drag closes it only when its content is scrolled to the top, and a
 drag on the wave always seeks.
 
+`REVISED` **The sheet grows out of the shelf.** (Was: it slid up from below
+the screen.) Its surface starts as the shelf's own outline and, as it comes
+up, its top follows the finger while its sides and foot spread to the screen's
+edges and its corners turn from the shelf's to the sheet's. It fades in over
+the first fifth of the way, so the shelf seems to become the sheet rather than
+be covered by it. Going down, the same in reverse.
+
 `RESOLVED` **Jam is a strip inside the sheet.** When a session is active, a
 participant strip sits above the transport — who is listening, who queued the
 current track. Starting a jam is a long-press action on the shelf, like every
 other action in the app. Jam stays attached to what is playing and costs no new
 surface.
 
-`REVISED` **The cover's ambience fills the sheet's top; the cover sits on it,
-whole.** (Was: full-bleed artwork behind a scrim, handing off to glass beneath
-the controls — a resolution of Graphit's glass rule that Phase no longer needs.)
-The sheet is a Float surface with 28dp top corners and a hairline edge. The
-cover, blurred and scrimmed, fills its upper region and fades to Float under the
-title; the cover itself sits on that ambience, square and whole. Title,
-position and transport sit on plain Float, where their contrast is known.
+`REVISED` **The cover's ambience fills the whole sheet; the cover sits on it,
+whole.** (Was: the ambience filled the sheet's top and faded to Float under
+the title, which read as grey with a tinted header.) The sheet is a Float
+surface with 28dp top corners. The cover, blurred, a fixed step more
+saturated and under the constant scrim (§6.7), lies behind everything on it,
+title, wave and transport included, and stays put while the sheet scrolls; the
+cover itself sits on that ambience, square and whole. Text on it is Text 1 or
+On-scrim, never Text 2, so it reads over any cover. The queue sits on its own
+Raised panel, where its contrast is known.
+
+`RESOLVED` **The queue's songs are held to select them,** as anywhere (§6.5).
+Now playing has no shelf, so their actions float at the foot of the sheet, in
+the shelf's own surface: Play, Take out of the queue, Add to playlist. Back
+lets go of the selection first.
 
 `REVISED` **Progress is the wave.** (Was: a growing blue plane.) A sine wave
 across the sheet: Sine up to the position, grey after it, with a Sine knob.
@@ -1450,7 +1490,18 @@ product's name, where it belongs — and everywhere else progress is a straight
 line: the shelf's seam in Sine, a fetch's bar in Cosine.
 
 `RESOLVED` **The timecode sits off the wave** — elapsed and remaining below it,
-in mono, always Text 2, never overlapping.
+in mono, never overlapping; On-scrim, since it sits on the ambience.
+
+`RESOLVED` **Shuffle, Repeat and Add to playlist sit under the transport.**
+Repeat goes from off to the whole queue to the one song, and is remembered. A
+tap on Add to playlist picks a playlist for the song; two taps like it, or stop
+liking it (Subsonic's star, which every client shares), and a heart by the
+artist says it's liked. A screen reader has Like as an action of its own.
+
+`RESOLVED` **Shuffle plays everything once.** A queue started shuffled begins
+at the top of its shuffled order, from the start of its first song; shuffle
+turned on mid-queue starts its order with the song playing, so nothing before it
+in the order is skipped. Up next lists the queue in the order it will play.
 
 - Growth is continuous: motion here is feedback about a real process, not
   atmosphere.
@@ -1459,6 +1510,12 @@ in mono, always Text 2, never overlapping.
 progress line along the seam beneath it, and a Device indicator.** The
 Device marker is not decoration — once remote control exists, playback may be on
 the desktop, and without it you press play on the wrong machine.
+
+`REVISED` **The player row carries the cover's ambience and grows out of the
+shelf.** (Was: plain Float, appearing at once.) The cover, blurred, lies behind
+the row under Float at 72%, which keeps Text 1 above 6:1 over a white cover.
+When something starts, the row unfolds upward out of the navigation; when the
+queue ends it folds back in.
 
 `NOTE` There is one honest escape hatch worth remembering: Phase forbids an
 overlay opening *another overlay*, but inline expansion inside an existing
@@ -1478,7 +1535,10 @@ Three rules keep this from going wrong, and all three are non-negotiable:
 1. **Ambience is a header treatment, never a page background.** It occupies the
    top of the screen and fades out; content below sits on the ground. Long lists
    over a photograph are unreadable, and Phase's Text 2 prose rule assumes a
-   known ground.
+   known ground. `REVISED` Now playing is the one exception (§6.6): what sits
+   on it is few, large and fixed, and its long list, the queue, has a panel of
+   its own. The shelf's player row is the other place a cover shows through,
+   under Float rather than the scrim.
 2. **The scrim is constant, never adaptive.** Same discipline as Home (§6.4.3):
    darken always, never sample the image to decide.
 3. **Blur once, at load, not per frame.** The ambience is a pre-blurred,
@@ -1488,7 +1548,9 @@ Three rules keep this from going wrong, and all three are non-negotiable:
 
 `NOTE` Built (0.5.2): the ambience is a 24px copy of the cover drawn large, which
 is the blur: it costs nothing per frame and looks the same on every Android
-version. From API 31 a blur smooths it further.
+version. From API 31 a blur smooths it further. It's drawn 1.35× saturated,
+always, so a cover's colour carries through the scrim; never adapted to the
+image.
 
 ### 6.8 Library and search
 
@@ -1520,6 +1582,21 @@ Mixing Artists, Albums, Tracks and Playlists in one list needs two things:
 
 `RESOLVED` **Search is always global**, unaffected by which Library segment was
 last open.
+
+`RESOLVED` **Results stay while the next ones come.** Typing never blanks the
+list: the mirror answers each keystroke at once, and where the server is asked
+(compat mode) it gets a quarter-second pause, with the last results on screen
+meanwhile.
+
+`RESOLVED` **An empty search shows what you opened from it.** Artists, albums,
+playlists and songs picked from results, newest first, twenty at most: one tap
+opens it again (a song plays), a cross takes one off, Clear empties the list.
+What was typed is never kept, only what was chosen, and only on the phone.
+
+`RESOLVED` **The search field's + looks in the sources instead** (§6.10). On a
+Cosine that can add music, a + at the field's end switches the same text to
+searching YouTube, Bandcamp and SoundCloud, with the results in place, each with
+its own add button. Tapping + again comes back to the library.
 
 `RESOLVED` **Sort and filter options per screen, not remembered.** Artists by
 name or by recently added; a release's tracks always in track order, because
@@ -1588,7 +1665,19 @@ material that needs it.
 `REVISED` **Add opens a page with a single field.** (Was: a sheet. Like every
 form, it slides in from the right; §6.5, §6.16.) Paste a URL or type a
 query into the same input — Cosine works out which it is. Results appear
-beneath; picking one queues the ingest. One surface, no modes, no tabs.
+beneath; picking one queues the ingest. One surface, no modes, no tabs. Search's
++ reaches the same thing without leaving Search (§6.8).
+
+`REVISED` **It looks up as you type.** (Was: on return, or Look up.) A link is
+looked up at once; a search from its third character, once the typing pauses
+for half a second. Searching costs Cosine a fetch per source, so fewer letters
+wait. Return still looks up straight away.
+
+`REVISED` **Each result has its own add button.** (Was: a box to tick on each,
+and Add at the foot of the list.) One tap queues that song and the button turns
+into a tick; a song already in the library shows the library's mark instead.
+An album or a playlist is added whole from the top, under its name: Add all,
+or Add the other N when some are already here, with Add anyway for those.
 
 `RESOLVED` **Sine registers as a share target.** Sharing a track from
 SoundCloud, YouTube or anywhere else opens this same page with the URL already
@@ -1611,7 +1700,7 @@ Consequences worth building for rather than discovering:
   the common one.
 
 `NOTE` Built: a search shows "Albums and playlists" beside the songs, first
-when one is named like the search. Opening one shows its songs to tick, says
+when one is named like the search. Opening one shows its songs, each with its add button, says
 whether it is an album or a playlist, and for a playlist offers "Keep it as a
 playlist in my library" (on by default), with "Make the playlist" when every
 song is already there. "Back to search results" returns to the search.
@@ -1751,7 +1840,7 @@ down.
 |---|---|---|
 | Opening a page (artist, album, playlist, settings, review, a form) | — | Slides in from the right over the current page |
 | Going back | Swipe left to right, starting anywhere on the page | Back slides the page out to the right |
-| Home · Search · Library | Swipe sideways (§6.2) | Tap a word in the bar |
+| Home · Search · Library | Swipe sideways (§6.2) | Tap an icon in the bar |
 | The now-playing sheet | Drag the player row up, or the sheet down (§6.6) | Tap the player row; Close or back |
 | The queue | Drag the sheet further up, or back down | — |
 
@@ -1760,6 +1849,12 @@ wherever the finger puts it, one to one. It holds when the finger holds and
 reverses when the finger does. On release it finishes the move if it's past
 halfway or was flicked that way, and otherwise goes back, carrying on at the
 finger's speed rather than starting a new animation. Nothing overshoots.
+
+`RESOLVED` **The bar's pill moves with the page.** The light pill that says
+where you are is one thing, not three: while a swipe carries you between
+destinations it sits between their icons, as far along as the page is, and a
+tap slides it with the page. The name comes out from behind its icon as the
+pill arrives, its end first, and goes back in as the pill leaves.
 
 `RESOLVED` **The page underneath comes from a blur.** As a page or the sheet
 slides over another, the page being covered blurs and dims slightly as it goes
@@ -2051,6 +2146,14 @@ not silently keep gigabytes.
 | — | Row numbers | At least two digits, in a column as wide as the list's widest number |
 | — | Icons | `REVISED` Icons carry navigation, transport and actions; words carry names, status, questions and forms; where you are is named beside its icon (was: navigation is words) |
 | — | Icon style | Slightly 3D: lit from above, a crisp darker copy below as depth, a rim of light on coloured faces; no blur; Sine and the dashboard alike |
+| — | Search history | What was opened from search, not what was typed; twenty, on the phone |
+| — | Adding from Search | A + in the search field searches the sources in place |
+| — | Looking up as you type | A link at once; a search from three characters, after a half-second pause |
+| — | Adding one song | Each result has its own add button; Add all at the top of an album or playlist (was: ticks and Add at the foot) |
+| — | Queue and song actions | Every song row is held to select, the queue and search included; Add to queue joins the actions |
+| — | Repeat | Off, the queue, this song, remembered; beside Shuffle and Add to playlist (two taps like) in now playing |
+| — | Now playing's ambience | `REVISED` The whole sheet, saturated a fixed step, under the constant scrim; the player row shows the cover under Float (was: the sheet's top only) |
+| — | The bar's pill and the sheet | The pill moves with the page and the name slides from behind its icon; now playing grows out of the shelf |
 | — | Type | Instrument Sans (widths 75 to 100) and Martian Mono, bundled under the OFL |
 | — | Shape | Square is read, circle is a person, pill is pressed, slab holds |
 | — | Status marks | A tag asks you to look; a dot starts a sentence of status |
@@ -2069,7 +2172,7 @@ not silently keep gigabytes.
 | — | Home layout storage | On Cosine, per account and per kind of device; offline changes go with the next sync |
 | — | Adding tiles | Generated tiles and smart playlists from Home's Add tile action |
 | — | Tile sizes | 1×1 the cover or count; 2×2 adds the name; 4×2 a second line |
-| — | Tiles not yet possible | Resume, Jam and Favourites aren't offered until their features exist |
+| — | Tiles not yet possible | Resume and Jam aren't offered until their features exist |
 | — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; with animations removed, content changes without moving |
 | — | Tile motion | Home is the one place motion is for liveliness; Phase's colour and scrim rules still hold inside a tile |
 

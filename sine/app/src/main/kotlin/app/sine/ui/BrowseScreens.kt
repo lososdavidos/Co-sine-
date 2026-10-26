@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -23,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,8 +38,10 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.sine.core.model.Album
 import app.sine.core.model.Artist
+import app.sine.core.model.Recent
 import app.sine.core.model.SearchHit
 import app.sine.core.model.SearchRanking
+import app.sine.core.play.PlaySource
 import app.sine.core.server.Capability
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
@@ -48,6 +52,7 @@ import app.sine.ui.phase.Chip
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseField
 import app.sine.ui.phase.PhaseIcons
+import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseType
 import app.sine.ui.phase.Pill
 import app.sine.ui.phase.PillKind
@@ -55,6 +60,7 @@ import app.sine.ui.phase.Segmented
 import app.sine.ui.phase.SectionLabel
 import app.sine.ui.phase.StatusLine
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun SectionHeader(text: String) = SectionLabel(text)
@@ -77,21 +83,30 @@ fun AlbumRow(session: AccountSession, album: Album, nav: Pages) {
 /**
  * One ranked list (§6.8), always global. Against the server in compat mode —
  * there is no local mirror there — and against downloads when offline. Each
- * result's kind is a mono label, not a plane.
+ * result's kind is a mono label, not a plane. The results on screen stay
+ * until the next ones are there, so typing never blanks the list.
+ * Empty, the field shows what was opened from it before. With +, the
+ * same field searches the sources for music to add (§6.10), as you type.
  */
 @Composable
 fun SearchScreen(session: AccountSession, nav: Pages) {
-    val player = LocalContext.current.graph.player
+    val context = LocalContext.current
+    val player = context.graph.player
     val playing = playingId()
+    val scope = rememberCoroutineScope()
+    val shelf = LocalShelf.current
     var query by rememberSaveable { mutableStateOf("") }
+    // + : the field looks in the sources instead of the library.
+    var finding by rememberSaveable { mutableStateOf(false) }
+    val cosine = session.cosine
+    val adding = finding && cosine != null && canAdd(session)
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
-    // Searching the mirror is instant: one load for every keystroke keeps
-    // the last results up while typing. Searching the server shows it's
-    // working, so each query starts afresh.
-    val local = session.searchMirror("") != null
-    val load = rememberLoad(session, if (local) Unit else query, refreshOn = query to mirrored) {
+    val history = session.searchHistory
+    val recents by history.items.collectAsStateWithLifecycle()
+    // One loader for every keystroke: the last results stay up while the next
+    // load. The mirror answers at once; the server gets a pause first.
+    val load = rememberLoad(session, refreshOn = query to mirrored) {
         if (query.isBlank()) return@rememberLoad Sourced(emptyList<SearchHit>(), false)
-        // The mirror answers as you type (§6.8); the server gets a pause first.
         session.searchMirror(query)?.let {
             return@rememberLoad Sourced(SearchRanking.rank(query, it, session.searchPlaylists(query)), false)
         }
@@ -101,45 +116,144 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
             remote = { c -> SearchRanking.rank(query, c.search(query)) },
         )
     }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    // Songs held (§6.5): the shelf takes their actions, as on a release.
+    val hits = (load.load as? Load.Ready)?.value.orEmpty()
+    val songs = hits.filterIsInstance<SearchHit.OfTrack>().map { it.track }
+    ShowSelection(
+        if (selected.isEmpty() || adding) null else {
+            val chosen = songs.filter { it.id in selected }
+            trackSelection(
+                context, session, chosen, nav, scope, shelf,
+                canRemoveFromLibrary = session.can(Capability.REMOVE),
+                onAddToPlaylist = { nav.form { AddToPlaylistForm(session, chosen) } },
+            ) { selected = emptySet() }
+        },
+    )
+    LaunchedEffect(query, adding) { selected = emptySet() }
+
+    fun open(r: Recent) {
+        history.opened(r)
+        when (r.kind) {
+            Recent.ARTIST -> nav.navigate(Routes.artist(r.id))
+            Recent.ALBUM -> nav.navigate(Routes.album(r.id))
+            Recent.PLAYLIST -> nav.navigate(Routes.playlist(r.id))
+            Recent.SONG -> scope.launch {
+                val track = runCatching { session.track(r.id).value }.getOrNull()
+                if (track == null || session.playSource(track) == PlaySource.Unavailable) say(Voice.TRACK_UNAVAILABLE)
+                else player.play(session, listOf(track))
+            }
+        }
+    }
+
+    val finder = if (cosine != null && canAdd(session)) rememberSourceFinder(session, cosine) else null
+    if (finder != null && adding) LookAsYouType(finder, query)
+
     Column(Modifier.fillMaxSize()) {
         TitleBar("Search")
         PhaseField(
             value = query,
             onValueChange = { query = it },
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
-            placeholder = "Artists, albums, songs",
+            placeholder = if (adding) "Find music to add, or paste a link" else "Artists, albums, songs",
             leading = PhaseIcons.Search,
             onClear = { query = "" },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { if (adding) finder?.look(query.trim()) }),
+            trailing = if (finder == null) null else ({
+                // Where the field looks: the light pill while it's the sources.
+                Pill(
+                    null, { finding = !finding }, kind = if (adding) PillKind.Secondary else PillKind.Quiet,
+                    icon = PhaseIcons.Plus, height = 44.dp, width = 44.dp,
+                    contentDescription = if (adding) "Search your library" else "Find music to add",
+                )
+            }),
         )
-        if (query.isBlank()) return@Column
-        LoadContent(load) { hits, _ ->
-            if (hits.isEmpty()) {
+        if (adding && finder != null) {
+            FinderStatus(finder, Modifier.padding(horizontal = 20.dp))
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding(top = 4.dp)) {
+                if (query.trim().length < MIN_SEARCH && finder.lookup == null) item {
+                    Text(
+                        "Searches YouTube, Bandcamp and SoundCloud as you type, from the third letter. A pasted link is looked up at once.",
+                        Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = PhaseColor.Text2, style = PhaseType.Small,
+                    )
+                }
+                finderResults(finder) { track -> nav.navigate(Routes.correct(track)) }
+            }
+            return@Column
+        }
+        if (query.isBlank()) {
+            RecentList(session, recents, onOpen = ::open, onRemove = history::remove, onClear = history::clear)
+            return@Column
+        }
+        LoadContent(load) { results, _ ->
+            if (results.isEmpty()) {
                 ListMessage(Voice.NO_SEARCH_RESULTS)
                 return@LoadContent
             }
-            val tracks = hits.filterIsInstance<SearchHit.OfTrack>().map { it.track }
+            val tracks = results.filterIsInstance<SearchHit.OfTrack>().map { it.track }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
-                items(hits) { hit ->
+                items(results) { hit ->
                     when (hit) {
                         is SearchHit.OfArtist -> ItemRow(hit.name, null, session.artwork(hit.artist.coverArt, 150), roundArt = true, label = "Artist") {
-                            nav.navigate(Routes.artist(hit.artist.id))
+                            open(Recent(Recent.ARTIST, hit.artist.id, hit.name, coverArt = hit.artist.coverArt))
                         }
                         is SearchHit.OfAlbum -> ItemRow(hit.name, hit.album.artist, session.artwork(hit.album.coverArt, 150), label = "Album") {
-                            nav.navigate(Routes.album(hit.album.id))
+                            open(Recent(Recent.ALBUM, hit.album.id, hit.name, hit.album.artist, hit.album.coverArt))
                         }
                         is SearchHit.OfPlaylist -> ItemRow(hit.name, null, session.artwork(hit.playlist.coverArt, 150), label = "Playlist") {
-                            nav.navigate(Routes.playlist(hit.playlist.id))
+                            open(Recent(Recent.PLAYLIST, hit.playlist.id, hit.name, coverArt = hit.playlist.coverArt))
                         }
-                        is SearchHit.OfTrack -> ItemRow(
-                            hit.name, hit.track.artist, session.artwork(hit.track.coverArt, 150),
-                            label = "Song", playing = hit.track.id == playing,
-                        ) {
-                            player.play(session, tracks, tracks.indexOf(hit.track))
+                        is SearchHit.OfTrack -> {
+                            val t = hit.track
+                            ItemRow(
+                                hit.name, t.artist, session.artwork(t.coverArt, 150),
+                                label = "Song", playing = t.id == playing, selected = t.id in selected,
+                                dimmed = session.playSource(t) == PlaySource.Unavailable,
+                                onLongClick = { selected = selected.toggle(t.id) },
+                            ) {
+                                when {
+                                    selected.isNotEmpty() -> selected = selected.toggle(t.id)
+                                    session.playSource(t) == PlaySource.Unavailable -> say(Voice.TRACK_UNAVAILABLE)
+                                    else -> {
+                                        history.opened(Recent(Recent.SONG, t.id, t.title, t.artist, t.coverArt))
+                                        player.play(session, tracks, tracks.indexOf(t))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** What was opened from search before, newest first: one tap opens it again, or takes it off the list. */
+@Composable
+private fun RecentList(session: AccountSession, recents: List<Recent>, onOpen: (Recent) -> Unit, onRemove: (Recent) -> Unit, onClear: () -> Unit) {
+    if (recents.isEmpty()) return
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                PhaseLabel("Recently opened", Modifier.weight(1f))
+                Pill("Clear", onClear, kind = PillKind.Quiet, height = 40.dp)
+            }
+        }
+        items(recents, key = { it.kind + ":" + it.id }) { r ->
+            ItemRow(
+                r.name, r.subtitle, session.artwork(r.coverArt, 150),
+                roundArt = r.kind == Recent.ARTIST,
+                label = when (r.kind) {
+                    Recent.ARTIST -> "Artist"
+                    Recent.ALBUM -> "Album"
+                    Recent.PLAYLIST -> "Playlist"
+                    else -> "Song"
+                },
+                end = {
+                    Pill(null, { onRemove(r) }, kind = PillKind.Quiet, icon = PhaseIcons.Close, height = 40.dp, width = 44.dp, contentDescription = "Take ${r.name} off the list")
+                },
+            ) { onOpen(r) }
         }
     }
 }

@@ -49,6 +49,7 @@ type Track struct {
 	Suffix      string `json:"suffix"`
 	BitRate     int    `json:"bitRate,omitempty"`
 	CoverArt    string `json:"coverArt,omitempty"`
+	Liked       bool   `json:"liked,omitempty"` // starred by this account
 }
 
 // Changes is one answer: with Full, the whole library, to replace the
@@ -208,7 +209,8 @@ func (s *Service) fill(ctx context.Context, out *Changes, user int64, where stri
 SELECT t.id, t.title, COALESCE(t.track_no, 0), COALESCE(t.disc_no, 0),
        r.id, r.title, COALESCE(r.year, 0), r.art_path IS NOT NULL,
        ra.id, ra.name, ta.name, p.added_at,
-       COALESCE(o.size, 0), COALESCE(o.suffix, ''), COALESCE(o.duration_sec, 0), COALESCE(o.bitrate, 0)
+       COALESCE(o.size, 0), COALESCE(o.suffix, ''), COALESCE(o.duration_sec, 0), COALESCE(o.bitrate, 0),
+       p.starred_at IS NOT NULL
 FROM pointers p
 JOIN tracks t ON t.id = p.track_id
 JOIN releases r ON r.id = t.release_id
@@ -234,7 +236,7 @@ ORDER BY t.id`, user)
 			added          int64
 		)
 		if err := rows.Scan(&tid, &t.Title, &t.TrackNumber, &t.DiscNumber, &rid, &t.Album, &t.Year, &hasArt,
-			&raid, &raName, &t.Artist, &added, &t.SizeBytes, &t.Suffix, &t.DurationSec, &t.BitRate); err != nil {
+			&raid, &raName, &t.Artist, &added, &t.SizeBytes, &t.Suffix, &t.DurationSec, &t.BitRate, &t.Liked); err != nil {
 			rows.Close()
 			return err
 		}

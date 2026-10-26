@@ -12,6 +12,7 @@ import app.sine.core.cosine.Scrobbling
 import app.sine.core.cosine.SmartPlaylist
 import app.sine.core.download.OfflineLibrary
 import app.sine.core.home.HomeStore
+import app.sine.core.model.SearchHistory
 import app.sine.core.home.Tile
 import app.sine.core.mirror.LibraryMirror
 import app.sine.core.mirror.MirrorLibrary
@@ -76,6 +77,8 @@ class AccountSession(
     val plays = PlayLog(File(dir, "plays.json"))
     /** Home's arrangement (§6.4): kept here, and on Cosine when it keeps one. */
     val home = HomeStore(File(dir, "home.json"))
+    /** What was opened from search, to open again (§6.8). Kept on the phone only. */
+    val searchHistory = SearchHistory(File(dir, "search-history.json"))
     private val coversDir = File(dir, "covers")
 
     /**
@@ -214,6 +217,16 @@ class AccountSession(
         val n = c.remove(trackIds)
         sync()
         return n
+    }
+
+    /**
+     * Likes a song or stops liking it (#34): Subsonic's star, so other
+     * clients see it too. The mirror is caught up, so it shows as liked and
+     * in Liked songs.
+     */
+    suspend fun like(trackId: String, liked: Boolean) {
+        client.like(trackId, liked)
+        sync(wait = true)
     }
 
     /** Every song in the library, when the mirror has them; null means only the server knows. */

@@ -2,6 +2,7 @@ package ytdlp
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -48,6 +49,23 @@ func TestRealYtDlp(t *testing.T) {
 		t.Fatalf("downloaded file differs from the source (%v)", err)
 	}
 	t.Logf("file %s, %d progress callbacks", filepath.Base(got), calls)
+
+	// From what the probe found, without asking again: the same bytes.
+	again := filepath.Join(dir, "again")
+	os.MkdirAll(again, 0o755)
+	if len(info.raw) == 0 || len(info.Formats) == 0 {
+		t.Fatalf("the probe kept nothing to download from: %d bytes, %d formats", len(info.raw), len(info.Formats))
+	}
+	got, err = r.DownloadInfo(context.Background(), info, again, nil)
+	if err != nil {
+		t.Fatal("download from the probe:", err)
+	}
+	if b, err := os.ReadFile(got); err != nil || string(a) != string(b) {
+		t.Fatalf("downloaded file differs from the source (%v)", err)
+	}
+	if left, _ := os.ReadDir(again); len(left) != 1 {
+		t.Fatalf("expected only the song in the folder, found %d files", len(left))
+	}
 
 	if _, err := r.Probe(context.Background(), "file://"+filepath.Join(dir, "nope.mp3")); err == nil {
 		t.Fatal("expected an error for a missing file")
@@ -100,5 +118,39 @@ func TestRealYtDlpStopsCleanly(t *testing.T) {
 	}
 	if left, _ := os.ReadDir(tmp); len(left) != 0 {
 		t.Fatal("left behind:", left)
+	}
+}
+
+// TestRealDownloadInfoChoosesTheAudio downloads from a probe's description
+// of a YouTube-like video, its audio and its picture separate: the real
+// yt-dlp chooses the formats again, the audio alone, not the probe's
+// picture-and-sound choice. Skipped when yt-dlp is absent.
+func TestRealDownloadInfoChoosesTheAudio(t *testing.T) {
+	bin, err := exec.LookPath("yt-dlp")
+	if err != nil {
+		t.Skip("yt-dlp not installed")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("bytes of " + r.URL.Path))
+	}))
+	defer srv.Close()
+	raw := []byte(`{"id":"vid1","title":"Tides","extractor":"generic","extractor_key":"Generic","webpage_url":"` + srv.URL + `/watch",
+	  "format_id":"137+251","formats":[
+	    {"format_id":"251","url":"` + srv.URL + `/audio.webm","ext":"webm","acodec":"opus","vcodec":"none","abr":160},
+	    {"format_id":"137","url":"` + srv.URL + `/video.mp4","ext":"mp4","acodec":"none","vcodec":"avc1","height":1080}],
+	  "requested_formats":[{"format_id":"137","url":"` + srv.URL + `/video.mp4","ext":"mp4","acodec":"none","vcodec":"avc1"},
+	    {"format_id":"251","url":"` + srv.URL + `/audio.webm","ext":"webm","acodec":"opus","vcodec":"none"}]}`)
+	var info Info
+	if err := json.Unmarshal(raw, &info); err != nil {
+		t.Fatal(err)
+	}
+	info.raw = raw
+	dir := t.TempDir()
+	got, err := Runner{Bin: bin}.DownloadInfo(context.Background(), info, dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(got); string(b) != "bytes of /audio.webm" || filepath.Ext(got) != ".webm" {
+		t.Fatalf("%s: %q", got, b)
 	}
 }

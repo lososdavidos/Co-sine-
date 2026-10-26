@@ -118,8 +118,8 @@ func (c *Client) Candidates(ctx context.Context, h resolve.Hint, n int) ([]resol
 		}
 	}
 	// Copies of the song go in the order MusicBrainz's do: the album the
-	// file names, then the song's first releases (the album over its
-	// single), then later ones, a greatest hits years on last.
+	// file names, then the artist's own releases, the earliest first, and
+	// compilations, a greatest hits years on among them, last.
 	results := resolve.Order(out)
 	return results[:min(n, len(results))], nil
 }
@@ -132,7 +132,7 @@ const rankAlbum = -30
 // own; its pressings' in the search results say what it is, and failing
 // those its length.
 func home(h resolve.Hint, e entry, l lookup) resolve.Home {
-	hm := resolve.Home{Named: named(h, e) && !e.compiled(l), Unofficial: e.unofficial(l), Year: e.Year}
+	hm := resolve.Home{Named: named(h, e) && !e.compiled(l), Unofficial: e.unofficial(l), Compiled: e.compiled(l), Year: e.Year, Date: e.Released}
 	if hm.Year == 0 {
 		hm.Year = l.year
 	}
@@ -282,6 +282,7 @@ type track struct {
 type entry struct {
 	Title     string   `json:"title"`
 	Year      int      `json:"year"`
+	Released  string   `json:"released"` // "2013-10-07"; releases only
 	Artists   []artist `json:"artists"`
 	Tracklist []track  `json:"tracklist"`
 	Formats   []struct {

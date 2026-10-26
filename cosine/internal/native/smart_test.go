@@ -38,7 +38,7 @@ func TestSmartPlaylistRules(t *testing.T) {
 	tok := login(t, srv)
 	code, body := call(t, srv, "GET", "/cosine/v1/smart", tok, nil)
 	lists := body["playlists"].([]any)
-	if code != 200 || len(lists) != 6 || len(body["rules"].([]any)) != 6 {
+	if code != 200 || len(lists) != 8 || len(body["rules"].([]any)) != 7 {
 		t.Fatal(code, body)
 	}
 	if first := lists[0].(map[string]any); first["name"] != "Recently added" || first["days"] != float64(30) ||
@@ -71,7 +71,7 @@ func TestSmartPlaylistRules(t *testing.T) {
 		t.Error("someone else's or no one's:", code)
 	}
 	_, body = call(t, srv, "GET", "/cosine/v1/smart", tok, nil)
-	if lists := body["playlists"].([]any); len(lists) != 7 || lists[6].(map[string]any)["name"] != "Gathering dust" {
+	if lists := body["playlists"].([]any); len(lists) != 9 || lists[8].(map[string]any)["name"] != "Gathering dust" {
 		t.Fatal(lists)
 	}
 }

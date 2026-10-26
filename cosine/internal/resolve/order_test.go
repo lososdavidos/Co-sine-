@@ -21,8 +21,10 @@ func TestTheFirstReleaseIsTheOriginal(t *testing.T) {
 		return Placed{Result: Result{Title: "Timber", Release: release, Year: year, Confidence: conf},
 			Home: Home{Kind: kind, Year: year}, LengthSec: length}
 	}
+	hits := song("Greatest Hits", 2017, -30, 204, 1)
+	hits.Home.Compiled = true
 	got := Order([]Placed{
-		song("Greatest Hits", 2017, -30, 204, 1),
+		hits,
 		song("Meltdown EP", 2013, -20, 0, 0.92),
 		song("Timber", 2013, -10, 0, 0.92),
 	})
@@ -34,14 +36,46 @@ func TestTheFirstReleaseIsTheOriginal(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 
-	// A lead single the year before its album is one of the song's first
-	// releases: the album still wins.
+	// A lead single out before its album is the song's first release, and
+	// wins ("Closer" by the Chainsmokers); a reissue goes last.
 	got = Order([]Placed{
-		song("Timber", 2012, -15, 204, 1),
 		song("Global Warming: Meltdown", 2013, -30, 204, 1),
+		song("Timber", 2012, -15, 204, 1),
 		song("Global Warming: Meltdown (2019 Reissue)", 2019, -30, 204, 1),
 	})
-	if releases(got) != "Global Warming: Meltdown, Timber, Global Warming: Meltdown (2019 Reissue)" {
+	if releases(got) != "Timber, Global Warming: Meltdown, Global Warming: Meltdown (2019 Reissue)" {
+		t.Fatal(releases(got))
+	}
+	// Known to the day, the earlier goes first even in one year; out the
+	// same day, or known only by the year, the album beats the single.
+	dated := func(release, date string, kind int) Placed {
+		p := song(release, 2013, kind, 204, 1)
+		p.Home.Date = date
+		return p
+	}
+	got = Order([]Placed{dated("Meltdown", "2013-11-22", -30), dated("Timber", "2013-10-07", -15), dated("Meltdown (Deluxe)", "2013", -30)})
+	if releases(got) != "Timber, Meltdown, Meltdown (Deluxe)" {
+		t.Fatal(releases(got))
+	}
+	// Discogs's unknown month and day ("2013-00-00") are not January the 0th.
+	got = Order([]Placed{dated("Meltdown (Deluxe)", "2013-00-00", -30), dated("Timber", "2013-10-07", -15)})
+	if releases(got) != "Timber, Meltdown (Deluxe)" {
+		t.Fatal(releases(got))
+	}
+	got = Order([]Placed{dated("bad guy", "2019-03-29", -15), dated("When We All Fall Asleep", "2019-03-29", -30)})
+	if releases(got) != "When We All Fall Asleep, bad guy" {
+		t.Fatal(releases(got))
+	}
+	// The artist's own release beats a compilation, however much earlier:
+	// a compilation only says the song was out by then.
+	comp := song("Cruisin' Classics Vol. V", 1990, -5, 212, 1)
+	comp.Home.Compiled = true
+	got = Order([]Placed{comp, song("September", 1978, -15, 215, 1), song("Now, Then & Forever", 2013, -30, 217, 1)})
+	if releases(got) != "September, Now, Then & Forever, Cruisin' Classics Vol. V" {
+		t.Fatal(releases(got))
+	}
+	got = Order([]Placed{comp, song("Now, Then & Forever", 2013, -30, 217, 1)})
+	if releases(got) != "Now, Then & Forever, Cruisin' Classics Vol. V" {
 		t.Fatal(releases(got))
 	}
 

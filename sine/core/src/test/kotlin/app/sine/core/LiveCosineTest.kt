@@ -96,7 +96,7 @@ class LiveCosineTest {
         // Smart playlists: listed beside them, read-only, a rule's songs.
         assertTrue(Capability.SMART_PLAYLISTS in kind.capabilities, "$kind")
         val smart = sub.playlists().filter { it.readonly }
-        assertEquals(6, smart.size, "$smart")
+        assertEquals(8, smart.size, "$smart")
         val recent = smart.single { it.name == "Recently added" }
         assertEquals("Added in the last 30 days", recent.comment)
         assertEquals(setOf("Tides", "Surge"), sub.playlist(recent.id).tracks.map { it.title }.toSet())
@@ -173,7 +173,7 @@ class LiveCosineTest {
         // Playlists come with the mirror, and edits made here go as ops (§5.2).
         assertTrue(Capability.PLAYLIST_SYNC in kind.capabilities, "$kind")
         assertEquals(listOf("Surge (VIP)", "Tides"), mirror.library.value.playlist(playlist.id)!!.tracks.map { it.title })
-        assertEquals(6, mirror.library.value.playlists().count { it.readonly })
+        assertEquals(8, mirror.library.value.playlists().count { it.readonly })
         var opNo = 0
         val newOp = { "contract-op-${++opNo}" }
         val create = PlaylistOps.create(newOp(), "Contract offline", listOf(tides.id))
@@ -191,6 +191,18 @@ class LiveCosineTest {
         assertEquals(listOf("Surge (VIP)", "Tides"), offline.tracks.map { it.title })
         assertEquals(listOf("Surge (VIP)", "Tides"), sub.playlist(offline.playlist.id).tracks.map { it.title })
         assertTrue(mirror.pending.isEmpty())
+
+        // Liking a song (#34): Subsonic's star, liked in the mirror and in Liked songs.
+        sub.like(tides.id, true)
+        assertTrue(sub.track(tides.id).liked)
+        mirror.apply(cosine.sync(mirror.cursor, mirror.smartTag))
+        assertTrue(mirror.library.value.track(tides.id)!!.liked)
+        val liked = mirror.library.value.playlists().single { it.name == "Liked songs" }
+        assertEquals(listOf("Tides"), mirror.library.value.playlist(liked.id)!!.tracks.map { it.title })
+        sub.like(tides.id, false)
+        mirror.apply(cosine.sync(mirror.cursor, mirror.smartTag))
+        assertTrue(!mirror.library.value.track(tides.id)!!.liked)
+        assertEquals(emptyList(), mirror.library.value.playlist(liked.id)!!.tracks)
 
         // Shared with a second account (§2.3), who accepts it and gets its songs.
         assertTrue(Capability.SHARED_PLAYLISTS in kind.capabilities, "$kind")

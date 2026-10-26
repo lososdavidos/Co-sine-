@@ -47,6 +47,10 @@ object PhaseIcons {
         "shuffle",
         line("M3 7h3.5c2 0 3.2 1 4.3 2.7l2.4 4.6c1.1 1.7 2.3 2.7 4.3 2.7H21M18 14l3 3-3 3M3 17h3.5c1.4 0 2.4-.5 3.2-1.4M14.3 8.4c.8-.9 1.8-1.4 3.2-1.4H21M18 4l3 3-3 3", 2.25f),
     )
+    /** Repeat the queue. */
+    val Repeat = icon("repeat", line(REPEAT, 2.25f))
+    /** Repeat this song: the same loop, a one inside it. */
+    val RepeatOne = icon("repeat-one", line(REPEAT, 2.25f), line("M11 10.6l1.4-1.1v5", 2f))
 
     // Where you go
     val Home = icon("home", solid("M4.5 10.4L12 4.5l7.5 5.9V19a1 1 0 0 1-1 1h-4v-4.5a1 1 0 0 0-1-1h-3a1 1 0 0 0-1 1V20h-4a1 1 0 0 1-1-1z"))
@@ -75,8 +79,13 @@ object PhaseIcons {
     val OnPhone = icon("on-phone", line("M12 4v10.5M7.5 10l4.5 4.5 4.5-4.5M5 19.5h14", 2.4f))
     val OffPhone = icon("off-phone", line("M12 4v6.5M7.5 10l4.5 4.5 1.2-1.2M5 19.5h14M4.5 4.5l15 15", 2.4f))
     val PlaylistAdd = icon("playlist-add", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M17.5 13v7M14 16.5h7", 2.4f))
+    /** Add to the end of what's playing. */
+    val QueueAdd = icon("queue-add", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6", 2.4f), solid("M15 13.5v6l5-3z"))
+    /** Out of the queue. */
+    val QueueRemove = icon("queue-remove", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M14 16.5h7", 2.4f))
     val PlaylistRemove = icon("playlist-remove", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M14 16.5h7", 2.4f))
     /** Makes a list of songs your own: save as playlist. */
+    val Liked = icon("liked", solid("M12 20l-1.3-1.2C6.1 14.7 3.5 12.3 3.5 9.2 3.5 6.7 5.5 4.8 8 4.8c1.5 0 2.9.7 4 1.9 1.1-1.2 2.5-1.9 4-1.9 2.5 0 4.5 1.9 4.5 4.4 0 3.1-2.6 5.5-7.2 9.6z"))
     val PlaylistKeep = icon("playlist-keep", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M13.5 16.5l2.5 2.5 5-5", 2.4f))
     val Trash = icon("trash", solid("M7 8.5h10l-.8 10.2a1.5 1.5 0 0 1-1.5 1.3H9.3a1.5 1.5 0 0 1-1.5-1.3z"), line("M5 5.75h14M10 3.5h4", 2.3f))
     val Leave = icon("leave", line("M10 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H10M14.5 8l4 4-4 4M18.5 12H9.5", 2.3f))
@@ -101,6 +110,8 @@ object PhaseIcons {
     val Up = icon("up", line("M6 15l6-6 6 6", 2.6f))
     val Close = icon("close", line("M6.5 6.5l11 11M17.5 6.5l-11 11", 2.6f))
     val Check = icon("check", line("M5 12.5l4.5 4.5L19 7", 2.8f))
+
+    private const val REPEAT = "M17 3l3 3-3 3M4 11.5V10a4 4 0 0 1 4-4h12M7 21l-3-3 3-3M20 12.5V14a4 4 0 0 1-4 4H4"
 
     private class Part(val d: String, val solid: Boolean, val width: Float, val evenOdd: Boolean)
 
