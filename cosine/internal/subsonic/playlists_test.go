@@ -1,10 +1,13 @@
 package subsonic
 
 import (
+	"context"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/testutil"
 )
 
@@ -139,4 +142,32 @@ func TestSmartPlaylistsAreListedReadOnly(t *testing.T) {
 	}
 	// Bob's are his own.
 	failed(t, e.get(t, "bob", "hunter2", "getPlaylist", url.Values{"id": {sp}}), ErrNotFound)
+}
+
+func TestASharedPlaylistIsEveryMembersOverSubsonic(t *testing.T) {
+	e := setup(t)
+	a := "tr-" + itoa(e.add(t, testutil.MP3{Title: "Ascend", Artist: "Skeler", Body: "1"}, e.alice.ID).TrackID)
+	b := "tr-" + itoa(e.add(t, testutil.MP3{Title: "Bloom", Artist: "plenka", Body: "2"}, e.bob.ID).TrackID)
+	id := ok(t, e.get(t, "alice", "sesame", "createPlaylist", url.Values{"name": {"Ours"}, "songId": {a}}))["playlist"].(map[string]any)["id"].(string)
+	lists := &playlists.Service{DB: e.db}
+	pid, _ := strconv.ParseInt(strings.TrimPrefix(id, "pl-"), 10, 64)
+	lists.Share(context.Background(), e.alice.ID, pid, "bob")
+	failed(t, e.get(t, "bob", "hunter2", "getPlaylist", url.Values{"id": {id}}), ErrNotFound) // not before accepting
+	lists.Accept(context.Background(), e.bob.ID, pid)
+
+	// Bob sees it as alice's, adds his song, and alice gets it.
+	got := ok(t, e.get(t, "bob", "hunter2", "getPlaylist", url.Values{"id": {id}}))["playlist"].(map[string]any)
+	if got["owner"] != "alice" || got["songCount"] != float64(1) {
+		t.Fatal(got)
+	}
+	ok(t, e.get(t, "bob", "hunter2", "updatePlaylist", url.Values{"playlistId": {id}, "songIdToAdd": {b}}))
+	if got := e.titles(t, "alice", "sesame", id); got != "Ascend Bloom" {
+		t.Fatal(got)
+	}
+	// Deleting it, for bob, is leaving it.
+	ok(t, e.get(t, "bob", "hunter2", "deletePlaylist", url.Values{"id": {id}}))
+	failed(t, e.get(t, "bob", "hunter2", "getPlaylist", url.Values{"id": {id}}), ErrNotFound)
+	if got := e.titles(t, "alice", "sesame", id); got != "Ascend Bloom" {
+		t.Fatal(got)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"strconv"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -26,9 +27,12 @@ var schemaV4 string
 //go:embed schema_v5.sql
 var schemaV5 string
 
+//go:embed schema_v6.sql
+var schemaV6 string
+
 // migrations are applied in order; the index+1 is the schema version.
 // Additive only, like the wire protocol (§9.3).
-var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5}
+var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6}
 
 type DB struct {
 	*sql.DB
@@ -88,6 +92,10 @@ const (
 	SettingSoundCloudID  = "soundcloud_client_id"
 	SettingYouTubeKey    = "youtube_api_key"
 	SettingDiscogsToken  = "discogs_token" // optional: raises Discogs's limit from 25 to 60 a minute
+	// Last.fm's API account, made by whoever runs the server; without it
+	// nobody can connect Last.fm (ListenBrainz needs nothing).
+	SettingLastFMKey    = "lastfm_api_key"
+	SettingLastFMSecret = "lastfm_secret"
 )
 
 // Available is true for the Track aliased t when at least one of its files
@@ -114,6 +122,43 @@ func (d *DB) SetSetting(ctx context.Context, key, value string) error {
 // Execer is satisfied by *sql.DB and *sql.Tx.
 type Execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// Querier is satisfied by *sql.DB and *sql.Tx.
+type Querier interface {
+	Execer
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// LogPlaylist logs a change to a playlist for everyone who has it: its
+// owner and those it is shared with, accepted or invited. Log before
+// taking anyone off it, so they hear it's gone.
+func LogPlaylist(ctx context.Context, x Querier, id int64, op string) error {
+	rows, err := x.QueryContext(ctx, `
+		SELECT owner_id FROM playlists WHERE id = ?1
+		UNION SELECT user_id FROM playlist_members WHERE playlist_id = ?1`, id)
+	if err != nil {
+		return err
+	}
+	var users []int64
+	for rows.Next() {
+		var u int64
+		if err := rows.Scan(&u); err != nil {
+			rows.Close()
+			return err
+		}
+		users = append(users, u)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, u := range users {
+		if err := LogChange(ctx, x, u, "playlist", strconv.FormatInt(id, 10), op); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // LogChange appends to the change log. userID 0 means "everyone".

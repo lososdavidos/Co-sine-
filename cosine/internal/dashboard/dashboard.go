@@ -100,6 +100,7 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("POST /settings/inbox", d.admin(d.changeInbox))
 	mux.HandleFunc("POST /settings/search", d.admin(d.saveSearch))
 	mux.HandleFunc("POST /settings/catalogues", d.admin(d.saveCatalogues))
+	mux.HandleFunc("POST /settings/lastfm", d.admin(d.saveLastFM))
 	mux.HandleFunc("GET /add", d.admin(d.addForm))
 	mux.HandleFunc("POST /add", d.admin(d.add))
 	mux.HandleFunc("POST /jobs/{id}/retry", d.admin(d.retry))
@@ -469,6 +470,7 @@ type settingsData struct {
 	Store, Inbox                                           string
 	YtDlp, Backend, SoundCloudID, YouTubeKey, SearchStatus string
 	DiscogsToken                                           string
+	LastFMKey, LastFMSecret                                string
 }
 
 func (d *Dashboard) settings(w http.ResponseWriter, r *http.Request, u auth.User) {
@@ -483,6 +485,8 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, u aut
 	s.SoundCloudID, _ = d.DB.Setting(r.Context(), db.SettingSoundCloudID)
 	s.YouTubeKey, _ = d.DB.Setting(r.Context(), db.SettingYouTubeKey)
 	s.DiscogsToken, _ = d.DB.Setting(r.Context(), db.SettingDiscogsToken)
+	s.LastFMKey, _ = d.DB.Setting(r.Context(), db.SettingLastFMKey)
+	s.LastFMSecret, _ = d.DB.Setting(r.Context(), db.SettingLastFMSecret)
 	if d.Fetcher != nil {
 		s.YtDlp = "yt-dlp " + d.YtDlpVersion
 	}
@@ -560,6 +564,21 @@ func (d *Dashboard) saveCatalogues(w http.ResponseWriter, r *http.Request, u aut
 		return
 	}
 	done(w, r, "/settings", "Saved.")
+}
+
+// saveLastFM keeps the server's Last.fm API account, which every account
+// connects its own Last.fm through (§4A).
+func (d *Dashboard) saveLastFM(w http.ResponseWriter, r *http.Request, u auth.User) {
+	for key, value := range map[string]string{
+		db.SettingLastFMKey:    strings.TrimSpace(r.FormValue("key")),
+		db.SettingLastFMSecret: strings.TrimSpace(r.FormValue("secret")),
+	} {
+		if err := d.DB.SetSetting(r.Context(), key, value); err != nil {
+			d.renderSettings(w, r, u, err.Error())
+			return
+		}
+	}
+	done(w, r, "/settings", "Saved. Each account connects its own Last.fm in Sine: Settings → Scrobbling.")
 }
 
 // ---------------------------------------------------------------- listening

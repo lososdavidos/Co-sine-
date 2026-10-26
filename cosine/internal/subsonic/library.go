@@ -249,12 +249,14 @@ func likePattern(q string) string {
 
 // ---------------------------------------------------------------- playlists
 
-// entryShown: an entry is shown when its Track is in the owner's Library
-// with a file. One that isn't keeps its place in the playlist but isn't
-// counted or offered (§4.1).
+// entryShown: an entry is shown when its Track is in the Library of whoever
+// is looking (?1) with a file. One that isn't keeps its place in the
+// playlist but isn't counted or offered (§4.1).
 const entryShown = `EXISTS (SELECT 1 FROM objects ox WHERE ox.track_id = e.track_id AND ox.missing = 0)
-	AND EXISTS (SELECT 1 FROM pointers px WHERE px.user_id = pl.owner_id AND px.track_id = e.track_id)`
+	AND EXISTS (SELECT 1 FROM pointers px WHERE px.user_id = ?1 AND px.track_id = e.track_id)`
 
+// playlists lists the account's playlists (or just id, when not 0): its own
+// and those shared with it that it accepted (§2.3).
 func (l library) playlists(ctx context.Context, user int64, id int64) ([]Playlist, error) {
 	q := `
 SELECT pl.id, pl.name, u.name, pl.created_at, pl.updated_at,
@@ -265,9 +267,11 @@ SELECT pl.id, pl.name, u.name, pl.created_at, pl.updated_at,
                  WHERE e.playlist_id = pl.id AND r.art_path IS NOT NULL AND ` + entryShown + `
                  ORDER BY e.position LIMIT 1), 0)
 FROM playlists pl JOIN users u ON u.id = pl.owner_id
-WHERE pl.owner_id = ? AND (? = 0 OR pl.id = ?)
+WHERE (pl.owner_id = ?1 OR EXISTS (SELECT 1 FROM playlist_members m WHERE m.playlist_id = pl.id
+                                   AND m.user_id = ?1 AND m.accepted_at IS NOT NULL))
+  AND (?2 = 0 OR pl.id = ?2)
 ORDER BY pl.name`
-	rows, err := l.db.QueryContext(ctx, q, user, id, id)
+	rows, err := l.db.QueryContext(ctx, q, user, id)
 	if err != nil {
 		return nil, err
 	}

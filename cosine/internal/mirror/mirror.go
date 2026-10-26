@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 )
 
 // Shapes match the Subsonic ones Sine already reads (ids, cover art ids),
@@ -53,29 +54,52 @@ type Track struct {
 // Changes is one answer: with Full, the whole library, to replace the
 // client's; otherwise what to add or update, and the tracks to remove.
 // Albums and artists left with no tracks are the client's to drop.
+// Playlists and invitations follow the same rule; smart playlists come
+// whole, or not at all when the client's are current (SmartTag).
 type Changes struct {
-	Cursor  int64    `json:"cursor"`
-	Full    bool     `json:"full"`
-	Artists []Artist `json:"artists"`
-	Albums  []Album  `json:"albums"`
-	Tracks  []Track  `json:"tracks"`
-	Removed []string `json:"removedTracks"`
+	Cursor           int64      `json:"cursor"`
+	Full             bool       `json:"full"`
+	Artists          []Artist   `json:"artists"`
+	Albums           []Album    `json:"albums"`
+	Tracks           []Track    `json:"tracks"`
+	Removed          []string   `json:"removedTracks"`
+	Playlists        []Playlist `json:"playlists"`
+	Invites          []Invite   `json:"invites"`
+	RemovedPlaylists []string   `json:"removedPlaylists"`
+	Smart            *[]Smart   `json:"smart,omitempty"`
+	SmartTag         string     `json:"smartTag,omitempty"`
 }
 
 // fullAbove: past this many changes, the whole library is the smaller answer.
 const fullAbove = 2000
 
-type Service struct{ DB *db.DB }
+type Service struct {
+	DB *db.DB
+	// Playlists works out smart playlists and who playlists are shared
+	// with; nil: no smart playlists, and no sharing shown.
+	Playlists *playlists.Service
+}
 
-// Since answers a client whose copy is current up to change after (0: none).
-func (s *Service) Since(ctx context.Context, user, after int64) (Changes, error) {
+// Since answers a client whose copy is current up to change after (0:
+// none), and whose smart playlists are as of smartTag (empty: none).
+func (s *Service) Since(ctx context.Context, user, after int64, smartTag string) (Changes, error) {
+	out, err := s.since(ctx, user, after)
+	if err != nil {
+		return Changes{}, err
+	}
+	out.Smart, out.SmartTag, err = s.smart(ctx, user, smartTag)
+	return out, err
+}
+
+func (s *Service) since(ctx context.Context, user, after int64) (Changes, error) {
 	// The cursor is read first: a change made while this answer is built is
 	// either in it or after the cursor, never lost.
 	var cursor int64
 	if err := s.DB.QueryRowContext(ctx, "SELECT COALESCE(MAX(seq), 0) FROM changes").Scan(&cursor); err != nil {
 		return Changes{}, err
 	}
-	out := Changes{Cursor: cursor, Artists: []Artist{}, Albums: []Album{}, Tracks: []Track{}, Removed: []string{}}
+	out := Changes{Cursor: cursor, Artists: []Artist{}, Albums: []Album{}, Tracks: []Track{}, Removed: []string{},
+		Playlists: []Playlist{}, Invites: []Invite{}, RemovedPlaylists: []string{}}
 	if after == cursor && after > 0 {
 		return out, nil
 	}
@@ -89,10 +113,15 @@ func (s *Service) Since(ctx context.Context, user, after int64) (Changes, error)
 	// too much to say change by change: the whole library.
 	if after <= 0 || after > cursor || n > fullAbove {
 		out.Full = true
-		return out, s.fill(ctx, &out, user, "", nil)
+		if err := s.fill(ctx, &out, user, "", nil); err != nil {
+			return Changes{}, err
+		}
+		return out, s.allPlaylists(ctx, &out, user)
 	}
 
 	tracks, releases, artists := map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
+	var lists []int64 // playlists changed, in the order they first changed
+	listed := map[int64]bool{}
 	mine := map[int64]bool{} // tracks this account's own Library changed
 	rows, err := s.DB.QueryContext(ctx, `SELECT entity, entity_id FROM changes
 		WHERE seq > ? AND seq <= ? AND (user_id IS NULL OR user_id = ?)`, after, cursor, user)
@@ -118,6 +147,11 @@ func (s *Service) Since(ctx context.Context, user, after int64) (Changes, error)
 			releases[id] = true
 		case "artist":
 			artists[id] = true
+		case "playlist":
+			if !listed[id] {
+				listed[id] = true
+				lists = append(lists, id)
+			}
 		}
 	}
 	rows.Close()
@@ -157,6 +191,11 @@ func (s *Service) Since(ctx context.Context, user, after int64) (Changes, error)
 		}
 		if !exists || ours || mine[id] {
 			out.Removed = append(out.Removed, ref)
+		}
+	}
+	for _, id := range lists {
+		if err := s.playlist(ctx, &out, user, id); err != nil {
+			return Changes{}, err
 		}
 	}
 	return out, nil

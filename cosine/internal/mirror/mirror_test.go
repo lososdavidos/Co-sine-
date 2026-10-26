@@ -12,7 +12,9 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/testutil"
 )
 
@@ -77,7 +79,7 @@ func TestFullThenOnlyWhatChanged(t *testing.T) {
 	e.add(t, testutil.MP3{Title: "Glass", Artist: "plenka", Body: "c"}, e.alice)
 	e.add(t, testutil.MP3{Title: "Hollow", Artist: "Deadcrow", Body: "d"}, e.bob)
 
-	full, err := e.s.Since(ctx, e.alice, 0)
+	full, err := e.s.Since(ctx, e.alice, 0, "")
 	if err != nil || !full.Full || full.Cursor == 0 {
 		t.Fatal(full, err)
 	}
@@ -99,7 +101,7 @@ func TestFullThenOnlyWhatChanged(t *testing.T) {
 	}
 
 	// Nothing since: nothing.
-	same, _ := e.s.Since(ctx, e.alice, full.Cursor)
+	same, _ := e.s.Since(ctx, e.alice, full.Cursor, "")
 	if same.Full || len(same.Tracks)+len(same.Removed)+len(same.Albums) != 0 || same.Cursor != full.Cursor {
 		t.Fatalf("%+v", same)
 	}
@@ -107,18 +109,18 @@ func TestFullThenOnlyWhatChanged(t *testing.T) {
 	// A new track on the EP brings the EP whole; bob's new track isn't alice's.
 	e.add(t, testutil.MP3{Title: "Undertow", Artist: "Skeler", Album: "Tides EP", Track: "3", Body: "e"}, e.alice)
 	e.add(t, testutil.MP3{Title: "Ember", Artist: "Deadcrow", Body: "f"}, e.bob)
-	delta, _ := e.s.Since(ctx, e.alice, full.Cursor)
+	delta, _ := e.s.Since(ctx, e.alice, full.Cursor, "")
 	if delta.Full || trackIDs(delta) != "Surge Tides Undertow" || albumIDs(delta) != "Tides EP" ||
 		artistIDs(delta) != "Skeler" || len(delta.Removed) != 0 {
 		t.Fatalf("%+v", delta)
 	}
 	// Bob sees his own.
-	if b, _ := e.s.Since(ctx, e.bob, full.Cursor); trackIDs(b) != "Ember" {
+	if b, _ := e.s.Since(ctx, e.bob, full.Cursor, ""); trackIDs(b) != "Ember" {
 		t.Fatalf("%+v", b)
 	}
 
 	// A cursor this server never issued (a restored database): start over.
-	if again, _ := e.s.Since(ctx, e.alice, delta.Cursor+100); !again.Full || len(again.Tracks) != 4 {
+	if again, _ := e.s.Since(ctx, e.alice, delta.Cursor+100, ""); !again.Full || len(again.Tracks) != 4 {
 		t.Fatalf("%+v", again)
 	}
 }
@@ -128,19 +130,19 @@ func TestDeletedMergedAndNewPictures(t *testing.T) {
 	ctx := context.Background()
 	glass := e.add(t, testutil.MP3{Title: "Glass", Artist: "plenka", Body: "c"}, e.alice)
 	tides := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "a"}, e.alice)
-	start, _ := e.s.Since(ctx, e.alice, 0)
+	start, _ := e.s.Since(ctx, e.alice, 0, "")
 
 	// A file deleted from the Store takes its track out of the library.
 	os.Remove(filepath.Join(e.root, glass.RelPath))
 	e.g.Verify(ctx)
-	c, _ := e.s.Since(ctx, e.alice, start.Cursor)
+	c, _ := e.s.Since(ctx, e.alice, start.Cursor, "")
 	if strings.Join(c.Removed, " ") != "tr-"+itoa(glass.TrackID) || len(c.Tracks) != 0 {
 		t.Fatalf("%+v", c)
 	}
 
 	// A correction that folds one track into another removes the first.
 	other := e.add(t, testutil.MP3{Title: "Tides (rip)", Artist: "Skeler", Body: "z"}, e.alice)
-	c, _ = e.s.Since(ctx, e.alice, c.Cursor)
+	c, _ = e.s.Since(ctx, e.alice, c.Cursor, "")
 	cur := c.Cursor
 	if other.TrackID == tides.TrackID {
 		t.Fatal("expected two tracks before the correction")
@@ -149,7 +151,7 @@ func TestDeletedMergedAndNewPictures(t *testing.T) {
 	if _, merged, err := e.g.Refile(ctx, other.TrackID, to); err != nil || !merged {
 		t.Fatal(merged, err)
 	}
-	c, _ = e.s.Since(ctx, e.alice, cur)
+	c, _ = e.s.Since(ctx, e.alice, cur, "")
 	if !contains(c.Removed, "tr-"+itoa(other.TrackID)) || trackIDs(c) != "Tides" {
 		t.Fatalf("%+v", c)
 	}
@@ -160,7 +162,7 @@ func TestDeletedMergedAndNewPictures(t *testing.T) {
 	e.db.QueryRow("SELECT id FROM artists WHERE name = 'Skeler'").Scan(&skeler)
 	e.db.Exec("UPDATE artists SET art_path = 'art/artist-1.jpg' WHERE id = ?", skeler)
 	db.LogChange(ctx, e.db, 0, "artist", itoa(skeler), "upsert")
-	c, _ = e.s.Since(ctx, e.alice, cur)
+	c, _ = e.s.Since(ctx, e.alice, cur, "")
 	if len(c.Artists) != 1 || c.Artists[0].CoverArt != "ar-"+itoa(skeler) {
 		t.Fatalf("%+v", c)
 	}
@@ -181,18 +183,92 @@ func TestARemovalReachesOnlyThatAccount(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
 	tides := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "a"}, e.alice, e.bob)
-	a0, _ := e.s.Since(ctx, e.alice, 0)
-	b0, _ := e.s.Since(ctx, e.bob, 0)
+	a0, _ := e.s.Since(ctx, e.alice, 0, "")
+	b0, _ := e.s.Since(ctx, e.bob, 0, "")
 
 	if _, err := e.g.Dismiss(ctx, e.alice, []int64{tides.TrackID}); err != nil {
 		t.Fatal(err)
 	}
-	a, _ := e.s.Since(ctx, e.alice, a0.Cursor)
+	a, _ := e.s.Since(ctx, e.alice, a0.Cursor, "")
 	if strings.Join(a.Removed, " ") != "tr-"+itoa(tides.TrackID) || len(a.Tracks) != 0 {
 		t.Fatalf("%+v", a)
 	}
-	b, _ := e.s.Since(ctx, e.bob, b0.Cursor)
+	b, _ := e.s.Since(ctx, e.bob, b0.Cursor, "")
 	if len(b.Removed) != 0 {
 		t.Fatalf("bob still has it: %+v", b)
+	}
+}
+
+func playlistNames(c Changes) string {
+	return ids(c.Playlists, func(p Playlist) string { return p.Name })
+}
+
+func TestPlaylistsComeWithTheLibrary(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	lists := &playlists.Service{DB: e.db, Stats: &stats.Service{DB: e.db}}
+	e.s.Playlists = lists
+	a := e.add(t, testutil.MP3{Title: "Ascend", Artist: "Skeler", Body: "a"}, e.alice).TrackID
+	b := e.add(t, testutil.MP3{Title: "Bloom", Artist: "plenka", Body: "b"}, e.alice).TrackID
+	id, err := lists.Create(ctx, e.alice, "Night drive", []int64{a, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	full, _ := e.s.Since(ctx, e.alice, 0, "")
+	if playlistNames(full) != "Night drive" || !full.Playlists[0].Mine || full.Playlists[0].Owner != "alice" ||
+		strings.Join(full.Playlists[0].Tracks, " ") != trackID(a)+" "+trackID(b) {
+		t.Fatalf("%+v", full.Playlists)
+	}
+	// Smart playlists come worked out, then not again until they change.
+	if full.Smart == nil || len(*full.Smart) != 6 || full.SmartTag == "" {
+		t.Fatalf("%+v", full.Smart)
+	}
+	if same, _ := e.s.Since(ctx, e.alice, full.Cursor, full.SmartTag); same.Smart != nil || len(same.Playlists) != 0 {
+		t.Fatalf("%+v", same)
+	}
+	e.db.Exec("INSERT INTO plays(user_id, track_id, played_at) VALUES(?, ?, ?)", e.alice, a, db.Now())
+	played, _ := e.s.Since(ctx, e.alice, full.Cursor, full.SmartTag)
+	if played.Smart == nil || played.SmartTag == full.SmartTag {
+		t.Fatal("a play changes what smart playlists hold")
+	}
+
+	// A song taken out of the library stays in the playlist, hidden: the
+	// phone hides what it doesn't have, as Cosine does.
+	e.g.Dismiss(ctx, e.alice, []int64{b})
+	delta, _ := e.s.Since(ctx, e.alice, full.Cursor, "")
+	if len(delta.Playlists) != 0 || len(delta.Removed) != 1 {
+		t.Fatalf("%+v", delta)
+	}
+
+	// Shared with bob: an invitation, then his once accepted, with its songs.
+	lists.Share(ctx, e.alice, id, "bob")
+	bob, _ := e.s.Since(ctx, e.bob, full.Cursor, "")
+	if len(bob.Invites) != 1 || bob.Invites[0].Owner != "alice" || bob.Invites[0].Songs != 2 || len(bob.Playlists) != 0 {
+		t.Fatalf("%+v", bob)
+	}
+	ownerView, _ := e.s.Since(ctx, e.alice, full.Cursor, "")
+	if p := ownerView.Playlists[0]; strings.Join(p.Invited, " ") != "bob" || len(p.Shared) != 0 {
+		t.Fatalf("%+v", p)
+	}
+	at := bob.Cursor
+	lists.Accept(ctx, e.bob, id)
+	bob, _ = e.s.Since(ctx, e.bob, at, "")
+	if playlistNames(bob) != "Night drive" || bob.Playlists[0].Mine || trackIDs(bob) != "Ascend Bloom" {
+		t.Fatalf("%+v", bob)
+	}
+	if p := bob.Playlists[0]; strings.Join(p.Shared, " ") != "bob" || len(p.Invited) != 0 {
+		t.Fatalf("%+v", p)
+	}
+
+	// Left: gone from bob's phone, still on alice's.
+	at = bob.Cursor
+	lists.Delete(ctx, e.bob, id)
+	bob, _ = e.s.Since(ctx, e.bob, at, "")
+	if strings.Join(bob.RemovedPlaylists, " ") != playlistID(id) {
+		t.Fatalf("%+v", bob)
+	}
+	if again, _ := e.s.Since(ctx, e.alice, 0, ""); playlistNames(again) != "Night drive" {
+		t.Fatal(playlistNames(again))
 	}
 }
