@@ -147,6 +147,7 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
 // ---------------------------------------------------------------- Library
 
 private val segments = listOf("Artists", "Albums", "Playlists")
+private val segmentIcons = listOf(PhaseIcons.Artist, PhaseIcons.Album, PhaseIcons.Playlist)
 
 /**
  * Segmented root (§6.2): Artists / Albums / Playlists. On phone is a filter,
@@ -173,23 +174,24 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
 
     Column(Modifier.fillMaxSize()) {
         TitleBar("Library")
-        Segmented(segments, segment, { segment = it }, Modifier.padding(horizontal = 20.dp))
+        Segmented(segments, segment, { segment = it }, Modifier.padding(horizontal = 20.dp), icons = segmentIcons)
         Row(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (segment < 2) Chip("On phone", downloadedOnly, { downloadedOnly = !downloadedOnly })
+            if (segment < 2) Chip(null, downloadedOnly, { downloadedOnly = !downloadedOnly }, icon = PhaseIcons.OnPhone, contentDescription = "Only what's on this phone")
             Spacer(Modifier.weight(1f))
             if (canReview) {
                 val n = toReview ?: 0
                 Pill(
-                    "Review", { nav.navigate(Routes.REVIEW) }, height = 40.dp,
+                    null, { nav.navigate(Routes.REVIEW) }, height = 40.dp, icon = PhaseIcons.Review,
                     kind = if (n > 0) PillKind.Server else PillKind.Secondary,
                     count = if (n > 0) n.toString() else null,
+                    contentDescription = if (n > 0) "Review, $n waiting" else "Review",
                 )
             }
-            if (canIngest) Pill("Add", { nav.navigate(Routes.add()) }, height = 40.dp, icon = PhaseIcons.Plus)
+            if (canIngest) Pill(null, { nav.navigate(Routes.add()) }, height = 40.dp, icon = PhaseIcons.Plus, contentDescription = "Add music")
         }
         if (activeDownloads > 0) {
             StatusLine(

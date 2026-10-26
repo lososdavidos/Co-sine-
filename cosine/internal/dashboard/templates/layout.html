@@ -15,13 +15,27 @@
 <a class="mark" href="/"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="13" cy="17" r="11" fill="none" stroke="#42464A" stroke-width="1.5"/><line x1="13" y1="17" x2="20.1" y2="17" stroke="#1070C5" stroke-width="3"/><line x1="20.1" y1="17" x2="20.1" y2="8.6" stroke="#53A4FF" stroke-width="3"/><circle cx="20.1" cy="8.6" r="2.5" fill="#F1F3F5"/></svg>Cosine</a>
 {{if .User}}<div class="who"><span class="label">{{.User.Name}} · admin</span><form method="post" action="/logout"><button class="quiet">Log out</button></form></div>{{end}}
 </header>
-{{if .User}}<nav class="main" aria-label="Dashboard">
-<a href="/"{{if eq .Title "Status"}} aria-current="page"{{end}}>Status</a>
-<a href="/review"{{if eq .Title "Review"}} aria-current="page"{{end}}>Review</a>
-<a href="/listening"{{if eq .Title "Listening"}} aria-current="page"{{end}}>Listening</a>
-<a href="/corrections"{{if eq .Title "Corrections"}} aria-current="page"{{end}}>Corrections</a>
-<a href="/users"{{if eq .Title "Accounts"}} aria-current="page"{{end}}>Accounts</a>
-<a href="/settings"{{if eq .Title "Settings"}} aria-current="page"{{end}}>Settings</a>
+{{if .User}}<!-- Phase's icons (§6.1), lit from above: a face fading down, and its depth below (phase.css). -->
+<svg class="sprite" aria-hidden="true">
+<defs>
+<linearGradient id="face-dim" gradientUnits="userSpaceOnUse" x1="0" y1="3" x2="0" y2="21"><stop offset="0" stop-color="#CDD0D3"/><stop offset="1" stop-color="#8C9094"/></linearGradient>
+<linearGradient id="face-ink" gradientUnits="userSpaceOnUse" x1="0" y1="3" x2="0" y2="21"><stop offset="0" stop-color="#2D3238"/><stop offset="1" stop-color="#0A0B0C"/></linearGradient>
+</defs>
+<symbol id="i-status" viewBox="0 0 24 24"><path fill="none" stroke-width="2.3" d="M3 12h4l2.5-6.5 5 13 2.5-6.5H21"/></symbol>
+<symbol id="i-review" viewBox="0 0 24 24"><path fill="none" stroke-width="2.1" d="M4.5 13.5l2.2-7a1.5 1.5 0 0 1 1.43-1h7.74a1.5 1.5 0 0 1 1.43 1l2.2 7V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18z M4.5 13.5h4l1 2h5l1-2h4"/></symbol>
+<symbol id="i-listening" viewBox="0 0 24 24"><path stroke-width="1.4" d="M5 12.5h3V19H5z M10.5 8h3v11h-3z M16 4.5h3V19h-3z"/></symbol>
+<symbol id="i-corrections" viewBox="0 0 24 24"><path stroke-width="1.4" d="M15 5.2l3.8 3.8L9 18.8l-4.6 1 1-4.6z"/></symbol>
+<symbol id="i-accounts" viewBox="0 0 24 24"><path stroke-width="1.4" d="M12 4a3.75 3.75 0 1 1 0 7.5A3.75 3.75 0 1 1 12 4z M5 19.5c.4-3.6 3.3-5.75 7-5.75s6.6 2.15 7 5.75z"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path fill="none" stroke-width="2.3" d="M4 7.5h16M4 16.5h16"/><path stroke-width="1.4" d="M9 5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5z M15 14a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5z"/></symbol>
+</svg>
+<!-- Icons, the page you're on named beside its own (§6.2). -->
+<nav class="main" aria-label="Dashboard">
+<a href="/" title="Status"{{if eq .Title "Status"}} aria-current="page"{{end}}><svg class="icon"><use href="#i-status"/></svg><span class="name">Status</span></a>
+<a href="/review" title="Review"{{if eq .Title "Review"}} aria-current="page"{{end}}><svg class="icon"><use href="#i-review"/></svg><span class="name">Review</span></a>
+<a href="/listening" title="Listening"{{if eq .Title "Listening"}} aria-current="page"{{end}}><svg class="icon"><use href="#i-listening"/></svg><span class="name">Listening</span></a>
+<a href="/corrections" title="Corrections"{{if eq .Title "Corrections"}} aria-current="page"{{end}}><svg class="icon"><use href="#i-corrections"/></svg><span class="name">Corrections</span></a>
+<a href="/users" title="Accounts"{{if eq .Title "Accounts"}} aria-current="page"{{end}}><svg class="icon"><use href="#i-accounts"/></svg><span class="name">Accounts</span></a>
+<a href="/settings" title="Settings"{{if eq .Title "Settings"}} aria-current="page"{{end}}><svg class="icon"><use href="#i-settings"/></svg><span class="name">Settings</span></a>
 </nav>{{end}}
 <main>
 <h1>{{.Title}}</h1>

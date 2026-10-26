@@ -3,9 +3,11 @@ package app.sine.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,11 +45,13 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,10 +60,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.sine.graph
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.Initial
+import app.sine.ui.phase.LocalSayName
 import app.sine.ui.phase.PhaseColor
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
-import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseShape
 import app.sine.ui.phase.PhaseType
 import app.sine.ui.phase.Pill
@@ -97,7 +104,8 @@ object Messages {
 
 fun say(text: String, signal: Signal = Signal.None) = Messages.say(text, signal)
 
-class ShelfAction(val label: String, val kind: PillKind = PillKind.Secondary, val onClick: () -> Unit)
+/** Something to do with a selection or an answer to a question. With an [icon], a selection shows the icon and [label] is its name. */
+class ShelfAction(val label: String, val kind: PillKind = PillKind.Secondary, val icon: ImageVector? = null, val onClick: () -> Unit)
 
 /** A selection's count and what can be done with it, in place of navigation. */
 class ShelfSelection(val title: String, val actions: List<ShelfAction>, val onClear: () -> Unit, val note: String? = null)
@@ -172,19 +180,12 @@ fun AccountCircle(floating: Boolean = false) {
     )
 }
 
-/** Offline, said where you look first. Tapping asks the server again. */
+/** Offline, shown where you look first: the cloud, struck through. Tapping asks the server again. */
 @Composable
 fun OfflineMark() {
     val chrome = LocalChrome.current
     if (!chrome.offline) return
-    Box(
-        Modifier
-            .clip(PhaseShape.Square)
-            .background(PhaseColor.Float)
-            .border(1.dp, PhaseColor.LineStrong, PhaseShape.Square)
-            .clickable(role = Role.Button, onClick = chrome.onRetry)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-    ) { PhaseLabel("Offline", color = PhaseColor.OnScrim) }
+    Pill(null, chrome.onRetry, kind = PillKind.Floating, icon = PhaseIcons.Offline, height = 40.dp, contentDescription = "Offline. Try again")
 }
 
 /** A top-level screen's title, its actions and the account control. */
@@ -205,9 +206,13 @@ fun TitleBar(title: String, actions: @Composable RowScope.() -> Unit = {}) {
     }
 }
 
-/** Over any page that isn't top level: back, offline, the account control. Solid pills, so it reads over artwork. */
+/**
+ * Over any page that isn't top level: back (or, on a form, cancel), offline,
+ * the account control. Solid pills, so it reads over artwork. [back] names
+ * where back goes.
+ */
 @Composable
-fun DetailBar(back: String, onBack: () -> Unit, showAccount: Boolean, modifier: Modifier = Modifier) {
+fun DetailBar(back: String, onBack: () -> Unit, showAccount: Boolean, modifier: Modifier = Modifier, cancel: Boolean = false) {
     Row(
         modifier
             .fillMaxWidth()
@@ -216,14 +221,17 @@ fun DetailBar(back: String, onBack: () -> Unit, showAccount: Boolean, modifier: 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Pill(back, onBack, kind = PillKind.Floating, icon = PhaseIcons.Back, height = 40.dp)
+        Pill(
+            null, onBack, kind = PillKind.Floating, icon = if (cancel) PhaseIcons.Close else PhaseIcons.Back, height = 40.dp,
+            contentDescription = if (cancel) "Cancel" else if (back == "Back") back else "Back to $back",
+        )
         Spacer(Modifier.weight(1f))
         OfflineMark()
         if (showAccount) AccountCircle(floating = true)
     }
 }
 
-class Destination(val route: String, val label: String)
+class Destination(val route: String, val label: String, val icon: ImageVector)
 
 /** The shelf itself. */
 @Composable
@@ -336,9 +344,9 @@ private fun PlayerRow(
             Column(Modifier.weight(1f)) {
                 Text(title, color = PhaseColor.Text1, style = PhaseType.Name.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("$artist · ", color = PhaseColor.Text2, style = PhaseType.Small.copy(fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text("$artist ", color = PhaseColor.Text2, style = PhaseType.Small.copy(fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     // The Device marker: once remote control exists, playback may be elsewhere (§6.6).
-                    PhaseLabel("This phone", color = PhaseColor.Text2)
+                    PhaseIcon(PhaseIcons.Device, "This phone", size = 14.dp, tone = IconTone.Dim)
                 }
             }
         }
@@ -366,24 +374,33 @@ private fun Seam(durationMs: Long, playing: Boolean, key: String, position: () -
     }
 }
 
+/** Navigation: three icons, the one you're in on the light pill and named. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NavRow(destinations: List<Destination>, current: String?, onNavigate: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    val sayName = LocalSayName.current
+    Row(Modifier.fillMaxWidth().padding(8.dp).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         for (d in destinations) {
             val here = d.route == current
-            Box(
+            Row(
                 Modifier
                     .weight(1f)
-                    .height(44.dp)
+                    .height(48.dp)
                     .clip(PhaseShape.Pill)
                     .background(if (here) PhaseColor.Text1 else PhaseColor.Float)
-                    .clickable(role = Role.Tab, onClick = { onNavigate(d.route) }),
-                contentAlignment = Alignment.Center,
+                    .combinedClickable(
+                        role = Role.Tab, onClick = { onNavigate(d.route) },
+                        onLongClick = if (here) null else ({ sayName(d.label) }), onLongClickLabel = if (here) null else "Say its name",
+                    )
+                    .semantics {
+                        selected = here
+                        if (!here) contentDescription = d.label
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             ) {
-                Text(
-                    d.label, color = if (here) PhaseColor.Ink else PhaseColor.Text2,
-                    style = PhaseType.Button.copy(fontWeight = if (here) FontWeight.SemiBold else FontWeight.Medium),
-                )
+                PhaseIcon(d.icon, null, size = 22.dp, tone = if (here) IconTone.OnLight else IconTone.Dim)
+                if (here) Text(d.label, color = PhaseColor.Ink, style = PhaseType.Button.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
             }
         }
     }
@@ -399,11 +416,21 @@ private fun SelectionRows(selection: ShelfSelection) {
             Text(selection.title, color = PhaseColor.Text1, style = PhaseType.Name.copy(fontWeight = FontWeight.SemiBold))
             selection.note?.let { Text(it, color = PhaseColor.Text2, style = PhaseType.Small.copy(fontSize = 12.sp)) }
         }
-        Pill("Clear", selection.onClear, kind = PillKind.Quiet, height = 36.dp)
+        Pill(null, selection.onClear, kind = PillKind.Quiet, icon = PhaseIcons.Close, height = 40.dp, contentDescription = "Clear")
     }
+    // One action is the decision this selection is for: it keeps its words.
     val only = selection.actions.singleOrNull()
     if (only != null) {
-        Pill(only.label, only.onClick, kind = only.kind, height = 48.dp, modifier = Modifier.fillMaxWidth().padding(8.dp))
+        Pill(only.label, only.onClick, kind = only.kind, icon = only.icon, height = 48.dp, modifier = Modifier.fillMaxWidth().padding(8.dp))
+        return
+    }
+    // Several are icons, side by side; held, each says what it does.
+    if (selection.actions.all { it.icon != null }) {
+        Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            for (a in selection.actions) {
+                Pill(null, a.onClick, Modifier.weight(1f), kind = a.kind, icon = a.icon, height = 48.dp, contentDescription = a.label)
+            }
+        }
         return
     }
     Row(
@@ -413,7 +440,7 @@ private fun SelectionRows(selection: ShelfSelection) {
             .padding(8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        for (a in selection.actions) Pill(a.label, a.onClick, kind = a.kind, height = 44.dp)
+        for (a in selection.actions) Pill(a.label, a.onClick, kind = a.kind, icon = a.icon, height = 44.dp)
     }
 }
 

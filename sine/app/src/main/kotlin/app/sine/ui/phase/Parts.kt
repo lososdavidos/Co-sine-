@@ -1,8 +1,9 @@
 package app.sine.ui.phase
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -25,10 +26,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -45,6 +46,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -78,7 +81,28 @@ enum class PillKind {
     Outline,
 }
 
-/** Something you press. Transport is a pill too, wider than tall: a round button would read as a person. */
+/**
+ * How an icon button says its name when it's held: Sine puts it in the shelf.
+ * A screen reader hears it as the button's description either way.
+ */
+val LocalSayName = staticCompositionLocalOf<(String) -> Unit> { {} }
+
+/** The light an icon takes on a pill of this kind. */
+fun PillKind.iconTone(): IconTone = when (this) {
+    PillKind.Primary -> IconTone.OnSine
+    PillKind.Server -> IconTone.OnCosine
+    PillKind.Fault -> IconTone.OnFault
+    PillKind.SecondaryFault, PillKind.QuietFault -> IconTone.Fault
+    PillKind.Quiet -> IconTone.Dim
+    else -> IconTone.Light
+}
+
+/**
+ * Something you press. Transport is a pill too, wider than tall: a round
+ * button would read as a person. With an icon and no [text] it's an icon
+ * button: [contentDescription] is its name, said when it's held.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Pill(
     text: String?,
@@ -109,21 +133,48 @@ fun Pill(
     }
     val strong = kind == PillKind.Primary || kind == PillKind.Server || kind == PillKind.Fault || kind == PillKind.SecondaryFault
     val textSize = if (height < 44.dp) 13.sp else if (height < 48.dp) 14.sp else 15.sp
+    val iconOnly = icon != null && text == null && count == null
+    val sayName = LocalSayName.current
     Row(
         modifier
             .alpha(if (enabled) 1f else 0.4f)
             .height(height)
-            .then(if (width != null) Modifier.width(width) else Modifier.defaultMinSize(minWidth = height))
+            .then(
+                when {
+                    width != null -> Modifier.width(width)
+                    iconOnly -> Modifier.width(height + 8.dp)
+                    else -> Modifier.defaultMinSize(minWidth = height)
+                },
+            )
             .clip(PhaseShape.Pill)
             .background(background)
             .then(if (kind == PillKind.Outline) Modifier.border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill) else Modifier)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .combinedClickable(
+                enabled = enabled, role = Role.Button, onClick = onClick,
+                onLongClickLabel = if (text == null && contentDescription != null) "Say its name" else null,
+                onLongClick = if (text == null && contentDescription != null) ({ sayName(contentDescription) }) else null,
+            )
             .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
-            .padding(horizontal = if (text == null || width != null) 0.dp else if (icon != null) 16.dp else 18.dp),
+            .padding(
+                horizontal = when {
+                    width != null || iconOnly -> 0.dp
+                    text == null -> 14.dp
+                    icon != null -> 16.dp
+                    else -> 18.dp
+                },
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
     ) {
-        if (icon != null) Icon(icon, null, Modifier.size(if (height >= 56.dp) 22.dp else 18.dp), tint = ink)
+        if (icon != null) {
+            val iconSize = when {
+                text != null -> if (height >= 56.dp) 22.dp else 18.dp
+                height >= 56.dp -> 26.dp
+                height >= 44.dp -> 22.dp
+                else -> 20.dp
+            }
+            PhaseIcon(icon, null, size = iconSize, tone = kind.iconTone())
+        }
         if (text != null) {
             Text(
                 text, color = ink, maxLines = 1,
@@ -145,31 +196,56 @@ fun PhaseLabel(text: String, modifier: Modifier = Modifier, color: Color = Phase
 
 enum class TagKind { Neutral, Server, Fault }
 
-/** One word on a row. A filled one asks you to look; a neutral one only describes. */
+/**
+ * One word on a row, or a mark in its place. A filled one asks you to look; a
+ * neutral one only describes. With an [icon] and no [text], [contentDescription] names it.
+ */
 @Composable
-fun Tag(text: String, modifier: Modifier = Modifier, kind: TagKind = TagKind.Neutral) {
+fun Tag(
+    text: String?,
+    modifier: Modifier = Modifier,
+    kind: TagKind = TagKind.Neutral,
+    icon: ImageVector? = null,
+    contentDescription: String? = null,
+) {
     val filled = kind != TagKind.Neutral
-    Box(
+    Row(
         modifier
             .then(
                 when (kind) {
-                    TagKind.Neutral -> Modifier.border(1.dp, PhaseColor.LineStrong, PhaseShape.Square)
+                    // A mark alone needs no frame.
+                    TagKind.Neutral -> if (text == null) Modifier else Modifier.border(1.dp, PhaseColor.LineStrong, PhaseShape.Square)
                     TagKind.Server -> Modifier.background(PhaseColor.Cosine, PhaseShape.Square)
                     TagKind.Fault -> Modifier.background(PhaseColor.Fault, PhaseShape.Square)
                 },
             )
-            .padding(horizontal = 6.dp, vertical = 3.dp),
+            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
+            .padding(horizontal = if (text == null) 2.dp else 6.dp, vertical = if (text == null) 2.dp else 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Text(
-            text.uppercase(Locale.ROOT),
-            color = when (kind) {
-                TagKind.Neutral -> PhaseColor.Text2
-                TagKind.Server -> PhaseColor.OnCosine
-                TagKind.Fault -> PhaseColor.Ink
-            },
-            style = PhaseType.Label.copy(fontWeight = if (filled) FontWeight.SemiBold else FontWeight.Medium),
-            maxLines = 1,
-        )
+        if (icon != null) {
+            PhaseIcon(
+                icon, null, size = if (text == null) 18.dp else 14.dp,
+                tone = when (kind) {
+                    TagKind.Neutral -> IconTone.Dim
+                    TagKind.Server -> IconTone.OnCosine
+                    TagKind.Fault -> IconTone.OnFault
+                },
+            )
+        }
+        if (text != null) {
+            Text(
+                text.uppercase(Locale.ROOT),
+                color = when (kind) {
+                    TagKind.Neutral -> PhaseColor.Text2
+                    TagKind.Server -> PhaseColor.OnCosine
+                    TagKind.Fault -> PhaseColor.Ink
+                },
+                style = PhaseType.Label.copy(fontWeight = if (filled) FontWeight.SemiBold else FontWeight.Medium),
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -192,9 +268,19 @@ fun StatusLine(text: String, modifier: Modifier = Modifier, signal: Signal = Sig
     }
 }
 
-/** Where you are among a few equal places. Location, not selection, so it's the light pill, never a signal. */
+/**
+ * Where you are among a few equal places. Location, not selection, so it's
+ * the light pill, never a signal. With [icons], each place is its icon and
+ * the one you're in is named beside it.
+ */
 @Composable
-fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun Segmented(
+    options: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    icons: List<ImageVector>? = null,
+) {
     Row(
         modifier
             .fillMaxWidth()
@@ -212,35 +298,71 @@ fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, mod
                     .height(40.dp)
                     .clip(PhaseShape.Pill)
                     .background(if (on) PhaseColor.Text1 else Color.Transparent)
-                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(i) }),
+                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(i) })
+                    .then(if (icons != null && !on) Modifier.semantics { contentDescription = label } else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    label, maxLines = 1, color = if (on) PhaseColor.Ink else PhaseColor.Text2,
-                    style = PhaseType.Button.copy(fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    val icon = icons?.getOrNull(i)
+                    if (icon != null) PhaseIcon(icon, null, size = 20.dp, tone = if (on) IconTone.OnLight else IconTone.Dim)
+                    if (icon == null || on) {
+                        Text(
+                            label, maxLines = 1, color = if (on) PhaseColor.Ink else PhaseColor.Text2,
+                            style = PhaseType.Button.copy(fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium),
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/** A filter or a choice among settings: outlined, the light pill when on. */
+/**
+ * A filter or a choice among settings: outlined, the light pill when on. With
+ * an [icon] and no [text], [contentDescription] names it, and holding it says so.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun Chip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
+fun Chip(
+    text: String?,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    contentDescription: String? = null,
+) {
+    val sayName = LocalSayName.current
+    Row(
         modifier
             .height(40.dp)
+            .then(if (text == null) Modifier.width(52.dp) else Modifier)
             .clip(PhaseShape.Pill)
             .background(if (selected) PhaseColor.Text1 else Color.Transparent)
             .border(1.dp, if (selected) PhaseColor.Text1 else PhaseColor.LineFloat, PhaseShape.Pill)
-            .toggleable(value = selected, role = Role.Checkbox, onValueChange = { onClick() })
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center,
+            .then(
+                if (text == null && contentDescription != null) {
+                    Modifier
+                        .combinedClickable(
+                            role = Role.Checkbox, onClick = onClick,
+                            onLongClick = { sayName(contentDescription) }, onLongClickLabel = "Say its name",
+                        )
+                        .semantics {
+                            this.contentDescription = contentDescription
+                            toggleableState = ToggleableState(selected)
+                        }
+                } else Modifier.toggleable(value = selected, role = Role.Checkbox, onValueChange = { onClick() }),
+            )
+            .padding(horizontal = if (text == null) 0.dp else 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
     ) {
-        Text(
-            text, maxLines = 1, color = if (selected) PhaseColor.Ink else PhaseColor.Text2,
-            style = PhaseType.Button.copy(fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
-        )
+        if (icon != null) PhaseIcon(icon, null, size = if (text == null) 20.dp else 18.dp, tone = if (selected) IconTone.OnLight else IconTone.Dim)
+        if (text != null) {
+            Text(
+                text, maxLines = 1, color = if (selected) PhaseColor.Ink else PhaseColor.Text2,
+                style = PhaseType.Button.copy(fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
+            )
+        }
     }
 }
 
@@ -255,7 +377,7 @@ fun Tick(checked: Boolean, modifier: Modifier = Modifier) {
             .border(1.5.dp, if (checked) PhaseColor.Sine else PhaseColor.LineStrong, PhaseShape.Square),
         contentAlignment = Alignment.Center,
     ) {
-        if (checked) Icon(PhaseIcons.Check, null, Modifier.size(16.dp), tint = PhaseColor.Ink)
+        if (checked) PhaseIcon(PhaseIcons.Check, null, size = 16.dp, tone = IconTone.OnSine)
     }
 }
 
@@ -301,7 +423,7 @@ fun PhaseField(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (leading != null) {
-                        Icon(leading, null, Modifier.size(18.dp), tint = PhaseColor.Text3)
+                        PhaseIcon(leading, null, size = 18.dp, tone = IconTone.Faint)
                         Spacer(Modifier.width(10.dp))
                     }
                     Box(Modifier.weight(1f).padding(vertical = 14.dp)) {
@@ -355,7 +477,7 @@ fun RowNumber(number: Int, width: Dp, modifier: Modifier = Modifier, color: Colo
 /** A mark, not a plane: being on the phone is the common case (§6.8). */
 @Composable
 fun OnPhoneMark(modifier: Modifier = Modifier) {
-    Icon(PhaseIcons.OnPhone, "On this phone", modifier.size(16.dp), tint = PhaseColor.Text3)
+    PhaseIcon(PhaseIcons.OnPhone, "On this phone", modifier, size = 16.dp, tone = IconTone.Faint)
 }
 
 /** A person with no picture: their initial in a circle. */

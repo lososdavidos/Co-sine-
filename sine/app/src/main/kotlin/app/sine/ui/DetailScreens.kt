@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,7 +50,9 @@ import app.sine.data.Sourced
 import app.sine.download.Downloads
 import app.sine.graph
 import app.sine.ui.phase.Ambience
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.PhaseColor
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseType
@@ -113,9 +114,9 @@ fun ArtistScreen(session: AccountSession, id: String, nav: Pages) {
                     quiet = { PinToHome(session, TileKind.ARTIST, detail.artist.id, detail.artist.name) },
                 ) {
                     if (!fromDownloads) Pill(
-                        "Download all",
+                        null,
                         { startDownload(context, session, DownloadNode.OfArtist(detail.artist.id), null, nav) },
-                        icon = PhaseIcons.OnPhone,
+                        icon = PhaseIcons.OnPhone, contentDescription = "Download all",
                     )
                 }
             }
@@ -128,7 +129,7 @@ fun ArtistScreen(session: AccountSession, id: String, nav: Pages) {
                             a.name,
                             listOfNotNull(a.year?.toString(), a.trackCount.takeIf { it > 0 }?.let { Voice.songs(it) }).joinToString(" · "),
                             session.artwork(a.coverArt, 150),
-                            end = { Icon(PhaseIcons.Forward, null, tint = PhaseColor.Text3) },
+                            end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) },
                         ) { nav.navigate(Routes.album(a.id)) }
                     }
                     is ArtistEntry.Single -> {
@@ -265,13 +266,16 @@ internal fun TrackListScreen(
                 quiet = quietActions,
             ) {
                 if (tracks.isNotEmpty() && onMove == null) {
-                    Pill("Play", { player.play(session, tracks) }, kind = PillKind.Primary, icon = PhaseIcons.Play)
-                    Pill("Shuffle", { player.play(session, tracks, shuffle = true) })
+                    Pill(null, { player.play(session, tracks) }, kind = PillKind.Primary, icon = PhaseIcons.Play, width = 80.dp, contentDescription = "Play")
+                    Pill(null, { player.play(session, tracks, shuffle = true) }, icon = PhaseIcons.Shuffle, contentDescription = "Shuffle")
                     if (node != null && downloadedHere < tracks.size) {
+                        // Part of it is here already: the icon, and how many more it gets.
+                        val more = tracks.size - downloadedHere
                         Pill(
-                            if (downloadedHere > 0) "Get ${tracks.size - downloadedHere} more" else "Download",
-                            { startDownload(context, session, node, tracks, nav) },
+                            null, { startDownload(context, session, node, tracks, nav) },
                             icon = PhaseIcons.OnPhone,
+                            count = if (downloadedHere > 0) "+$more" else null,
+                            contentDescription = if (downloadedHere > 0) "Get $more more" else "Download",
                         )
                     }
                 }
@@ -321,7 +325,7 @@ internal fun TrackListScreen(
                 "Remove from library",
                 { askRemove(context, session, tracks, scope, shelf) { done -> nav.popBackStack(); done() } },
                 Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
-                kind = PillKind.QuietFault, height = 44.dp,
+                kind = PillKind.QuietFault, icon = PhaseIcons.Trash, height = 44.dp,
             )
         }
     }
@@ -426,22 +430,22 @@ private fun trackSelection(
 ): ShelfSelection {
     val player = context.graph.player
     val actions = buildList {
-        add(ShelfAction("Play") { player.play(session, chosen); onClear() })
-        add(ShelfAction("Download") {
+        add(ShelfAction("Play", icon = PhaseIcons.Play) { player.play(session, chosen); onClear() })
+        add(ShelfAction("Download", icon = PhaseIcons.OnPhone) {
             chosen.filterNot { it.id in session.downloads }.forEach {
                 startDownload(context, session, DownloadNode.OfTrack(it.id), chosen, nav, quiet = true)
             }
             say(Voice.downloadQueued(chosen.size))
             onClear()
         })
-        if (chosen.any { it.id in session.downloads }) add(ShelfAction("Remove download") {
+        if (chosen.any { it.id in session.downloads }) add(ShelfAction("Remove download", icon = PhaseIcons.OffPhone) {
             scope.launch { Downloads.remove(context, session, chosen.map { it.id }) }
             onClear()
         })
-        if (onAddToPlaylist != null && session.canEditPlaylists) add(ShelfAction("Add to playlist", onClick = onAddToPlaylist))
+        if (onAddToPlaylist != null && session.canEditPlaylists) add(ShelfAction("Add to playlist", icon = PhaseIcons.PlaylistAdd, onClick = onAddToPlaylist))
         // Last, apart from Play (§6.18).
-        if (onRemoveFromPlaylist != null) add(ShelfAction("Remove from playlist", PillKind.SecondaryFault, onRemoveFromPlaylist))
-        if (canRemoveFromLibrary) add(ShelfAction("Remove from library", PillKind.SecondaryFault) {
+        if (onRemoveFromPlaylist != null) add(ShelfAction("Remove from playlist", PillKind.SecondaryFault, PhaseIcons.PlaylistRemove, onRemoveFromPlaylist))
+        if (canRemoveFromLibrary) add(ShelfAction("Remove from library", PillKind.SecondaryFault, PhaseIcons.Trash) {
             askRemove(context, session, chosen, scope, shelf) { done -> onRemovedFromLibrary(chosen); done() }
             onClear()
         })

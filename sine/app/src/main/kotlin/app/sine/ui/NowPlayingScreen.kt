@@ -81,7 +81,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
         ) {
             val item = state.current
             if (item == null) {
-                Pill("Close", onClose, Modifier.padding(16.dp), kind = PillKind.Quiet, icon = PhaseIcons.Down, height = 40.dp)
+                Pill(null, onClose, Modifier.padding(16.dp), kind = PillKind.Quiet, icon = PhaseIcons.Down, height = 40.dp, contentDescription = "Close")
                 Message("Nothing playing.")
                 return@Column
             }
@@ -113,7 +113,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                                     )
                                 }
                                 // The Device marker (§6.6): where this is playing.
-                                Tag("This phone")
+                                Tag(null, icon = PhaseIcons.Device, contentDescription = "Playing on this phone")
                             }
                             Art(meta.artworkUri, 350.dp, Modifier.fillMaxWidth().aspectRatio(1f))
                         }
@@ -166,7 +166,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                         Pill(null, player::next, icon = PhaseIcons.Next, height = 56.dp, width = 72.dp, contentDescription = "Next")
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        Chip("Shuffle", state.shuffle, player::toggleShuffle)
+                        Chip(null, state.shuffle, player::toggleShuffle, icon = PhaseIcons.Shuffle, contentDescription = "Shuffle")
                     }
                     Spacer(Modifier.height(20.dp))
                 }

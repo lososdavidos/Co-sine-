@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -88,7 +87,9 @@ import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.data.Sourced
 import app.sine.graph
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.PhaseColor
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseShape
@@ -184,17 +185,17 @@ private fun tileSelection(
 ): ShelfSelection {
     val i = tiles.indexOfFirst { it.id == tile.id }
     val actions = buildList {
-        add(ShelfAction("Resize") { edit { HomeEdits.resize(it, tile.id) } })
-        if (i > 0) add(ShelfAction("Earlier") { edit { HomeEdits.move(it, tile.id, i - 1) } })
-        if (i < tiles.lastIndex) add(ShelfAction("Later") { edit { HomeEdits.move(it, tile.id, i + 1) } })
+        add(ShelfAction("Resize", icon = PhaseIcons.Resize) { edit { HomeEdits.resize(it, tile.id) } })
+        if (i > 0) add(ShelfAction("Earlier", icon = PhaseIcons.Earlier) { edit { HomeEdits.move(it, tile.id, i - 1) } })
+        if (i < tiles.lastIndex) add(ShelfAction("Later", icon = PhaseIcons.Later) { edit { HomeEdits.move(it, tile.id, i + 1) } })
         val other = tile.copy(shuffle = !tile.shuffle)
         if (TileKind.pinned(tile.kind) && tiles.none { it.id == other.id }) {
-            add(ShelfAction(if (tile.shuffle) "Open on tap" else "Shuffle on tap") {
+            add(ShelfAction(if (tile.shuffle) "Open on tap" else "Shuffle on tap", icon = if (tile.shuffle) PhaseIcons.Open else PhaseIcons.Shuffle) {
                 edit { list -> list.map { if (it.id == tile.id) other else it } }
                 onReselect(other.id)
             })
         }
-        add(ShelfAction("Unpin") {
+        add(ShelfAction("Unpin", icon = PhaseIcons.Unpin) {
             edit { HomeEdits.remove(it, tile.id) }
             onClear()
         })
@@ -535,7 +536,7 @@ private fun QuietFace(
     below: (@Composable () -> Unit)? = null,
 ) {
     Box(Modifier.fillMaxSize().padding(if (size == TileSize.Small) 10.dp else 14.dp)) {
-        if (icon != null) Icon(icon, null, Modifier.size(if (size == TileSize.Small) 26.dp else 28.dp), tint = PhaseColor.Text1)
+        if (icon != null) PhaseIcon(icon, null, size = if (size == TileSize.Small) 26.dp else 30.dp)
         corner?.let { Box(Modifier.align(Alignment.TopEnd)) { it() } }
         if (size == TileSize.Small) {
             // A label, as Phase sets them, but on two lines: a small tile is narrow.
@@ -711,7 +712,7 @@ private fun AddTileRow(name: String, onAdd: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(name, Modifier.weight(1f), color = PhaseColor.Text1, style = PhaseType.Name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Icon(PhaseIcons.Plus, null, tint = PhaseColor.Text2)
+        PhaseIcon(PhaseIcons.Plus, null, tone = IconTone.Dim)
     }
 }
 
@@ -722,15 +723,15 @@ internal fun PinToHome(session: AccountSession, kind: String, id: String, name: 
     val tiles = saved?.tiles ?: remember { defaultTiles(session) }
     val on = tiles.filter { it.kind == kind && it.ref == id }
     if (on.isEmpty()) {
-        Pill("Pin to Home", {
+        Pill(null, {
             session.editHome(HomeEdits.add(tiles, Tile(kind, id, name = name)))
             say("$name is on Home.")
-        }, kind = PillKind.Quiet, height = 40.dp)
+        }, kind = PillKind.Quiet, icon = PhaseIcons.Pin, height = 40.dp, contentDescription = "Pin to Home")
     } else {
-        Pill("Unpin from Home", {
+        Pill(null, {
             session.editHome(tiles.filterNot { it.kind == kind && it.ref == id })
             say("$name is off Home.")
-        }, kind = PillKind.Quiet, height = 40.dp)
+        }, kind = PillKind.Quiet, icon = PhaseIcons.Unpin, height = 40.dp, contentDescription = "Unpin from Home")
     }
 }
 
