@@ -330,9 +330,11 @@ song it followed.
 
 `NOTE` Built: a smart playlist is a saved rule — one of the statistics views
 (most played in a period, recently played, not played in N months, never
-played, this time last year, added in the last N days) with its one setting.
-Every account starts with one of each and can make, change, rename or delete
-them; a deleted one does not come back. Over the Subsonic API they are listed
+played, this time last year, added in the last N days, liked) with its one
+setting. Every account starts with one of each, and Favourites (most played in
+the last 30 days: your current favourites), and can make, change, rename or
+delete them; a deleted one does not come back. Defaults added later reach older
+accounts once. Over the Subsonic API they are listed
 beside manual playlists as read-only (OpenSubsonic's `readonly`), with the
 rule in words as their comment, and their songs are worked out each time one
 is opened. Sine's "Save as playlist" is the conversion to a manual playlist.
@@ -1262,7 +1264,8 @@ same long-press selection used everywhere else:
 | **Forgotten** | In your Library, not played in N months |
 | **Never played** | Ingested and never once opened |
 | **Downloaded** | What is available offline right now |
-| **Favourites** | Starred Tracks |
+| **Liked songs** | Songs you liked, the latest first: two taps on Add to playlist in Now playing, or a star from any Subsonic app |
+| **Favourites** | Your current favourites: what you've played most in the last 30 days |
 | **Review queue** | Live count of Tracks awaiting a resolver correction; tapping opens it |
 | **Ingest activity** | What Cosine is fetching, with progress and failures |
 | **Jam** | Active session, or an invite to start one |
@@ -1271,7 +1274,7 @@ same long-press selection used everywhere else:
 playing, which contradicted §6.4.5: a tile keeps its place.)
 
 `RESOLVED` **A list tile opens its list.** Recently added, Most played, This
-time last year, Forgotten, Never played, Downloaded and Favourites open the way
+time last year, Forgotten, Never played, Downloaded, Liked songs and Favourites open the way
 a playlist does; a tile's shuffle variant plays instead. Shuffle all, Now
 playing and Resume play. Review queue, Ingest activity and Jam open what they
 summarise.
@@ -1279,17 +1282,18 @@ summarise.
 `RESOLVED` **A list tile is a smart playlist** (§2.4), and its rule is the
 smart playlist's. Most played's window — 30 days, this year or all time — is
 the one its smart playlist has; for another window, make that smart playlist
-and pin it too. The six every account starts with (Recently added, Most played
-this year, Recently played, Forgotten, Never played, This time last year) are
-pinnable as they are.
+and pin it too. The eight every account starts with (Recently added, Most played
+this year, Recently played, Forgotten, Never played, This time last year, Liked
+songs, Favourites) are pinnable as they are.
 
 `RESOLVED` **Generated tiles are added from Home.** An Add tile action lists
 them alongside your smart playlists. Pinned items still come from their own
 screens.
 
-`RESOLVED` **Resume, Jam and Favourites wait for their features.** Resume
-needs per-Device sessions (§4B), Jam needs Jam (§4C), and Favourites needs a
-way to star a song in Sine. Until then those tiles aren't offered.
+`REVISED` **Resume and Jam wait for their features.** (Was: Favourites waited
+too, for a way to star a song in Sine; two taps on Add to playlist now like
+one, §6.6.) Resume needs per-Device sessions (§4B) and Jam needs Jam (§4C).
+Until then those tiles aren't offered.
 
 `NOTE` The retrospective tiles — *this time last year*, *forgotten*, *most played
 this year* — are only possible because plays are stored as append-only
@@ -1470,6 +1474,17 @@ line: the shelf's seam in Sine, a fetch's bar in Cosine.
 
 `RESOLVED` **The timecode sits off the wave** — elapsed and remaining below it,
 in mono, always Text 2, never overlapping.
+
+`RESOLVED` **Shuffle, Repeat and Add to playlist sit under the transport.**
+Repeat goes from off to the whole queue to the one song, and is remembered. A
+tap on Add to playlist picks a playlist for the song; two taps like it, or stop
+liking it (Subsonic's star, which every client shares), and a heart by the
+artist says it's liked. A screen reader has Like as an action of its own.
+
+`RESOLVED` **Shuffle plays everything once.** A queue started shuffled begins
+at the top of its shuffled order, from the start of its first song; shuffle
+turned on mid-queue starts its order with the song playing, so nothing before it
+in the order is skipped. Up next lists the queue in the order it will play.
 
 - Growth is continuous: motion here is feedback about a real process, not
   atmosphere.
@@ -2088,7 +2103,7 @@ not silently keep gigabytes.
 | — | Home layout storage | On Cosine, per account and per kind of device; offline changes go with the next sync |
 | — | Adding tiles | Generated tiles and smart playlists from Home's Add tile action |
 | — | Tile sizes | 1×1 the cover or count; 2×2 adds the name; 4×2 a second line |
-| — | Tiles not yet possible | Resume, Jam and Favourites aren't offered until their features exist |
+| — | Tiles not yet possible | Resume and Jam aren't offered until their features exist |
 | — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; with animations removed, content changes without moving |
 | — | Tile motion | Home is the one place motion is for liveliness; Phase's colour and scrim rules still hold inside a tile |
 

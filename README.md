@@ -27,6 +27,8 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Several accounts, switched explicitly
 - Browse Artists / Albums / Playlists, search, artist and album pages; pull any list down to refresh it
 - Streaming playback of the original files (`format=raw`, no transcoding), with the media notification, lockscreen, Bluetooth and headset controls from Media3
+- Shuffle that plays every song once, from the start of each, and Repeat (the queue, or one song); Up next shows the order they'll play in
+- Like a song with two taps on Add to playlist in Now playing (one tap picks a playlist); it's Subsonic's star, so other apps see it, and it puts the song in Liked songs
 - Pinned downloads of a track, album, artist or playlist into a folder you choose (SAF). A `.nomedia` file is written there, the folders follow `Artist/Album/Track`, and downloads wait for an unmetered connection unless you allow mobile data. The download budget is soft: it warns but never refuses.
 - Offline: downloaded music browses, plays and shows artwork with the server gone
 - Plays are recorded locally as timestamped events and scrobbled with their real time when the server is reachable
@@ -43,7 +45,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Shared playlists:** share one of your playlists with another account on the server (the playlist's page → Share). They see it under "Shared with you" in their playlists; accepting puts its songs in their library, so it plays in full, and from then on you both see and change the same playlist. They can leave it; you can stop sharing or delete it for everyone. Smart playlists aren't shared: save one as a playlist first.
 
-**Smart playlists:** every account starts with Recently added, Most played this year, Recently played, Forgotten, Never played and This time last year, worked out from your own listening each time you open one. Make your own from the same rules ("New smart playlist"), change a rule, or save one as an ordinary playlist to choose its songs yourself. Other Subsonic apps list them as read-only playlists.
+**Smart playlists:** every account starts with Recently added, Most played this year, Recently played, Forgotten, Never played, This time last year, Liked songs and Favourites (what you've played most in the last 30 days), worked out from your own listening each time you open one. Accounts made before Liked songs and Favourites existed get them once. Make your own from the same rules ("New smart playlist"), change a rule, or save one as an ordinary playlist to choose its songs yourself. Other Subsonic apps list them as read-only playlists.
 
 **Albums and playlists from the sources:** searching in Add also finds albums and playlists: YouTube playlists, Bandcamp albums, and SoundCloud albums and playlists when a SoundCloud client ID is set in the dashboard. Each source's results show as soon as it answers.
 

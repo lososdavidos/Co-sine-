@@ -115,6 +115,8 @@ fun Pill(
     width: Dp? = null,
     count: String? = null,
     contentDescription: String? = null,
+    /** A second action, two taps away; a single tap then waits a moment to be sure. */
+    onDoubleClick: (() -> Unit)? = null,
 ) {
     val background = when (kind) {
         PillKind.Primary -> PhaseColor.Sine
@@ -150,7 +152,7 @@ fun Pill(
             .background(background)
             .then(if (kind == PillKind.Outline) Modifier.border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill) else Modifier)
             .combinedClickable(
-                enabled = enabled, role = Role.Button, onClick = onClick,
+                enabled = enabled, role = Role.Button, onClick = onClick, onDoubleClick = onDoubleClick,
                 onLongClickLabel = if (text == null && contentDescription != null) "Say its name" else null,
                 onLongClick = if (text == null && contentDescription != null) ({ sayName(contentDescription) }) else null,
             )

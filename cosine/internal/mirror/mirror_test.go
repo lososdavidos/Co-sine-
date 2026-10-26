@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -221,7 +222,7 @@ func TestPlaylistsComeWithTheLibrary(t *testing.T) {
 		t.Fatalf("%+v", full.Playlists)
 	}
 	// Smart playlists come worked out, then not again until they change.
-	if full.Smart == nil || len(*full.Smart) != 6 || full.SmartTag == "" {
+	if full.Smart == nil || len(*full.Smart) != 8 || full.SmartTag == "" {
 		t.Fatalf("%+v", full.Smart)
 	}
 	if same, _ := e.s.Since(ctx, e.alice, full.Cursor, full.SmartTag); same.Smart != nil || len(same.Playlists) != 0 {
@@ -270,5 +271,68 @@ func TestPlaylistsComeWithTheLibrary(t *testing.T) {
 	}
 	if again, _ := e.s.Since(ctx, e.alice, 0, ""); playlistNames(again) != "Night drive" {
 		t.Fatal(playlistNames(again))
+	}
+}
+
+func TestLikedSongsComeLikedAndListed(t *testing.T) {
+	// A song liked anywhere (Subsonic's star) comes liked in the next sync,
+	// and in Liked songs, the latest liked first.
+	e := setup(t)
+	e.s.Playlists = &playlists.Service{DB: e.db, Stats: &stats.Service{DB: e.db}}
+	ctx := context.Background()
+	a := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "a"}, e.alice).TrackID
+	b := e.add(t, testutil.MP3{Title: "Night", Artist: "Skeler", Body: "b"}, e.alice).TrackID
+	full, _ := e.s.Since(ctx, e.alice, 0, "")
+	for _, tr := range full.Tracks {
+		if tr.Liked {
+			t.Fatalf("liked before anyone liked it: %+v", tr)
+		}
+	}
+	like := func(track, at int64) {
+		e.db.Exec("UPDATE pointers SET starred_at = ? WHERE user_id = ? AND track_id = ?", at, e.alice, track)
+		db.LogChange(ctx, e.db, e.alice, "pointer", strconv.FormatInt(track, 10), "update")
+	}
+	like(a, 1000)
+	like(b, 2000)
+	next, _ := e.s.Since(ctx, e.alice, full.Cursor, full.SmartTag)
+	if len(next.Tracks) != 2 || !next.Tracks[0].Liked || !next.Tracks[1].Liked {
+		t.Fatalf("%+v", next.Tracks)
+	}
+	if next.Smart == nil {
+		t.Fatal("smart playlists not sent again")
+	}
+	for _, sm := range *next.Smart {
+		if sm.Name == "Liked songs" {
+			if strings.Join(sm.Tracks, " ") != trackID(b)+" "+trackID(a) {
+				t.Fatal(sm.Tracks)
+			}
+			return
+		}
+	}
+	t.Fatalf("no Liked songs: %+v", *next.Smart)
+}
+
+func TestAnOlderAccountGetsTheNewDefaultsOnce(t *testing.T) {
+	// Given the first six before Liked songs and Favourites existed: it gets
+	// those two, once, and one it then deletes stays gone.
+	e := setup(t)
+	p := &playlists.Service{DB: e.db, Stats: &stats.Service{DB: e.db}}
+	ctx := context.Background()
+	first, _ := p.SmartLists(ctx, e.alice)
+	for _, sm := range first[6:] {
+		p.DeleteSmart(ctx, e.alice, sm.ID)
+	}
+	e.db.Exec("UPDATE users SET smart_seeded = 1 WHERE id = ?", e.alice)
+	lists, _ := p.SmartLists(ctx, e.alice)
+	var names []string
+	for _, sm := range lists {
+		names = append(names, sm.Name)
+	}
+	if strings.Join(names[6:], ",") != "Liked songs,Favourites" || len(lists) != 8 {
+		t.Fatal(names)
+	}
+	p.DeleteSmart(ctx, e.alice, lists[6].ID)
+	if again, _ := p.SmartLists(ctx, e.alice); len(again) != 7 {
+		t.Fatal("a deleted default came back")
 	}
 }

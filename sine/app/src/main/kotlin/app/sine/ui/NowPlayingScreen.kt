@@ -24,18 +24,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
+import app.sine.core.model.Track
 import app.sine.core.text.Voice
+import app.sine.data.AccountSession
 import app.sine.graph
 import app.sine.ui.phase.Ambience
 import app.sine.ui.phase.Chip
@@ -51,6 +57,7 @@ import app.sine.ui.phase.Tag
 import app.sine.ui.phase.WaveScrubber
 import app.sine.ui.phase.numberColumn
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Now playing (§6.6): a floating sheet with the cover's ambience at its top
@@ -58,9 +65,12 @@ import kotlinx.coroutines.delay
  * never an overlay opening another (§6.5). The wave is the position.
  */
 @Composable
-fun NowPlayingScreen(onClose: () -> Unit) {
-    val player = LocalContext.current.graph.player
+fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val player = context.graph.player
     val state by player.state.collectAsStateWithLifecycle()
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     var positionMs by remember { mutableLongStateOf(0L) }
     var scrub by remember { mutableStateOf<Float?>(null) }
 
@@ -88,6 +98,11 @@ fun NowPlayingScreen(onClose: () -> Unit) {
             }
             val meta = item.mediaMetadata
             val duration = state.durationMs
+            // The song as the library has it: to add to a playlist, and whether it's liked.
+            var track by remember(item.mediaId) { mutableStateOf<Track?>(null) }
+            LaunchedEffect(item.mediaId, mirrored) {
+                track = runCatching { session.track(item.mediaId).value }.getOrNull()
+            }
             val fraction = if (duration > 0) (positionMs.toFloat() / duration).coerceIn(0f, 1f) else 0f
             val shown = scrub ?: fraction
             val shownMs = (shown * duration).toLong()
@@ -126,7 +141,10 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                             meta.title?.toString().orEmpty(), color = PhaseColor.Text1, style = PhaseType.display(40.sp),
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
-                        Text(meta.artist?.toString().orEmpty(), color = PhaseColor.Text2, style = PhaseType.Body.copy(fontSize = 17.sp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(meta.artist?.toString().orEmpty(), color = PhaseColor.Text2, style = PhaseType.Body.copy(fontSize = 17.sp))
+                            if (track?.liked == true) Tag(null, icon = PhaseIcons.Liked, contentDescription = "Liked")
+                        }
                         val facts = listOfNotNull(
                             meta.trackNumber?.let { "Track $it" },
                             meta.releaseYear?.toString(),
@@ -176,6 +194,30 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                                 Player.REPEAT_MODE_ONE -> "Repeat this song"
                                 else -> "Repeat"
                             },
+                        )
+                        // A tap adds the song to a playlist; two like it, or stop liking it (#34).
+                        val song = track
+                        val like = {
+                            if (song != null) scope.launch {
+                                val liked = !song.liked
+                                attemptChange(context.applicationContext, session) {
+                                    session.like(song.id, liked)
+                                    track = song.copy(liked = liked)
+                                    Voice.liked(song.title, liked)
+                                }
+                            }
+                        }
+                        Pill(
+                            null,
+                            { if (song != null) nav.form { AddToPlaylistForm(session, listOf(song)) } },
+                            // Two taps can't be made with a screen reader: liking is an action of its own there.
+                            Modifier.semantics {
+                                customActions = listOf(CustomAccessibilityAction(if (song?.liked == true) "Stop liking" else "Like") { like(); true })
+                            },
+                            enabled = song != null && session.canEditPlaylists,
+                            kind = PillKind.Quiet, icon = PhaseIcons.PlaylistAdd, height = 40.dp, width = 52.dp,
+                            contentDescription = "Add to playlist. Tap twice to like",
+                            onDoubleClick = { like() },
                         )
                     }
                     Spacer(Modifier.height(20.dp))

@@ -45,6 +45,8 @@ data class Track(
     val suffix: String? = null,
     val bitRate: Int? = null,
     val coverArt: String? = null,
+    /** Liked by this account (Subsonic's star): it's in Liked songs. */
+    val liked: Boolean = false,
 )
 
 @Serializable

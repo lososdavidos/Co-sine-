@@ -216,6 +216,16 @@ class AccountSession(
         return n
     }
 
+    /**
+     * Likes a song or stops liking it (#34): Subsonic's star, so other
+     * clients see it too. The mirror is caught up, so it shows as liked and
+     * in Liked songs.
+     */
+    suspend fun like(trackId: String, liked: Boolean) {
+        client.like(trackId, liked)
+        sync(wait = true)
+    }
+
     /** Every song in the library, when the mirror has them; null means only the server knows. */
     fun libraryTracks(): List<Track>? = library()?.tracks()
 

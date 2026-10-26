@@ -79,6 +79,7 @@ object PhaseIcons {
     val PlaylistAdd = icon("playlist-add", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M17.5 13v7M14 16.5h7", 2.4f))
     val PlaylistRemove = icon("playlist-remove", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M14 16.5h7", 2.4f))
     /** Makes a list of songs your own: save as playlist. */
+    val Liked = icon("liked", solid("M12 20l-1.3-1.2C6.1 14.7 3.5 12.3 3.5 9.2 3.5 6.7 5.5 4.8 8 4.8c1.5 0 2.9.7 4 1.9 1.1-1.2 2.5-1.9 4-1.9 2.5 0 4.5 1.9 4.5 4.4 0 3.1-2.6 5.5-7.2 9.6z"))
     val PlaylistKeep = icon("playlist-keep", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M13.5 16.5l2.5 2.5 5-5", 2.4f))
     val Trash = icon("trash", solid("M7 8.5h10l-.8 10.2a1.5 1.5 0 0 1-1.5 1.3H9.3a1.5 1.5 0 0 1-1.5-1.3z"), line("M5 5.75h14M10 3.5h4", 2.3f))
     val Leave = icon("leave", line("M10 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H10M14.5 8l4 4-4 4M18.5 12H9.5", 2.3f))

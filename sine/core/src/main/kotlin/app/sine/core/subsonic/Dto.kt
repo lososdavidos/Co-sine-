@@ -72,6 +72,7 @@ internal data class SongDto(
     val suffix: String? = null,
     val bitRate: Int? = null,
     val coverArt: String? = null,
+    val starred: String? = null,
 ) {
     fun toModel() = Track(
         id = id,
@@ -88,6 +89,7 @@ internal data class SongDto(
         suffix = suffix,
         bitRate = bitRate,
         coverArt = coverArt,
+        liked = starred != null,
     )
 }
 
