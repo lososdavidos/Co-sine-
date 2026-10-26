@@ -57,6 +57,11 @@ func TestTheFirstReleaseIsTheOriginal(t *testing.T) {
 	if releases(got) != "Timber, Meltdown, Meltdown (Deluxe)" {
 		t.Fatal(releases(got))
 	}
+	// Discogs's unknown month and day ("2013-00-00") are not January the 0th.
+	got = Order([]Placed{dated("Meltdown (Deluxe)", "2013-00-00", -30), dated("Timber", "2013-10-07", -15)})
+	if releases(got) != "Timber, Meltdown (Deluxe)" {
+		t.Fatal(releases(got))
+	}
 	got = Order([]Placed{dated("bad guy", "2019-03-29", -15), dated("When We All Fall Asleep", "2019-03-29", -30)})
 	if releases(got) != "When We All Fall Asleep, bad guy" {
 		t.Fatal(releases(got))

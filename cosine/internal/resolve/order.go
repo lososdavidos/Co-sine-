@@ -53,8 +53,12 @@ func (h Home) when() string {
 		return "~"
 	}
 	year := fmt.Sprintf("%04d", h.Year)
-	if strings.HasPrefix(h.Date, year) {
-		return h.Date + "~"
+	date := h.Date
+	if i := strings.Index(date, "-00"); i >= 0 {
+		date = date[:i] // Discogs's "2013-00-00": the month and day aren't known
+	}
+	if strings.HasPrefix(date, year) {
+		return date + "~"
 	}
 	return year + "~"
 }
