@@ -12,10 +12,11 @@ The full design is in [`docs/spec/SPEC.md`](docs/spec/SPEC.md), which is the sin
 | Path | What |
 |---|---|
 | `sine/core` | Pure Kotlin/JVM: Subsonic client, server probe, accounts, downloads index, play log, search ranking. No Android dependency, so it can move to Kotlin Multiplatform later (§5.2a). |
-| `sine/app` | The Android app: Compose UI, Media3 playback, WorkManager downloads. |
+| `sine/app` | The Android app: Compose UI in Phase (`ui/phase`), Media3 playback, WorkManager downloads. |
 | `cosine/` | The server: Go + SQLite, one static binary. See [`cosine/README.md`](cosine/README.md). |
 | `deploy/` | `install.sh` for Proxmox LXC containers (privileged or unprivileged) and Debian/Ubuntu machines. See [`deploy/README.md`](deploy/README.md). |
 | `docs/spec/` | The spec and the script that renders it to HTML (`python3 build.py`, needs `pip install markdown`). |
+| `third_party/fonts/` | Instrument Sans and Martian Mono, Phase's typefaces, with their licences (SIL OFL 1.1). `scripts/fonts.py` cuts them into Sine's and the dashboard's fonts. |
 
 ## Status
 
@@ -38,7 +39,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Listening statistics:** Cosine's dashboard has a Listening page with top artists, albums and tracks, listening over time and a year by year view, for everyone or one account. The same data is in the native API, ready for Sine's statistics screen and Home tiles, which aren't built yet.
 
-**Playlists:** make them in Sine (Library → Playlists → New playlist), add songs from any selection on a release, artist or playlist page ("Add to playlist"), and reorder, take songs out of, rename or delete them from the playlist's page. Any other Subsonic app can edit them too. On a Cosine account they're part of the phone's copy of the library: they open, play and download with no connection, and changes made offline show at once and reach Cosine when you're back. Cosine replays what you did (added this, moved that) rather than overwriting the list, so changes made on another device meanwhile stay.
+**Playlists:** make them in Sine (Library → Playlists → New playlist), add songs from any selection on a release, artist or playlist page ("Add to playlist"), and reorder, take songs out of, rename or delete them from the playlist's page. Any other Subsonic app can edit them too. On a Cosine account they're part of the phone's copy of the library: they open, play and download with no connection, and changes made offline show at once and reach Cosine when you're back. Cosine replays what you did (added this, moved that) rather than overwriting the list, so changes made on another device meanwhile stay. A playlist with changes Cosine doesn't have yet says how many on its page.
 
 **Shared playlists:** share one of your playlists with another account on the server (the playlist's page → Share). They see it under "Shared with you" in their playlists; accepting puts its songs in their library, so it plays in full, and from then on you both see and change the same playlist. They can leave it; you can stop sharing or delete it for everyone. Smart playlists aren't shared: save one as a playlist first.
 
@@ -62,7 +63,15 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 ## Design
 
-The UI is **deliberately unstyled**: Material 3 defaults, with no visual system encoded in components. The design language in the spec (Graphit v0.7) will be replaced, so styling waits until that decision is made.
+Sine and Cosine's dashboard use **Phase**, the design language that replaced Graphit v0.7 in 0.5.2 (spec §6):
+
+- **Two signals, a quarter turn apart.** Sine (lime) is you, now: what's playing, what's selected, the one action a screen is for. Cosine (sky, Sine's hue plus 90°) is the server at work: fetching, matching, syncing, waiting for your review. Red is for faults and deleting. Everything else is grey or artwork.
+- **Type carries the interface.** Names in Instrument Sans, condensed and large; lengths, counts and sources in Martian Mono. Navigation is three words.
+- **Shape says what a thing is.** Square: something you read (a cover, a tag). Circle: a person. Pill: something you press. Slab: a surface that holds things.
+- **No glass.** Surfaces step up in lightness from a near-black ground, so every Android version, the widget and the web look the same.
+- **The shelf** at the bottom is navigation, the player, the actions for a selection, and where Sine talks back: a short message above navigation, or a question that waits for an answer.
+
+Sine's implementation is `sine/app/src/main/kotlin/app/sine/ui/phase` (tokens, type, parts, the wave) and `ui/Shelf.kt`; the dashboard's is one stylesheet, `cosine/internal/dashboard/static/phase.css`, served from the binary with the fonts. Phase is dark only.
 
 ## Building
 

@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 126 resolved decisions · last updated 2026-08-29
+**Status:** COMPLETE DRAFT · 146 resolved decisions · last updated 2026-10-26 (0.5.2: Phase replaces Graphit, §6)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -73,8 +73,9 @@ is inspectable; the Store still makes sense as folders of music without the
 server running.
 
 **G7 — One design language, applied properly.**
-Graphit v0.7. Black ground, four muted primaries used only as opaque planes,
-solid document surfaces, floating glass chrome. See §6.
+Phase. A near-black ground and greys; two signals a quarter turn apart — Sine
+(lime) for you, now, and Cosine (sky) for the server at work — and red for
+faults; type doing the work; no glass. See §6.
 
 **G8 — Portable to iOS later.**
 Nothing in the client design bets on Android-only capability; nothing on the
@@ -91,7 +92,7 @@ server assumes one client.
 - **NG6** Not a full Subsonic implementation. Jukebox, chat, podcasts, bookmarks and video endpoints are out.
 - **NG7** No transcoding. The server stores and serves originals, nothing else.
 - **NG9** No terminal client. `RESOLVED` — Cosine is a service; the dashboard and Sine are how you talk to it. `graphit.sh` stays useful for other tools, but neither a CLI nor a TUI player is in scope.
-- **NG10** Accessibility is not specified. `RESOLVED` — a deliberate omission for a personal app rather than an oversight. Graphit's contrast floors, focus rings and reduced-motion rule apply regardless because they are in the system, and its 48dp hit-area rule on 32px rows costs nothing to honour. Screen-reader support and large-font-scale layouts are out of scope unless that changes.
+- **NG10** Accessibility is not specified. `RESOLVED` — a deliberate omission for a personal app rather than an oversight. Phase's contrast floors (every text colour at least 4.5:1 on the surface it sits on), focus rings and reduced-motion rule apply regardless because they are in the system, and its 44dp minimum hit area costs nothing to honour. Screen-reader support and large-font-scale layouts are out of scope unless that changes.
 
 ---
 
@@ -982,8 +983,8 @@ Three commitments elsewhere in this spec made the decision:
 
 Compose gives the same draw-every-pixel freedom a cross-platform toolkit would —
 it is a custom rendering toolkit, not a wrapper over platform widgets — so
-Graphit loses nothing. Backdrop blur for the glass chrome is supported and
-performs acceptably; keep it on chrome, not on list items.
+the design language loses nothing. Phase uses no backdrop blur at all (§6.1),
+so no surface costs a filter.
 
 Language count for the whole system: Kotlin and Go.
 
@@ -1040,29 +1041,35 @@ The iOS app becomes a want, not a gap.
 
 ## 6. Interface
 
-Sine is Graphit's flagship application. The design language is settled (v0.7);
-this section is about what it forces, and what Sine must decide on top of it.
+Sine and Cosine's dashboard share one design language, **Phase**, introduced in
+0.5.2. It replaces Graphit v0.7, which earlier drafts of this section were
+written against; the decisions below that Graphit shaped keep their substance,
+and where Phase changes the answer they say `REVISED`. This section is about
+what Phase forces, and what Sine decides on top of it.
 
-### 6.1 What Graphit already decides
+### 6.1 What Phase decides
 
 These are not open. They arrive with the system and shape every screen below.
 
 | Rule | Consequence for Sine |
 |---|---|
-| **Glass means detached** | Navigation, the now-playing bar, sheets and dialogs are glass. Lists, cards, the library, artwork panels are solid. There is no third option and no aesthetic exception. |
-| **Colour is a plane** | The four primaries only ever appear as 100%-opaque filled blocks with black ink. No blue text, no coloured icons, no coloured waveform, no tinted progress line. Anything that needs to read as coloured must become a block. |
-| **Navigation always floats** | A floating bar costs the scrolling body 84px of reserved padding (16 + 52 + 16). Every additional floating element costs another footprint. |
-| **One filter per surface** | Never nested, never on a scrolling child. A backdrop blur per list row is out of the question — which rules out glassy track rows entirely. |
-| **An overlay never opens another overlay** | See §6.2. This is the single hardest constraint for a music app. |
-| **Lists separate with hairlines, not gaps** | No card-per-track. Three densities only: 32px (scanning), 40px (default, carries a state plane), 56px (only when a second line changes a decision). |
-| **Selection is a blue plane** | The whole row fills blue and its text flips to black. That is what "selected" looks like — nothing else. |
-| **Long-form prose uses `--txt-2`** | Pure white blooms at paragraph length on OLED. Track titles and labels are `--txt-1`; descriptions and notes are not. |
-| **Four-pixel grid** | Every dimension is a multiple of 4. |
-| **Android below API 31** | Floating chrome goes opaque, everything else is identical. Sine must look correct with no blur at all. |
+| **Type carries the interface** | Names are set large in Instrument Sans at width 75, bold; data — lengths, counts, years, sources — small in Martian Mono. Navigation is words. Icons are kept for transport, where everyone knows them, and for marks too small for a word. |
+| **Two signals, a quarter turn apart** | **Sine** (lime, `#D7F144`, oklch 0.91 0.19 118) is you, now: what's playing, what's selected, the one action a screen is for. **Cosine** (sky, `#46D3E6`, Sine's hue plus 90°, as the names say) is the server at work: fetching, matching, syncing, waiting for your review. Both take black ink. |
+| **Red is for faults** | `#F75E51`: broken or missing, a fetch that failed, and the button that removes or deletes. Never decoration. Everything that isn't a signal is grey or artwork. |
+| **Artwork is the only colour that varies** | Covers are shown whole, and blurred into headers behind a scrim that never changes. Never sampled into a palette, so the signals mean the same beside any cover. |
+| **Shape says what a thing is** | Square (3dp corners): something you read — a cover, a tag. Circle: a person — an artist's picture, an account. Pill: something you press, transport included, wider than tall so it never reads as a person. Slab (16dp; 24dp when floating): a surface that holds things. |
+| **Depth by light, not glass** | No blur anywhere. Ground `#0B0B0C` — not pure black, because fully-off pixels smear when a list scrolls on OLED — then Raised `#161618`, Float `#202023` and Lift `#2E2E33`. A floating surface is Float with a hairline edge. Android below API 31, the widget and the web look identical: one code path. |
+| **An overlay never opens another overlay** | See §6.5. This is the single hardest constraint for a music app. |
+| **Selection is Sine** | The whole row fills lime and its text turns black. Where you are — the current destination, segment or filter — is the light pill instead: location, not selection, so never a signal. |
+| **A tag or a dot** | A tag is one filled word on a row and asks you to look: UNSURE in Cosine, MISSING in red; an outlined tag only describes. A dot starts a sentence of status: Cosine for work in progress or waiting on the server, red for something that has stopped. |
+| **One Sine pill per screen** | The primary action is lime; everything else you press is Lift or quiet text. A destructive pill is red, names the verb and the count, and never sits beside the primary. |
+| **Long-form prose uses Text 2** | `#A6A6AB`: pure white blooms at paragraph length on OLED. Names and titles are Text 1 (`#F3F3F0`); labels, and what can't play right now, are Text 3 (`#8A8A90`, 5.7:1 on the ground, 4.7:1 on Float). |
+| **Four-pixel grid** | Every dimension is a multiple of 4. Rows are 52dp for one line and 64dp with art; hit areas are never under 44dp. |
 
-Graphit's own open questions land directly on this app: **how far "floating"
-goes** — a search field, a now-playing bar — because each one costs the body more
-reserved padding. Sine is where that gets answered.
+Phase has no glass, so floating costs no filter; it still costs reserved space
+at the bottom of every list, which §6.3 accounts for. The fonts are bundled
+(SIL Open Font License; `third_party/fonts`, built by `scripts/fonts.py`), so
+nothing is fetched to draw a screen.
 
 ### 6.2 Navigation
 
@@ -1101,44 +1108,50 @@ The cost is real and has to be reserved:
 148px of reserved body padding
 ```
 
-Every scrolling surface in the app reserves 148px at the bottom, not the 84px
-Graphit's `FLOATING_BAR_FOOTPRINT_DP` assumes. That constant needs a Sine
-override, and the last row of every list is unreachable if it is missed.
+Every scrolling surface in the app reserves that space at the bottom; the last
+row of every list is unreachable if it is missed.
 
 `RESOLVED` **One shelf that splits when playing.** Idle, it is a single 52px
 navigation bar. When something starts playing, a player row grows out of it and
-the shelf becomes two rows in one glass surface — **one backdrop filter, not
-two**, which is the cost Graphit warns about avoided entirely.
+the shelf becomes two rows in one floating surface, not two.
 
 ⚠️ The reserved padding therefore changes at runtime: **84px idle, 148px
 playing.** Two implementation requirements follow, and both are the kind of thing
 that ships broken:
 
-- The change must animate on `--t-move` (160ms) together with the shelf, not
-  snap a frame later.
+- The change must animate on the 160ms move (§6.16) together with the shelf,
+  not snap a frame later.
 - A list scrolled to the bottom must not jump when padding grows. Anchor the
   scroll position to content, not to offset, or starting playback will visibly
   shove the list.
+
+`NOTE` Built (0.5.2): the shelf measures itself and every list reserves what it
+covers. Navigation is three words; where you are is the light pill. The shelf
+also talks back. After an action, a message sits above navigation for four
+seconds — with Cosine's dot when it's about the server's work, red when
+something failed — and tapping it puts it away sooner; navigation stays
+reachable throughout. A question that waits for an answer (remove, leave,
+delete, log out) takes the shelf's place until it's answered or dismissed.
+Neither opens on top of anything.
 
 ### 6.4 Home
 
 `RESOLVED` **Home is a tile grid, in the Windows Phone / Metro sense** — live
 tiles, flat blocks, no chrome, typography doing the work.
 
-This is a much better fit with Graphit than it sounds. Metro was a black ground
-covered in flat, fully-saturated colour blocks with no gradients, no bevels and
-no shadows, where colour carried meaning and type carried everything else.
-Graphit's second rule — colour appears only as a 100%-opaque filled plane —
-describes a live tile almost exactly. Tiles are solid surfaces that scroll with
-the page, so rule 1 puts them firmly on the solid side: **no glass on Home**.
+This is a much better fit with Phase than it sounds. Metro was a black ground
+covered in flat blocks with no gradients, no bevels and no shadows, where colour
+carried meaning and type carried everything else — Phase's first two rules,
+nearly word for word. Tiles are slabs that scroll with the page: **no glass on
+Home**, as nowhere else.
 
-Three places the two systems disagree, where Graphit wins:
+Three places the two systems disagree, where Phase wins:
 
-| Metro did | Graphit requires |
+| Metro did | Phase requires |
 |---|---|
-| White text on the accent colour | **Black ink.** All four primaries take black ink, no exceptions. A tile is black-on-blue, not white-on-blue. |
-| An accent colour per user, any hue | **Four primaries.** Tiles are blue, red, green, yellow, or a solid neutral surface. Nothing else. |
-| Tiles bleed to the screen edge, gap-separated | **4px grid, hairlines elsewhere.** Tiles keep their gaps — a grid is not a list — but every dimension is a multiple of 4, and each coloured tile carries the 1px edge in its own ink that every plane carries. |
+| White text on the accent colour | **Black ink.** Sine, Cosine and red all take black ink, no exceptions. |
+| An accent colour per user, any hue | **Signals only where they mean something.** A tile is artwork, a Raised slab, or a signal: Cosine for the review queue's count, Sine only for what's playing. Nothing else. |
+| Tiles bleed to the screen edge, gap-separated | **4px grid, 16dp slabs.** Tiles keep their gaps — a grid is not a list — and every dimension is a multiple of 4. |
 
 `RESOLVED` **Home is a canvas, not a designed screen.** The user pins, resizes
 and reorders tiles freely. There is no fixed layout — a default arrangement on
@@ -1146,7 +1159,7 @@ first run, and everything after that is theirs.
 
 `RESOLVED` **Tiles are live in content, not in motion.** Artwork cycles, counts
 update, the current track changes. Tiles do not flip, slide or animate between
-faces. A grid of animating blocks fights everything else in Graphit, and the
+faces. A grid of animating blocks fights everything else in Phase, and the
 liveness people actually value is the content being current.
 
 #### 6.4.1 Tile catalogue
@@ -1200,8 +1213,8 @@ phone puts the unit at roughly 80px, comfortably on the 4px grid. No 4×4.
 for an album, artist or playlist takes its character from the cover it
 represents, blurred and pushed toward the ground behind the tile's own ink.
 
-This needs one rule to stay inside Graphit, because as stated it appears to
-break the second rule outright:
+This needs one rule to stay inside Phase, because as stated it appears to
+break the rule that colour is a signal:
 
 > **Artwork may be a ground. It may never become a palette.**
 
@@ -1209,29 +1222,25 @@ The distinction is exact and worth holding onto:
 
 - **Allowed** — the cover itself, blurred and scrimmed, as the tile's backdrop.
   Artwork is *content*, in the same way a photograph in an article is content.
-  Rule 2 governs the four primaries, not photography.
+  The signal rule governs Sine, Cosine and red, not photography.
 - **Not allowed** — sampling a dominant colour from the cover and painting a
   flat block in it. That introduces a fifth, sixth and hundredth colour as a
-  plane, which is precisely what the rule exists to prevent, and the muted
-  four-primary palette stops meaning anything the moment arbitrary hues sit
-  beside it.
+  plane, which is precisely what the rule exists to prevent, and the signals
+  stop meaning anything the moment arbitrary hues sit beside them.
 
-This also matches Graphit's own conclusion about its ambient field: the spec
-page still paints blurred primaries behind everything and says an app *should
-drop it entirely and let real content be the backdrop*. On Home, the artwork
-is that real content.
+Phase has no ambient field of its own: real content — the artwork — is the
+only backdrop it ever has.
 
 ⚠️ **Contrast has to be guaranteed, not hoped for.** Album art ranges from black
 to blown-out white, so ink over it needs a fixed floor — a scrim
-(`--scrim`, or a bottom-weighted gradient under the label) applied at constant
-opacity regardless of the image. This is the same discipline Graphit applies to
-glass alphas: the value is a contrast floor, not a style choice. Never sample the
-image to decide whether to darken it; darken it always.
+(the ground at 64%, or a bottom-weighted gradient under the label) applied at
+constant opacity regardless of the image. The value is a contrast floor, not a
+style choice. Never sample the image to decide whether to darken it; darken it
+always.
 
 **Tiles with no artwork** — Shuffle all, Review queue, Ingest, Jam — sit on
-neutral solid surfaces (`--bg-2`), and use the four primaries only where they
-carry meaning: yellow for the review queue's attention, green for active ingest,
-red for failures only. Red stays destructive-or-broken everywhere in Sine; it is
+Raised slabs, and use a signal only where it carries meaning: Cosine for the
+review queue's count and for active ingest, red for failures only. Red stays destructive-or-broken everywhere in Sine; it is
 never decorative.
 
 #### 6.4.4 Editing
@@ -1250,7 +1259,8 @@ reflow underneath them because a background process finished.
 
 ### 6.5 The stacked-overlay problem
 
-Graphit forbids an overlay opening another overlay. A conventional music app
+Phase, like Graphit before it, forbids an overlay opening another overlay. A
+conventional music app
 violates this immediately:
 
 > mini player → full now-playing (overlay) → queue (overlay) → track options
@@ -1278,8 +1288,8 @@ So the now-playing sheet is not one screen. It is a **multi-pane surface**:
 
 Three panes, and the questionable fourth is gone.
 `RESOLVED` **Context actions come from a long-press action bar.** Long-pressing a
-row selects it — the whole row fills blue with black ink, exactly as Graphit
-specifies — and the shelf's contents swap to the available actions for that
+row selects it — the whole row fills Sine with black ink (§6.1) — and the
+shelf's contents swap to the available actions for that
 selection. No overlay is opened, so nothing conflicts, and multi-select comes
 free: long-press one row, tap others, act on all of them.
 
@@ -1306,47 +1316,32 @@ current track. Starting a jam is a long-press action on the shelf, like every
 other action in the app. Jam stays attached to what is playing and costs no new
 surface.
 
-`RESOLVED` **Artwork is full-bleed behind a scrim.**
+`REVISED` **The cover's ambience fills the sheet's top; the cover sits on it,
+whole.** (Was: full-bleed artwork behind a scrim, handing off to glass beneath
+the controls — a resolution of Graphit's glass rule that Phase no longer needs.)
+The sheet is a Float surface with 28dp top corners and a hairline edge. The
+cover, blurred and scrimmed, fills its upper region and fades to Float under the
+title; the cover itself sits on that ambience, square and whole. Title,
+position and transport sit on plain Float, where their contrast is known.
 
-⚠️ This collides with rule 1 and needs a resolution written down. The sheet is an
-overlay, so it is glass — `--glass-3` at .90 with `--blur-2`. A cover filling its
-entire area makes the glass invisible: a blurred backdrop nobody can see is
-wasted GPU and a broken promise about what the surface *is*.
+`REVISED` **Progress is the wave.** (Was: a growing blue plane.) A sine wave
+across the sheet: Sine up to the position, grey after it, with a Sine knob.
+Drag it or tap it to seek. This is the one place the wave appears — the
+product's name, where it belongs — and everywhere else progress is a straight
+line: the shelf's seam in Sine, a fetch's bar in Cosine.
 
-The resolution is a gradient, not a compromise:
+`RESOLVED` **The timecode sits off the wave** — elapsed and remaining below it,
+in mono, always Text 2, never overlapping.
 
-- Artwork fills the sheet's width and upper region, scrimmed at constant opacity.
-- The scrim deepens downward and hands off to the sheet's own glass beneath the
-  controls, so the transport, title and progress sit on real glass with the
-  library visibly blurred behind them.
-- The sheet keeps its 22px radius, its `--line-2` edge and its specular top line
-  throughout, which is what identifies it as a floating surface regardless of
-  what fills the middle.
-
-`RESOLVED` **Progress is a growing plane.** A blue plane whose width grows across
-the track — the second rule applied literally rather than worked around.
-Scrubbing drags its leading edge.
-
-`RESOLVED` **The timecode sits off the plane** — elapsed and remaining below it,
-always `--txt-2`, never overlapping. No ink flip at the boundary, no legibility
-edge cases, and the plane stays a pure geometric object rather than a container
-for text.
-
-One detail this still forces:
-
-- **The plane carries its 1px edge in its own ink**, like every plane. At two
-  seconds into a track that edge is most of the plane, so the plane needs a
-  minimum rendered width — 6px, the plane radius — below which it is drawn
-  without its edge.
-- Growth is continuous, which Graphit permits: motion here is feedback about a
-  real process, not atmosphere.
+- Growth is continuous: motion here is feedback about a real process, not
+  atmosphere.
 
 `RESOLVED` **The shelf's player row carries artwork, title, play/pause, skip, a
-progress hairline along the shelf's bottom edge, and a Device indicator.** The
+progress line along the seam beneath it, and a Device indicator.** The
 Device marker is not decoration — once remote control exists, playback may be on
 the desktop, and without it you press play on the wrong machine.
 
-`NOTE` There is one honest escape hatch worth remembering: Graphit forbids an
+`NOTE` There is one honest escape hatch worth remembering: Phase forbids an
 overlay opening *another overlay*, but inline expansion inside an existing
 surface is not an overlay. A row that expands in place, or a pane that slides
 sideways within the same sheet, breaks no rule.
@@ -1362,15 +1357,19 @@ search results, the review queue, settings — stay on flat ground.
 Three rules keep this from going wrong, and all three are non-negotiable:
 
 1. **Ambience is a header treatment, never a page background.** It occupies the
-   top of the screen and fades out; content below sits on `--bg-0`. Long lists
-   over a photograph are unreadable and Graphit's `--txt-2` prose rule assumes a
+   top of the screen and fades out; content below sits on the ground. Long lists
+   over a photograph are unreadable, and Phase's Text 2 prose rule assumes a
    known ground.
 2. **The scrim is constant, never adaptive.** Same discipline as Home (§6.4.3):
    darken always, never sample the image to decide.
 3. **Blur once, at load, not per frame.** The ambience is a pre-blurred,
    downscaled copy of the artwork drawn as a static image — not a runtime blur
-   and emphatically not a backdrop filter, which Graphit forbids on scrolling
-   children. Cache it beside the cover.
+   and emphatically not a backdrop filter, which Phase has none of. Cache it
+   beside the cover.
+
+`NOTE` Built (0.5.2): the ambience is a 24px copy of the cover drawn large, which
+is the blur: it costs nothing per frame and looks the same on every Android
+version. From API 31 a blur smooths it further.
 
 ### 6.8 Library and search
 
@@ -1379,12 +1378,13 @@ Three rules keep this from going wrong, and all three are non-negotiable:
 
 | State | Treatment |
 |---|---|
-| Unreviewed (low-confidence resolve) | Yellow plane |
-| Unavailable (missing Object) | Red plane, row ink drops to `--txt-3` |
-| Downloaded / pinned | A small mark, not a plane — it is the common case, and a column of planes down every list destroys the quiet |
-| Selected | The whole row fills blue with black ink, per Graphit |
+| Unreviewed (low-confidence resolve) | A Cosine tag: UNSURE |
+| Unavailable (missing Object) | A red tag: MISSING, and the row's ink drops to Text 3 |
+| Downloaded / pinned | A small mark, not a tag — it is the common case, and a column of tags down every list destroys the quiet |
+| Playing | Three Sine bars in place of the track number |
+| Selected | The whole row fills Sine with black ink (§6.1) |
 
-The principle: a plane means *pay attention to this row*. If most rows have one,
+The principle: a tag means *pay attention to this row*. If most rows have one,
 none of them do.
 
 `RESOLVED` **Search is instant, local and returns one ranked list.** No network,
@@ -1392,7 +1392,7 @@ works offline, results as you type against the client mirror.
 
 Mixing Artists, Albums, Tracks and Playlists in one list needs two things:
 
-- **Type is a `t-micro` mono label**, not a plane — see the rule above.
+- **Type is a mono label**, not a tag — see the rule above.
 - **A stated ranking order**, or the list will feel arbitrary. Proposed: exact
   title match, then prefix match, then contains; within each, Artists before
   Albums before Playlists before Tracks; ties broken by the user's own play
@@ -1454,10 +1454,10 @@ Cosine looks in the background and saves the picture beside release covers; an
 artist without one shows one of their covers until a picture is found, and is
 looked for again a month later. "Various Artists" has none.
 
-`RESOLVED` **A Track with no artwork gets no ambience** — flat `--bg-0`, type
-doing the work. No generated colour: §6.4.3 rules out decorative use of the
-primaries, and a deterministic hue per artist would make red decorative
-immediately.
+`RESOLVED` **A Track with no artwork gets no ambience** — flat ground, type
+doing the work, and a Raised square where the cover would be. No generated
+colour: §6.4.3 rules out decorative use of the signals, and a deterministic hue
+per artist would make them decorative immediately.
 
 `NOTE` A side effect worth having: artwork becomes visibly valuable. A release
 with a cover looks richer than one without, which is quiet pressure to use the
@@ -1503,11 +1503,10 @@ now-playing.** Tapping it opens a choice of **Account** or **General** settings.
 
 Three things follow that are worth writing down:
 
-- **It floats, so it is glass.** Rule 1 admits no exception: it stays put while
-  content moves underneath, therefore `--glass-1`, a `--line-2` edge, a specular
-  top line, 22px radius, inset 16px on top of the safe area. It is Sine's second
-  floating surface, and the second backdrop filter on screen.
-- **The menu it opens is `--glass-3`**, like every menu. Choosing Account or
+- `REVISED` **It's a person, so it's a circle.** (Was: a glass control.) Your
+  initial on Lift — on Float over artwork — beside the screen's title or the
+  back pill, 20dp in from the edge. No filter.
+- **The menu it opens is Float**, like every menu. Choosing Account or
   General then navigates to a **page**, not a dialog — a menu opening a dialog
   would be an overlay opening an overlay, which is exactly the rule that shaped
   the rest of this section.
@@ -1527,7 +1526,7 @@ Most recently added first, so a backlog never hides what you just added; the
 rest pages in behind it.
 
 The queue is reachable from the Library header beside Add, and from its Home
-tile. Its count is the yellow plane; zero is a resting state, not an empty
+tile. Its count is a Cosine pill; zero is a resting state, a plain one, not an empty
 screen.
 
 `RESOLVED` **Anything filed can be corrected, not only what is queued.** A
@@ -1540,6 +1539,10 @@ when two sources describe the same release, and **a fall-through to manual
 entry**. For unreleased material, typing the artist and release yourself is not
 a fallback; it is the only honest answer, and it needs to be one tap away rather
 than buried.
+
+`NOTE` Built (0.5.2): picking a candidate selects it — the row fills Sine — and
+the shelf offers "Use this match", saying that it moves the file for every
+account.
 
 ### 6.13 Statistics
 
@@ -1560,17 +1563,15 @@ are gone still count: history is never pruned.
 
 Reachable from the account control, and pinnable as a Home tile.
 
-⚠️ **Graphit rules out most chart types, and the rule is unusually clarifying.**
-Colour appears only as a filled, opaque plane — never as a line or a hairline.
-So:
+⚠️ **Phase rules out most chart types, and the rule is unusually clarifying.**
+Colour is a signal, and a signal is a fill or a mark — never a line. So:
 
-- **Bar charts and filled area charts are planes.** They are exactly what the
-  system describes, and they work with no special pleading.
+- **Bar charts and filled area charts are fills.** Bars are grey; the period
+  you are in now is the one Sine bar.
 - **Line charts are impossible in colour.** A line is a stroke, and a coloured
-  stroke is forbidden. A trend line can only be drawn in `--txt-2` as a
+  stroke is forbidden. A trend line can only be drawn in Text 2 as a
   neutral, or redrawn as a filled area.
-- Axes and gridlines are `--line-1` hairlines; numbers are `.t-data` mono with
-  tabular figures.
+- Axes and gridlines are hairlines; numbers are mono with tabular figures.
 
 The result is a stats screen made of blocks, which suits both the design
 language and the data.
@@ -1579,7 +1580,8 @@ language and the data.
 
 `RESOLVED` **Everything stays visible; what cannot play is dimmed.** The whole
 library remains browsable with no network. Tracks without a local copy drop to
-`--txt-3` and carry the same red plane as a missing Object.
+Text 3. `REVISED`: they no longer carry red. Not having a copy isn't broken,
+and red stays for a missing Object.
 
 This is the honest option: the library is what you own, not what happens to be
 on the phone this minute. It does mean seeing things you cannot hear — which is
@@ -1602,8 +1604,8 @@ it sounds:
 - The **no-stacking rule stops biting**. Panels are not overlays, so the queue,
   now-playing and Jam can all be on screen at once — the constraint that shaped
   the entire phone design is a phone constraint.
-- Both the sidebar and the docked player stay put while content scrolls, so by
-  rule 1 **both are glass**. Two filters, as on the phone.
+- Both the sidebar and the docked player stay put while content scrolls, so
+  both are Float surfaces with a hairline edge, as the shelf is on the phone.
 - The model, sync and library code are shared with Android unchanged; what
   differs is layout and the audio backend (§5.2a).
 
@@ -1617,20 +1619,20 @@ since what you want at a desk is not what you want on a phone.
 
 ### 6.16 Motion
 
-`RESOLVED` **Strictly by Graphit's tokens.** No custom curves, no signature
-transition.
+`RESOLVED` **Strictly by Phase's three durations.** No custom curves, no
+signature transition.
 
 | Change | Token |
 |---|---|
-| Selection, hover, press, plane fills | `--t-state` 100ms |
-| Shelf splitting and collapsing, padding reflow, tile resize | `--t-move` 160ms |
-| Sheet and menu entry | `--t-overlay` 220ms; leaving in 160ms, opacity only |
+| Selection, hover, press, fills | State: 100ms |
+| Shelf splitting and collapsing, padding reflow, tile resize, page changes | Move: 160ms |
+| Sheet and menu entry | Overlay: 220ms; leaving in 160ms, opacity only |
 
 Two consequences accepted deliberately:
 
 - **No shared-element transition.** The shelf's artwork does not travel into the
   sheet — it cross-fades. Less of a moment, one fewer bespoke animation, and
-  consistent with Graphit's line that motion is feedback rather than atmosphere.
+  consistent with Phase's line that motion is feedback rather than atmosphere.
 - **The sheet is timed, not finger-tracked.** It opens on a drag but plays its
   own 220ms rather than following the gesture. Cheaper, less tactile; revisit
   only if it feels wrong in the hand.
@@ -1655,17 +1657,17 @@ doesn't exist.
 
 ### 6.18 The dashboard
 
-`RESOLVED` **Cosine's dashboard uses `graphit.css` directly.** Same tokens, same
-palette, same rules, in the browser. This is the point of Graphit spanning
-Android, web and terminal, and the dashboard is where that gets proven.
+`RESOLVED` **Cosine's dashboard uses Phase.** Same tokens, fonts and rules as
+Sine, in the browser: one stylesheet, `phase.css`, served from the binary with
+the fonts, so the dashboard looks the same with no network at all.
 
 Practical notes:
 
-- Admin work is tabular, so the dashboard leans on Graphit's `table`, `.list-compact`
-  (32px rows) and `.t-data` mono numerals rather than the ambient surfaces Sine uses.
+- Admin work is tabular, so the dashboard leans on tables, mono labels and
+  tabular figures rather than the ambient surfaces Sine uses.
 - **No ambience.** The dashboard is about many things at once, and §6.7 restricts
   ambience to single-subject screens.
-- Destructive actions follow Graphit's rule exactly: a red plane with an explicit
+- Destructive actions follow Phase's rule exactly: a red pill with an explicit
   verb and count — "Delete 4 orphaned objects", never "Confirm" — and never
   adjacent to the primary action. Orphan GC (§2.3) is precisely where this
   matters.
@@ -1680,10 +1682,10 @@ Two practical notes:
 - Widgets are a separate rendering surface. **Jetpack Glance** gives a
   Compose-flavoured API, but it is not Compose — layouts are rebuilt, not
   shared. Budget it as its own small screen.
-- **No glass.** Widgets cannot blur what is behind them, so the widget uses
-  Graphit's opaque fallback — the same one Android below API 31 already gets.
-  That path has to exist anyway, which is the second time restricting glass to
-  floating chrome has paid off.
+- **The widget is simply Phase.** Widgets cannot blur what is behind them,
+  and Phase never asks them to: a Float slab, the cover square, a Sine play
+  pill. The widget needs no fallback, because there is nothing to fall back
+  from.
 
 ### 6.20 First run
 
@@ -1799,9 +1801,9 @@ not silently keep gigabytes.
 | — | Navigation | Home · Search · Library; Add is a Library action, Jam lives in now-playing |
 | — | Now-playing bar | Separate floating bar above the nav; 148px reserved |
 | — | Now-playing screen | Overlay sheet with the queue as an internal pane |
-| — | Shelf | One glass surface; splits into player + nav when playing; three states |
+| — | Shelf | One floating surface; splits into player + nav when playing; three states |
 | — | Context actions | Long-press selection + action row in the shelf; multi-select free |
-| — | Home | Metro-style tile grid, solid surfaces, black ink on the four primaries |
+| — | Home | Metro-style tile grid, solid slabs, black ink on the signals |
 | — | Home layout | Fully user-arranged: pin, resize, reorder. No fixed design |
 | — | Tile liveness | Content cycles; no flip or slide animations |
 | — | Play history | Never pruned — retrospective tiles depend on it |
@@ -1811,29 +1813,29 @@ not silently keep gigabytes.
 | — | Tile editing | Long-press selection + shelf actions, same as everywhere |
 | — | Empty tiles | Keep their place, show a resting state |
 | — | Now-playing sheet | One surface, two heights; queue rises from the bottom edge |
-| — | NP artwork | Full-bleed, scrimmed, handing off to real glass under the controls |
-| — | Progress | A growing blue plane; black ink over the filled region |
+| — | NP artwork | Ambience across the sheet's top, the cover whole on it; controls on plain Float |
+| — | Progress | The wave on now playing, Sine up to the position; a straight line everywhere else |
 | — | Player row | Artwork, title, play/pause, skip, progress hairline, Device indicator |
 | — | Jam | A participant strip inside the now-playing sheet |
 | — | Ambience | Any single-subject screen; header only, constant scrim, pre-blurred |
-| — | Track rows | Quiet by default; a plane means exception, not status |
+| — | Track rows | Quiet by default; a tag means exception, not status |
 | — | Search | Instant, local, one ranked list |
 | — | Add | Single-field sheet; Sine is a share target for URLs |
-| — | Review queue | List, tap to correct; count as a yellow plane |
+| — | Review queue | List, tap to correct; count as a Cosine pill |
 | — | Offline | Everything visible, unplayable dimmed |
 | — | First run | Type the address; mDNS suggests; mode shown explicitly |
-| — | Account control | Persistent glass control, top corner, all screens but now-playing |
+| — | Account control | Persistent circle, top corner, all screens but now-playing |
 | — | Correction screen | All sources ranked and labelled, plus manual entry |
 | — | Share target | Native accounts only, most recently added wins |
 | — | Desktop | Sidebar, docked player, queue panel; panels not overlays |
 | — | Artist page | Ambient header, then releases; single-track releases collapse to track rows |
-| — | Timecode | Sits off the progress plane, always `--txt-2` |
+| — | Timecode | Sits off the wave, mono, always Text 2 |
 | — | No artwork | Flat ground, no ambience, no generated colour |
 | — | Desktop Home | Same unit size, more columns; separate layout from the phone |
 | — | Artist ordering | Interleaved chronologically, albums and singles together |
-| — | Motion | Graphit tokens only; no shared-element transition, sheet is timed |
+| — | Motion | Phase's three durations only; no shared-element transition, sheet is timed |
 | — | Voice | Plain and factual; state what is true and what happens next |
-| — | Dashboard | `graphit.css` directly; tabular, no ambience |
+| — | Dashboard | Phase's stylesheet and fonts, served from the binary; tabular, no ambience |
 | — | Search ranking | As proposed in §6.8 |
 | — | Performance | 16ms warm, 100ms cold; no spinner in the browse path |
 | — | Sync failure | Full resync, unmetered only, never touching downloaded audio |
@@ -1849,7 +1851,7 @@ not silently keep gigabytes.
 | — | Min client version | None. Protocol is additive-only, forever |
 | — | Cover art scope | Personal to the account (overturns the §8 proposal) |
 | — | Terminal client | None |
-| — | Accessibility | Not specified; Graphit's own floors still apply |
+| — | Accessibility | Not specified; Phase's own floors still apply |
 | — | Library root | Segmented control: Artists / Albums / Playlists |
 | — | Shared playlists | One playlist every member sees and edits; songs any member adds reach every member's Library, except songs one removed itself |
 | — | Sharing and visibility | Sharing is the owner's explicit act; it doesn't depend on the visibility toggle |
@@ -1857,6 +1859,13 @@ not silently keep gigabytes.
 | — | Smart playlists offline | Sent with the sync as last worked out, again only when they change |
 | — | Last.fm account | One API account per server, entered by its admin; each account approves Cosine on Last.fm |
 | — | Scrobbling start | Plays from the moment an account connects; earlier history isn't sent |
+| — | Design language | Phase replaces Graphit v0.7 (0.5.2): two signals a quarter turn apart, red for faults, type doing the work, no glass |
+| — | Ground | `#0B0B0C`, not pure black; depth by light: Raised, Float, Lift |
+| — | Type | Instrument Sans (widths 75 to 100) and Martian Mono, bundled under the OFL |
+| — | Shape | Square is read, circle is a person, pill is pressed, slab holds |
+| — | Status marks | A tag asks you to look; a dot starts a sentence of status |
+| — | Shelf messages | Above navigation for four seconds; a question takes the shelf until answered |
+| — | Offline, no copy | Dimmed only, never red: red stays for a missing Object |
 
 ---
 

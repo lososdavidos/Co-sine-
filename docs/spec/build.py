@@ -9,9 +9,9 @@ toc = md.toc_tokens
 # strikethrough
 body = re.sub(r'~~(.+?)~~', r'<s>\1</s>', body)
 
-# planes
-PLANES = {'RESOLVED':'blue','OPEN':'yellow','NOTE':'blue','PARTIAL':'yellow',
-          'PLANNED':'yellow','BUILT':'green','REVISED':'yellow'}
+# status tags (Phase: OPEN asks you to look, so it's the Cosine one; the rest describe)
+PLANES = {'RESOLVED':'n','OPEN':'server','NOTE':'n','PARTIAL':'n',
+          'PLANNED':'n','BUILT':'n','REVISED':'n'}
 def plane(m):
     w = m.group(1)
     return f'<span class="plane plane-{PLANES[w]}">{w}</span>'

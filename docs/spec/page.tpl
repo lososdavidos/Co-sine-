@@ -1,7 +1,7 @@
 <title>Sine &amp; Cosine</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&family=Martian+Mono:wdth,wght@75..112.5,400..600&display=swap">
 <style>
 {{CSS}}
 </style>
@@ -16,15 +16,14 @@
 
   <div>
     <header>
-      <p class="eyebrow">Specification &middot; v1 draft &middot; 29 August 2026</p>
+      <p class="eyebrow">Specification &middot; v1 draft &middot; 26 October 2026</p>
       <h1>Sine &amp; Cosine</h1>
       <p class="sub">A self-hosted music system: <strong>Sine</strong>, the client, and
       <strong>Cosine</strong>, the server that owns the files. Written before a line of it
       exists, so that every decision is made once and on purpose.</p>
       <p class="stats">
-        <span class="plane plane-blue">{{NDEC}} decisions</span>
-        <span class="plane plane-green">0 open</span>
-        <span class="plane plane-yellow">Greenfield</span>
+        <span class="plane">{{NDEC}} decisions</span>
+        <span class="plane">Design language: Phase</span>
       </p>
     </header>
     <main>
