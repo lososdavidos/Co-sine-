@@ -17,6 +17,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 /** Cosine answered with an error. [message] is already user-facing. */
 class CosineException(val status: Int, message: String) : Exception(message)
@@ -171,8 +172,15 @@ class CosineClient(
         send(get("capabilities"), CapabilitiesResponse.serializer(), authed = false)
             .let { ServerKind.Cosine(it.version, it.capabilities) }
 
+    /**
+     * A search in Add answers once every source has, and Cosine runs only
+     * a few yt-dlp at a time: on a small server, busy fetching, that takes
+     * longer than other calls are given.
+     */
+    private val searching = http.newBuilder().readTimeout(LOOKUP_WAIT_SECONDS, TimeUnit.SECONDS).build()
+
     suspend fun lookup(input: String): Lookup =
-        send(post("lookup", LookupRequest.serializer(), LookupRequest(input)), Lookup.serializer())
+        send(post("lookup", LookupRequest.serializer(), LookupRequest(input)), Lookup.serializer(), via = searching)
 
     /**
      * Queues links. [from] is the album or playlist they were picked from
@@ -292,15 +300,20 @@ class CosineClient(
     private fun <T> post(path: String, serializer: KSerializer<T>, body: T) =
         Request.Builder().url(url(path)).post(WireJson.encodeToString(serializer, body).toRequestBody(JSON))
 
-    private suspend fun <T> send(builder: Request.Builder, serializer: KSerializer<T>, authed: Boolean = true): T =
+    private suspend fun <T> send(
+        builder: Request.Builder,
+        serializer: KSerializer<T>,
+        authed: Boolean = true,
+        via: OkHttpClient = http,
+    ): T =
         withContext(Dispatchers.IO) {
-            if (!authed) return@withContext execute(builder.build(), serializer)
+            if (!authed) return@withContext execute(builder.build(), serializer, via)
             try {
-                execute(builder.header("Authorization", "Bearer ${token()}").build(), serializer)
+                execute(builder.header("Authorization", "Bearer ${token()}").build(), serializer, via)
             } catch (e: CosineException) {
                 if (e.status != 401) throw e
                 session = null
-                execute(builder.header("Authorization", "Bearer ${token()}").build(), serializer)
+                execute(builder.header("Authorization", "Bearer ${token()}").build(), serializer, via)
             }
         }
 
@@ -311,8 +324,8 @@ class CosineClient(
         execute(request, AuthResponse.serializer()).token.also { session = it }
     }
 
-    private fun <T> execute(request: Request, serializer: KSerializer<T>): T =
-        http.newCall(request).execute().use { response ->
+    private fun <T> execute(request: Request, serializer: KSerializer<T>, via: OkHttpClient = http): T =
+        via.newCall(request).execute().use { response ->
             val text = response.body.string()
             if (!response.isSuccessful) {
                 val message = runCatching { WireJson.decodeFromString(ErrorResponse.serializer(), text).error }
@@ -327,6 +340,7 @@ class CosineClient(
         }
 
     private companion object {
+        const val LOOKUP_WAIT_SECONDS = 120L
         val JSON = "application/json".toMediaType()
         val WireJson = Json { ignoreUnknownKeys = true; coerceInputValues = true }
     }

@@ -1,9 +1,129 @@
 package ytdlp
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 )
+
+// fake writes a shell script standing in for yt-dlp.
+func fake(t *testing.T, script string) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "yt-dlp")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+func TestProcessesAreBounded(t *testing.T) {
+	running, log := t.TempDir(), filepath.Join(t.TempDir(), "log")
+	t.Setenv("RUNNING", running)
+	t.Setenv("LOG", log)
+	// Each counts the processes running beside it, itself included.
+	r := Runner{Bin: fake(t, `touch "$RUNNING/$$"; ls "$RUNNING" | wc -l >> "$LOG"; sleep 0.2; rm "$RUNNING/$$"
+echo '{"id": "x"}'`)}.Bounded(2)
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Go(func() {
+			if _, err := r.Probe(context.Background(), "https://example.com"); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	b, _ := os.ReadFile(log)
+	counts := strings.Fields(string(b))
+	if len(counts) != 6 {
+		t.Fatal(counts)
+	}
+	for _, c := range counts {
+		if n, _ := strconv.Atoi(c); n > 2 {
+			t.Fatal("more than 2 at once:", counts)
+		}
+	}
+
+	// One waiting for its turn gives up with its caller.
+	r = Runner{Bin: fake(t, "sleep 5")}.Bounded(1)
+	first, stop := context.WithCancel(context.Background())
+	wg.Go(func() { r.Probe(first, "https://example.com") })
+	defer wg.Wait()
+	defer stop()
+	time.Sleep(100 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := r.Probe(ctx, "https://example.com"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+}
+
+// alive reports whether pid is running: not gone, and not a zombie.
+func alive(pid int) bool {
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return false
+	}
+	f := strings.Fields(string(b[strings.LastIndexByte(string(b), ')')+1:]))
+	return len(f) > 0 && f[0] != "Z"
+}
+
+func TestCancellingStopsEveryProcess(t *testing.T) {
+	if _, err := os.Stat("/proc/self/stat"); err != nil {
+		t.Skip("needs /proc")
+	}
+	defer func(d time.Duration) { killAfter = d }(killAfter)
+	killAfter = 300 * time.Millisecond
+	for name, script := range map[string]string{
+		// As the standalone yt-dlp does: a launcher running the real thing.
+		"stops when asked": `sleep 60 & echo $! > "$CHILD"; echo "$TMPDIR" > "$CHILD.tmp"; wait`,
+		// Deaf to being asked: killed.
+		"ignores it": `trap '' TERM; sleep 60 & echo $! > "$CHILD"; wait`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			child := filepath.Join(t.TempDir(), "child")
+			t.Setenv("CHILD", child)
+			r := Runner{Bin: fake(t, script), TempDir: "/srv/tmp"}
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error)
+			go func() {
+				_, err := r.Probe(ctx, "https://example.com")
+				done <- err
+			}()
+			var pid int
+			for deadline := time.Now().Add(5 * time.Second); pid == 0 && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+				b, _ := os.ReadFile(child)
+				pid, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+			}
+			if !alive(pid) {
+				t.Fatal("the fake didn't start its child", pid)
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("a stopped run is not a result")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("still waiting on a stopped yt-dlp")
+			}
+			for deadline := time.Now().Add(2 * time.Second); alive(pid) && time.Now().Before(deadline); {
+				time.Sleep(10 * time.Millisecond)
+			}
+			if alive(pid) {
+				t.Fatal("yt-dlp's child outlived it")
+			}
+			if b, err := os.ReadFile(child + ".tmp"); err == nil && strings.TrimSpace(string(b)) != "/srv/tmp" {
+				t.Fatal("TMPDIR:", string(b))
+			}
+		})
+	}
+}
 
 func TestParseProgress(t *testing.T) {
 	cases := map[string]float64{"50 100 NA": 0.5, "30 NA 60": 0.5, "10 NA NA": -1, "200 100 NA": 1, "garbage": -1}

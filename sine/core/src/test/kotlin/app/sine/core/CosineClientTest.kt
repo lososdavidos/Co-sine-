@@ -14,7 +14,9 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
+import java.io.IOException
 import java.nio.file.Files
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,7 +34,7 @@ class CosineClientTest {
     @AfterTest
     fun tearDown() = server.close()
 
-    private fun client(): CosineClient {
+    private fun client(http: OkHttpClient = OkHttpClient()): CosineClient {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.url.encodedPath
@@ -108,7 +110,7 @@ class CosineClientTest {
             }
         }
         server.start()
-        return CosineClient(server.url("/").toString(), SubsonicCredentials("alice", "tok", "salt"), OkHttpClient())
+        return CosineClient(server.url("/").toString(), SubsonicCredentials("alice", "tok", "salt"), http)
     }
 
     private fun json(body: String, code: Int = 200) =
@@ -215,6 +217,21 @@ class CosineClientTest {
         assertEquals("ListenBrainz didn't accept that token.", assertFailsWith<CosineException> { c.connectListenBrainz("bad") }.message)
         c.disconnectScrobbler("lastfm")
         assertTrue("DELETE /cosine/v1/scrobbling/lastfm" in requests)
+    }
+
+    @Test
+    fun `a search is given longer to answer than other calls`() = runTest {
+        val c = client(OkHttpClient.Builder().readTimeout(300, TimeUnit.MILLISECONDS).build())
+        val answer = server.dispatcher
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val response = answer.dispatch(request)
+                if (request.url.encodedPath == "/cosine/v1/auth") return response
+                return response.newBuilder().headersDelay(800, TimeUnit.MILLISECONDS).build()
+            }
+        }
+        assertEquals("Tides", c.lookup("skeler tides").title)
+        assertFailsWith<IOException> { c.jobs(30) }
     }
 
     @Test

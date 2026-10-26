@@ -2,10 +2,13 @@ package ytdlp
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/testutil"
 )
@@ -50,5 +53,52 @@ func TestRealYtDlp(t *testing.T) {
 		t.Fatal("expected an error for a missing file")
 	} else {
 		t.Logf("error text: %v", err)
+	}
+}
+
+// TestRealYtDlpStopsCleanly stops the real binary part way through: none
+// of it is left running, and nothing it unpacked is left behind. The
+// standalone build leaves an 83 MB copy of itself when only its launcher
+// is killed.
+func TestRealYtDlpStopsCleanly(t *testing.T) {
+	bin, err := exec.LookPath("yt-dlp")
+	if err != nil {
+		t.Skip("yt-dlp not installed")
+	}
+	asked, gone := make(chan struct{}), make(chan struct{})
+	never := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(asked)
+		<-r.Context().Done() // yt-dlp hung up
+		close(gone)
+	}))
+	defer never.Close()
+	tmp := t.TempDir()
+	r := Runner{Bin: bin, TempDir: tmp}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() {
+		_, err := r.Probe(ctx, never.URL+"/song.mp3")
+		done <- err
+	}()
+	select {
+	case <-asked:
+	case err := <-done:
+		t.Fatal("yt-dlp never asked:", err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("yt-dlp never asked")
+	}
+	cancel()
+	select {
+	case <-gone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("yt-dlp kept running")
+	}
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("still waiting on a stopped yt-dlp")
+	}
+	if left, _ := os.ReadDir(tmp); len(left) != 0 {
+		t.Fatal("left behind:", left)
 	}
 }
