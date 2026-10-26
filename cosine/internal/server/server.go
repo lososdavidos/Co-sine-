@@ -130,8 +130,9 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	if runner, err := ytdlp.Find(); err != nil {
 		log.Warn("yt-dlp not found: adding music from links is disabled until it is installed")
 	} else {
-		// yt-dlp unpacks itself on every run: onto the disk, not into a
-		// memory-backed /tmp. Copies left by runs killed mid-way go now.
+		// yt-dlp's temporary files, and the copy of itself the single-file
+		// build unpacks on every run, go onto the disk, not into a
+		// memory-backed /tmp. Whatever runs killed mid-way left goes now.
 		runner.TempDir = filepath.Join(cfg.DataDir, "tmp")
 		os.RemoveAll(runner.TempDir)
 		if err := os.MkdirAll(runner.TempDir, 0o700); err != nil {

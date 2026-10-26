@@ -3,6 +3,7 @@ package fetch
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 
@@ -38,11 +39,20 @@ type Lookup struct {
 	// Collections: for a search, the albums and playlists found, those
 	// asked for first. Picking one looks its link up.
 	Collections []Item `json:"collections,omitempty"`
+	// Partial: what a search has found so far; more is coming.
+	Partial bool `json:"partial,omitempty"`
 }
 
 const searchResults = 10
 
 func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Lookup, error) {
+	return f.LookupEach(ctx, userID, input, nil)
+}
+
+// LookupEach is Lookup, showing a search as it goes: update, when set, is
+// given everything found so far (Partial) each time a source answers, one
+// call at a time. The answer returned is the whole of it.
+func (f *Fetcher) LookupEach(ctx context.Context, userID int64, input string, update func(Lookup)) (Lookup, error) {
 	if !f.Runner.Available() {
 		return Lookup{}, errors.New("yt-dlp is not installed on the server")
 	}
@@ -75,31 +85,67 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 		return l, nil
 	}
 
-	var collections []search.Result
-	var released *search.Result
+	var (
+		mu          sync.Mutex
+		collections []search.Result
+		songs       []search.Result
+		released    *search.Result
+	)
+	// lookup puts together what has been found; mu is held.
+	lookup := func(backend string) Lookup {
+		l := Lookup{Kind: KindSearch, Backend: backend}
+		for _, c := range collections {
+			l.Collections = append(l.Collections, Item{Result: c})
+		}
+		// The song as released first; videos with intros, extended uploads
+		// and previews (which can't be added) after.
+		for _, r := range search.ByRelease(slices.Clone(songs), released) {
+			l.Items = append(l.Items, Item{Result: r})
+		}
+		f.markLibrary(ctx, userID, l.Items)
+		return l
+	}
+	show := func() {
+		if update != nil {
+			l := lookup("")
+			l.Partial = true
+			update(l)
+		}
+	}
 	var wg sync.WaitGroup
-	wg.Go(func() { collections = f.Search.Collections(ctx, input) })
+	wg.Go(func() {
+		c := f.Search.Collections(ctx, input, func(c []search.Result) {
+			mu.Lock()
+			defer mu.Unlock()
+			collections = c
+			show()
+		})
+		mu.Lock()
+		collections = c
+		mu.Unlock()
+	})
 	wg.Go(func() {
 		if r, ok := f.Search.Release(ctx, input); ok {
+			mu.Lock()
+			defer mu.Unlock()
 			released = &r
+			if len(songs) > 0 {
+				show()
+			}
 		}
 	})
-	res, backend, err := f.Search.Search(ctx, input, searchResults)
+	res, backend, err := f.Search.Search(ctx, input, searchResults, func(r []search.Result) {
+		mu.Lock()
+		defer mu.Unlock()
+		songs = r
+		show()
+	})
 	wg.Wait()
 	if err != nil && len(collections) == 0 {
 		return Lookup{}, err
 	}
-	l := Lookup{Kind: KindSearch, Backend: backend}
-	for _, c := range collections {
-		l.Collections = append(l.Collections, Item{Result: c})
-	}
-	// The song as released first; videos with intros, extended uploads
-	// and previews (which can't be added) after.
-	for _, r := range search.ByRelease(input, res, released) {
-		l.Items = append(l.Items, Item{Result: r})
-	}
-	f.markLibrary(ctx, userID, l.Items)
-	return l, nil
+	songs = res
+	return lookup(backend), nil
 }
 
 func (f *Fetcher) markLibrary(ctx context.Context, userID int64, items []Item) {

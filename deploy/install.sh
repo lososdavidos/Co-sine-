@@ -16,6 +16,8 @@ CONF_DIR="/etc/cosine"
 ENV_FILE="$CONF_DIR/cosine.env"
 BIN_DIR="/usr/local/bin"
 UNIT_DIR="/etc/systemd/system"
+YTDLP_DIR="/opt/yt-dlp"
+YTDLP_UPDATER="$PREFIX/libexec/update-yt-dlp"
 
 # Defaults, overridable by flags.
 VERSION="latest"
@@ -246,22 +248,75 @@ install_packages() {
 	info "ffmpeg (for ffprobe), sqlite3 (for backups)$([[ $WITH_FINGERPRINT -eq 1 ]] && echo ", Chromaprint")"
 }
 
-# yt-dlp: the official standalone build. Distribution packages lag the sites
-# they scrape and stop working; this one updates itself daily (timer below).
+# yt-dlp: the official build, the kind that comes as a folder. Distribution
+# packages lag the sites they scrape and stop working, so it's kept current
+# daily (timer below). The single-file build unpacks 83 MB of itself on
+# every run, a second of CPU before it does anything; a search runs several.
+# The folder build starts straight away, but can't update itself (yt-dlp -U
+# refuses), so the updater written here does: each version gets a folder of
+# its own in $YTDLP_DIR, "current" points at the one in use, and the one
+# before stays for runs still going.
+write_ytdlp_updater() {
+	install -d -m 0755 "$PREFIX/libexec"
+	cat >"$YTDLP_UPDATER" <<EOF
+#!/bin/sh
+# Keeps yt-dlp current. Written by Cosine's installer, run daily by
+# yt-dlp-update.timer. --force installs the latest even if it's in use.
+set -eu
+dir="$YTDLP_DIR"
+zip="$YTDLP_ASSET.zip"
+base="https://github.com/yt-dlp/yt-dlp/releases/latest/download"
+have="\$(readlink "\$dir/current" 2>/dev/null || true)"
+latest="\$(curl -fsS --retry 2 --proto '=https' -o /dev/null -w '%{redirect_url}' "\$base/\$zip" 2>/dev/null || true)"
+latest="\${latest#*/releases/download/}"
+latest="\${latest%%/*}"
+if [ "\${1:-}" != --force ] && [ -n "\$have" ] && [ "\$have" = "\$latest" ] && [ -x "\$dir/current/$YTDLP_ASSET" ]; then
+	echo "yt-dlp \$have, already the latest"
+	exit 0
+fi
+tmp="\$(mktemp -d)"
+trap 'rm -rf "\$tmp"' EXIT
+get() { curl -fsSL --retry 3 --retry-delay 2 --proto '=https' --tlsv1.2 -o "\$2" "\$1"; }
+get "\$base/\$zip" "\$tmp/\$zip"
+get "\$base/SHA2-256SUMS" "\$tmp/sums"
+want="\$(awk -v n="\$zip" '{ f = \$2; sub(/^\*/, "", f) } f == n { print \$1; exit }' "\$tmp/sums")"
+got="\$(sha256sum "\$tmp/\$zip" | awk '{ print \$1 }')"
+if [ -z "\$want" ] || [ "\$want" != "\$got" ]; then
+	echo "Checksum mismatch for \$zip: not installing it." >&2
+	exit 1
+fi
+unzip -q "\$tmp/\$zip" -d "\$tmp/new"
+version="\$("\$tmp/new/$YTDLP_ASSET" --version)"
+mkdir -p "\$dir"
+rm -rf "\${dir:?}/\$version"
+mv "\$tmp/new" "\$dir/\$version"
+ln -sfn "\$version" "\$dir/.current"
+mv -T "\$dir/.current" "\$dir/current"
+# The one before stays for runs still going; older ones go.
+for old in "\$dir"/*/; do
+	old="\$(basename "\$old")"
+	case "\$old" in current | "\$version" | "\$have") ;; *) rm -rf "\${dir:?}/\$old" ;; esac
+done
+echo "yt-dlp \$version"
+EOF
+	chmod 0755 "$YTDLP_UPDATER"
+}
+
 install_ytdlp() {
 	step "Installing yt-dlp"
-	local have latest base="https://github.com/yt-dlp/yt-dlp/releases/latest/download"
-	have="$("$BIN_DIR/yt-dlp" --version 2>/dev/null || true)"
-	latest="$(latest_tag yt-dlp/yt-dlp "$YTDLP_ASSET")"
-	if current "$have" "$latest"; then
-		info "yt-dlp $have, already the latest"
-		return
-	fi
-	download "$base/$YTDLP_ASSET" "$TMP/$YTDLP_ASSET"
-	download "$base/SHA2-256SUMS" "$TMP/yt-dlp.sums"
-	verify "$TMP/$YTDLP_ASSET" "$TMP/yt-dlp.sums" "$YTDLP_ASSET"
-	install -m 0755 "$TMP/$YTDLP_ASSET" "$BIN_DIR/yt-dlp"
-	info "yt-dlp $("$BIN_DIR/yt-dlp" --version)"
+	write_ytdlp_updater
+	local out force=()
+	[[ $REINSTALL -eq 1 ]] && force=(--force)
+	out="$("$YTDLP_UPDATER" "${force[@]}")" || die "Could not install yt-dlp."
+	# What runs as yt-dlp, for Cosine (COSINE_YTDLP) and anyone else. It
+	# replaces the single-file build earlier installers put here.
+	cat >"$BIN_DIR/yt-dlp" <<EOF
+#!/bin/sh
+# yt-dlp's folder build, kept current by $YTDLP_UPDATER.
+exec $YTDLP_DIR/current/$YTDLP_ASSET "\$@"
+EOF
+	chmod 0755 "$BIN_DIR/yt-dlp"
+	info "$out"
 }
 
 # Deno: the JavaScript runtime yt-dlp uses for YouTube. Without one, YouTube
@@ -435,7 +490,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=$BIN_DIR/yt-dlp --update-to stable
+ExecStart=$YTDLP_UPDATER
 EOF
 	cat >"$UNIT_DIR/yt-dlp-update.timer" <<EOF
 [Unit]

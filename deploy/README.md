@@ -5,13 +5,15 @@
 | Installed | Why | Kept current by |
 |---|---|---|
 | Cosine (`/opt/cosine/bin/cosine`) | The server | Rerunning the installer |
-| yt-dlp (official standalone build) | Fetching from links | A daily `yt-dlp-update.timer` |
+| yt-dlp (official build, the folder kind, in `/opt/yt-dlp`) | Fetching from links | A daily `yt-dlp-update.timer`, which installs each new release (this build can't update itself) |
 | Deno | The JavaScript runtime yt-dlp needs for YouTube | Rerunning the installer |
 | ffmpeg | `ffprobe`, for track durations | apt |
 | sqlite3 | The nightly database backup | apt |
 | Chromaprint (`--with-fingerprinting`) | Audio fingerprinting, for later | apt |
 
 Downloads are checked against their published SHA-256 checksums before anything is installed.
+
+yt-dlp comes as a folder, not the single file: the single file unpacks 83 MB of itself every time it runs, a second of CPU before it starts, and a search in Add runs it several times. Each version gets a folder in `/opt/yt-dlp`; `current` points at the one in use, and the one before is kept for downloads still running. `/usr/local/bin/yt-dlp` runs `current`.
 
 Metadata lookups (MusicBrainz, Discogs, Bandcamp and their covers) are web lookups built into Cosine, so they need nothing installed here. The container does need outbound HTTPS to musicbrainz.org, coverartarchive.org, api.discogs.com, i.discogs.com, bandcamp.com and bcbits.com (Bandcamp's images), and to artists' own Bandcamp pages. Anything that ever does will be added to the installer, and rerunning it picks it up.
 

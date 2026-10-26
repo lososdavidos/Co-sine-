@@ -64,7 +64,9 @@ import app.sine.ui.phase.Tag
 import app.sine.ui.phase.Tick
 import app.sine.ui.phase.rowSurface
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import java.io.IOException
 
@@ -97,6 +99,7 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
     var keepPlaylist by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf(setOf<String>()) }
     var busy by remember { mutableStateOf(false) }
+    var looking by remember { mutableStateOf<Job?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var messageSignal by remember { mutableStateOf(Signal.None) }
     var jobs by remember { mutableStateOf<List<IngestJob>>(emptyList()) }
@@ -126,21 +129,33 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
 
     fun look(text: String = input.trim(), from: Lookup? = null) {
         if (text.isEmpty()) return
-        scope.launch {
+        // Opening an album from results still coming in stops that search.
+        looking?.cancel()
+        looking = scope.launch {
             busy = true
             message = null
-            val result = attempt { cosine.lookup(text) }
-            if (result != null) {
-                lookup = result
-                searched = from
-                keepPlaylist = true
-                // A collection is queued whole unless you untick things; search results start unticked.
-                selected = if (result.isSearch) emptySet() else result.items.filterNot { it.inLibrary }.map { it.url }.toSet()
-                if (result.items.isEmpty() && result.collections.isEmpty()) {
-                    message = "No results."
-                    messageSignal = Signal.None
+            // A search shows as it goes where Cosine can say (§6.10): the first
+            // site's songs in a few seconds, not when the slowest is done.
+            val updates = if (session.can(Capability.LOOKUP_STREAM)) cosine.lookupUpdates(text) else flow { emit(cosine.lookup(text)) }
+            var first = true
+            attempt {
+                updates.collect { result ->
+                    lookup = result
+                    if (first) {
+                        first = false
+                        searched = from?.copy(partial = false) // stopped, so as far as it got
+                        keepPlaylist = true
+                        // A collection is queued whole unless you untick things; search results start unticked.
+                        selected = if (result.isSearch) emptySet() else result.items.filterNot { it.inLibrary }.map { it.url }.toSet()
+                    }
+                    if (!result.partial && result.items.isEmpty() && result.collections.isEmpty()) {
+                        message = "No results."
+                        messageSignal = Signal.None
+                    }
                 }
             }
+            // Cut off part way (the connection lost): what came is all there is.
+            lookup = lookup?.takeIf { it.partial }?.copy(partial = false) ?: lookup
             busy = false
         }
     }
@@ -215,6 +230,7 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
                 )
                 Pill(if (busy) "Working…" else "Look up", { look() }, enabled = input.isNotBlank() && !busy, icon = PhaseIcons.Search)
                 message?.let { StatusLine(it, signal = messageSignal) }
+                if (lookup?.partial == true) StatusLine("Still searching…", signal = Signal.Server)
             }
         }
 

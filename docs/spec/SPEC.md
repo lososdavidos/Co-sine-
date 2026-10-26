@@ -454,12 +454,20 @@ one that is the song asked for is listed first.
 `NOTE` Since October 2026 YouTube Music lists songs and albums only to
 listeners who are signed in: a signed-out search, which is what yt-dlp makes,
 offers videos, artists, profiles and podcasts, in every region tried. Cosine
-still asks, and uses what it lists when it lists something.
+no longer asks: each ask was a yt-dlp run, about a second of a small
+server's CPU, for nothing.
+
+`RESOLVED` **A search shows as it goes.** Each source's results appear as it
+answers, everything so far in the order the whole answer will have, so the
+first songs show in a few seconds rather than when the slowest source is done
+(capability `lookup-stream`: `POST /cosine/v1/lookup/stream` answers a line of
+JSON each time, marked `partial` until the last, which is what `lookup` gives).
+Leaving the search stops it on the server too.
 
 `RESOLVED` **Results are ranked by the song as released.** The released length
 comes from Deezer's catalogue (public, no key): its listing of the song asked
 for, not one of its versions ("(Stripped)", a remix) unless the search names
-it. Failing that, a YouTube Music upload's length is the release's. Every result
+it. Every result
 that is the same song is labelled with how its length compares ("Same length as
 the release", "0:44 longer than the release"); those of the release's length
 come first, the artist's own uploads before others, those much longer or
@@ -508,8 +516,8 @@ declined to take only the songs. A channel's uploads are just songs.
 allows it.** Add's search also lists YouTube's playlists (through yt-dlp),
 Bandcamp's albums (through Bandcamp's own search), SoundCloud's albums and
 playlists (through its API, when a client ID is set; yt-dlp searches
-SoundCloud's tracks only), and YouTube Music's albums when it lists them (see
-above: not to signed-out searches). Picking one shows its songs, as pasting its
+SoundCloud's tracks only). YouTube Music's albums are not searched: signed
+out, it lists none (see above). Picking one shows its songs, as pasting its
 link would. Those named like the search come first.
 
 ### 3.2 The resolver

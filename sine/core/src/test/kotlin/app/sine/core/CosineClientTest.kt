@@ -12,6 +12,9 @@ import app.sine.core.home.TileSize
 import app.sine.core.mirror.PlaylistOps
 import app.sine.core.subsonic.SubsonicCredentials
 import app.sine.core.text.Voice
+import app.sine.core.cosine.Lookup
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
@@ -36,6 +39,15 @@ class CosineClientTest {
     private val bodies = mutableListOf<String>()
     private var home: String? = null
 
+    // A search followed as it goes: a site's songs, then both, then the whole answer.
+    private val streamLines = listOf(
+        """{"kind":"search","items":[{"title":"Tides","url":"https://sc/tides","source":"soundcloud"}],"partial":true}""",
+        """{"kind":"search","items":[{"title":"Tides","url":"https://sc/tides"},{"title":"Skeler - Tides","url":"https://yt/tides"}],"partial":true}""",
+        """{"kind":"search","backend":"ytdlp","items":[{"title":"Tides","url":"https://sc/tides"},{"title":"Skeler - Tides","url":"https://yt/tides"}],"collections":[{"title":"Tides EP","url":"https://bc/tides","kind":"album"}]}""",
+    )
+    // How long after the first line each further part of the answer comes.
+    private var streamGapMs = 400L
+
     @AfterTest
     fun tearDown() = server.close()
 
@@ -55,6 +67,9 @@ class CosineClientTest {
                     return json("""{"error":"Session expired. Authenticate again."}""", 401)
                 }
                 return when (path) {
+                    "/cosine/v1/lookup/stream" -> MockResponse.Builder().addHeader("Content-Type", "application/x-ndjson")
+                        .body(streamLines.joinToString("") { "$it\n" })
+                        .throttleBody(streamLines.first().length + 1L, streamGapMs, TimeUnit.MILLISECONDS).build()
                     "/cosine/v1/lookup" -> json(
                         """{"kind":"collection","title":"Tides","items":[
                            {"title":"One","uploader":"Skeler","url":"https://sc/one","source":"soundcloud","durationSec":125,"inLibrary":true,"releaseSec":124},
@@ -237,6 +252,33 @@ class CosineClientTest {
         assertEquals("ListenBrainz didn't accept that token.", assertFailsWith<CosineException> { c.connectListenBrainz("bad") }.message)
         c.disconnectScrobbler("lastfm")
         assertTrue("DELETE /cosine/v1/scrobbling/lastfm" in requests)
+    }
+
+    @Test
+    fun `a search shows as it goes`() = runTest {
+        val c = client()
+        val start = System.nanoTime()
+        val shown = mutableListOf<Pair<Lookup, Long>>()
+        c.lookupUpdates("skeler tides").collect { shown += it to (System.nanoTime() - start) / 1_000_000 }
+        assertEquals(listOf(true, true, false), shown.map { it.first.partial })
+        assertEquals(listOf(1, 2, 2), shown.map { it.first.items.size })
+        assertEquals("Tides EP", shown.last().first.collections.single().title)
+        assertTrue(shown.last().second - shown.first().second >= 300, "the first songs showed before the rest came: $shown")
+
+        // An expired session is renewed, as for every other call.
+        validSession = "forgotten"
+        assertEquals(3, c.lookupUpdates("skeler tides").toList().size)
+        assertEquals(2, sessionsIssued)
+    }
+
+    @Test
+    fun `leaving a search stops it at once`() = runTest {
+        val c = client()
+        streamGapMs = 10_000 // the rest would take 20 s
+        val start = System.nanoTime()
+        assertTrue(c.lookupUpdates("skeler tides").first().partial)
+        val took = (System.nanoTime() - start) / 1_000_000
+        assertTrue(took < 3_000, "waited ${took}ms for a search no one is watching")
     }
 
     @Test

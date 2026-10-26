@@ -7,18 +7,25 @@ import app.sine.core.mirror.SyncChanges
 import app.sine.core.server.ServerKind
 import app.sine.core.subsonic.SubsonicCredentials
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.Call
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /** Cosine answered with an error. [message] is already user-facing. */
 class CosineException(val status: Int, message: String) : Exception(message)
@@ -62,6 +69,8 @@ data class Lookup(
     val url: String? = null,
     /** For a search: albums and playlists found, those asked for first. */
     val collections: List<AddItem> = emptyList(),
+    /** What a search has found so far, with more to come ([CosineClient.lookupUpdates]). */
+    val partial: Boolean = false,
 ) {
     val isSearch get() = kind == "search"
     val isCollection get() = kind == "collection"
@@ -183,6 +192,44 @@ class CosineClient(
 
     suspend fun lookup(input: String): Lookup =
         send(post("lookup", LookupRequest.serializer(), LookupRequest(input)), Lookup.serializer(), via = searching)
+
+    /**
+     * [lookup], followed as it goes, from a Cosine that offers it
+     * ([app.sine.core.server.Capability.LOOKUP_STREAM]): everything found so far each time a
+     * source answers, [Lookup.partial] until the last, which is what [lookup]
+     * gives. Stopping collecting stops the search on Cosine too.
+     */
+    fun lookupUpdates(input: String): Flow<Lookup> = callbackFlow {
+        val body = WireJson.encodeToString(LookupRequest.serializer(), LookupRequest(input))
+        val call = AtomicReference<Call?>()
+        launch(Dispatchers.IO) {
+            try {
+                fun open(): Response {
+                    val request = Request.Builder().url(url("lookup/stream")).post(body.toRequestBody(JSON))
+                        .header("Authorization", "Bearer ${token()}").build()
+                    return searching.newCall(request).also { call.set(it) }.execute()
+                }
+                var response = open()
+                if (response.code == 401) {
+                    response.close()
+                    session = null
+                    response = open()
+                }
+                response.use {
+                    if (!it.isSuccessful) throw refusal(it.code, it.body.string())
+                    val lines = it.body.source()
+                    while (true) {
+                        val line = lines.readUtf8Line() ?: break
+                        if (line.isNotBlank()) send(decode(Lookup.serializer(), line))
+                    }
+                }
+                close()
+            } catch (e: Throwable) {
+                close(e)
+            }
+        }
+        awaitClose { call.get()?.cancel() }
+    }
 
     /**
      * Queues links. [from] is the album or playlist they were picked from
@@ -337,16 +384,20 @@ class CosineClient(
     private fun <T> execute(request: Request, serializer: KSerializer<T>, via: OkHttpClient = http): T =
         via.newCall(request).execute().use { response ->
             val text = response.body.string()
-            if (!response.isSuccessful) {
-                val message = runCatching { WireJson.decodeFromString(ErrorResponse.serializer(), text).error }
-                    .getOrElse { "Cosine returned HTTP ${response.code}." }
-                throw CosineException(response.code, message)
-            }
-            try {
-                WireJson.decodeFromString(serializer, text)
-            } catch (e: Exception) {
-                throw IOException("Unreadable response from Cosine", e)
-            }
+            if (!response.isSuccessful) throw refusal(response.code, text)
+            decode(serializer, text)
+        }
+
+    private fun refusal(status: Int, text: String) = CosineException(
+        status,
+        runCatching { WireJson.decodeFromString(ErrorResponse.serializer(), text).error }.getOrElse { "Cosine returned HTTP $status." },
+    )
+
+    private fun <T> decode(serializer: KSerializer<T>, text: String): T =
+        try {
+            WireJson.decodeFromString(serializer, text)
+        } catch (e: Exception) {
+            throw IOException("Unreadable response from Cosine", e)
         }
 
     private companion object {
