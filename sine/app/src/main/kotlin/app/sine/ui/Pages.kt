@@ -11,8 +11,10 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,9 +36,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -46,10 +55,14 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -125,6 +138,27 @@ class Pages internal constructor(
     /** The move under way, if any. */
     var move by mutableStateOf<Move?>(null)
         private set
+
+    /**
+     * Where the shelf's light pill is, counted in destinations: where you are,
+     * or between two while a move carries you from one to the other, as far
+     * along as the move is (§6.16).
+     */
+    val navPosition: Float
+        get() {
+            val at = destinations.indexOf(here).toFloat()
+            val m = move ?: return at
+            val under = destinationOf(m.under)
+            val over = destinationOf(m.over)
+            if (under < 0 || over < 0 || under == over) return at
+            return over + (under - over) * m.progress
+        }
+
+    private fun destinationOf(page: Page) = destinations.indexOfFirst { page in stacks.getValue(it) }
+
+    /** Where the shelf is on screen: now playing grows out of it (§6.6). */
+    internal var shelfBounds: Rect? = null
+    internal var origin = Offset.Zero
 
     /** Side to side is off while something is selected or a question waits (§6.16). */
     var swipes by mutableStateOf(true)
@@ -419,7 +453,17 @@ fun PageHost(pages: Pages, shelf: @Composable BoxScope.() -> Unit, content: @Com
     val sideways = rememberDraggableState { pages.dragSideways(it) }
     val sheetScroll = remember(pages) { SheetScroll(pages) }
 
-    Box(Modifier.fillMaxSize().onSizeChanged { pages.size = it }) {
+    val density = LocalDensity.current
+    // Now playing's surface starts this far down: under the status bar, and a little more.
+    val sheetTop = WindowInsets.statusBars.getTop(density) + with(density) { 8.dp.toPx() }
+    val radii = with(density) { BAR_RADIUS.toPx() to SHEET_RADIUS.toPx() }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onSizeChanged { pages.size = it }
+            .onGloballyPositioned { pages.origin = it.positionInRoot() },
+    ) {
         val visible = if (m == null) listOf(pages.top) else listOf(m.under, m.over)
         for (page in visible) key(page.id) {
             val under = m != null && page === m.under
@@ -440,7 +484,12 @@ fun PageHost(pages: Pages, shelf: @Composable BoxScope.() -> Unit, content: @Com
                     )
                     .graphicsLayer {
                         if (over && m != null) {
-                            if (m.vertical) translationY = m.progress * size.height else translationX = m.progress * size.width
+                            val bar = pages.shelfBounds?.translate(-pages.origin)
+                            when {
+                                page.isSheet && bar != null && !bar.isEmpty -> grow(m.progress, bar, sheetTop, radii)
+                                m.vertical -> translationY = m.progress * size.height
+                                else -> translationX = m.progress * size.width
+                            }
                         }
                     }
                     .drawWithContent {
@@ -516,6 +565,38 @@ private class SheetScroll(private val pages: Pages) : NestedScrollConnection {
 }
 
 private object NoScroll : NestedScrollConnection
+
+/**
+ * Now playing grows out of the shelf (§6.6): at [progress] 1 its surface is
+ * the shelf's own outline at the bottom of the screen, at 0 the whole sheet.
+ * In between, its top follows the finger, its sides and foot spread to the
+ * edges, and its corners go from the shelf's to the sheet's. It fades in over
+ * the first part, so the shelf seems to become it rather than be covered.
+ */
+private fun GraphicsLayerScope.grow(progress: Float, bar: Rect, sheetTop: Float, radii: Pair<Float, Float>) {
+    val open = 1f - progress
+    val top = lerp(bar.top, sheetTop, open)
+    val bottom = lerp(bar.bottom, size.height, open)
+    // Drawn where it will be when open, moved down to where the top is now.
+    translationY = top - sheetTop
+    val outline = Rect(lerp(bar.left, 0f, open), sheetTop, lerp(bar.right, size.width, open), bottom - translationY)
+    shape = SheetOutline(outline, lerp(radii.first, radii.second, open), lerp(radii.first, 0f, open))
+    clip = true
+    alpha = (open / FADE_IN).coerceIn(0f, 1f)
+}
+
+private class SheetOutline(private val rect: Rect, private val top: Float, private val bottom: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline = Outline.Rounded(
+        RoundRect(rect, topLeft = CornerRadius(top), topRight = CornerRadius(top), bottomRight = CornerRadius(bottom), bottomLeft = CornerRadius(bottom)),
+    )
+}
+
+private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+
+private val BAR_RADIUS = 24.dp
+private val SHEET_RADIUS = 28.dp
+/** How much of the way up now playing takes to show fully. */
+private const val FADE_IN = 0.2f
 
 /** Halved until it's a few dozen pixels across: each step averages, so drawn large again it's soft, not blocky. */
 private suspend fun blurred(image: ImageBitmap): ImageBitmap = withContext(Dispatchers.Default) {

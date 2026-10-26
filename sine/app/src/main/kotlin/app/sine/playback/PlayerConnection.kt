@@ -25,6 +25,8 @@ data class PlayerState(
     val queue: List<MediaItem> = emptyList(),
     val index: Int = -1,
     val shuffle: Boolean = false,
+    /** [Player.REPEAT_MODE_OFF], [Player.REPEAT_MODE_ALL] (the queue, round again) or [Player.REPEAT_MODE_ONE] (this song). */
+    val repeat: Int = Player.REPEAT_MODE_OFF,
 )
 
 /**
@@ -114,6 +116,39 @@ class PlayerConnection(private val context: Context) {
     fun seekTo(ms: Long) = withController { it.seekTo(ms) }
     fun skipTo(index: Int) = withController { it.seekToDefaultPosition(index) }
     fun toggleShuffle() = withController { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+
+    /** Repeat goes off, the whole queue, this song, and off again. */
+    fun cycleRepeat() = withController {
+        it.repeatMode = when (it.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
+    }
+
+    /**
+     * Puts [tracks] at the end of the queue, after what's already there; with
+     * nothing queued, plays them. Returns how many could be queued: a song
+     * that can't play right now is left out, as in [play].
+     */
+    fun addToQueue(session: AccountSession, tracks: List<Track>): Int {
+        val items = tracks.mapNotNull { mediaItem(session, it) }
+        if (items.isEmpty()) return 0
+        withController { c ->
+            if (c.mediaItemCount > 0) return@withController c.addMediaItems(items)
+            playingFor = session.account.id
+            prefs.edit().putString("account", session.account.id).apply()
+            c.setMediaItems(items)
+            c.prepare()
+            c.play()
+        }
+        return items.size
+    }
+
+    /** Takes the songs at [indices] out of the queue. Taking out the one playing moves on to the next. */
+    fun removeFromQueue(indices: Collection<Int>) = withController { c ->
+        for (i in indices.sortedDescending()) if (i in 0 until c.mediaItemCount) c.removeMediaItem(i)
+    }
     fun positionMs(): Long = controller?.currentPosition ?: 0
 
     private fun refresh() {
@@ -125,6 +160,7 @@ class PlayerConnection(private val context: Context) {
             queue = (0 until c.mediaItemCount).map { c.getMediaItemAt(it) },
             index = c.currentMediaItemIndex,
             shuffle = c.shuffleModeEnabled,
+            repeat = c.repeatMode,
         )
         val item = c.currentMediaItem ?: return
         val account = playingFor ?: return

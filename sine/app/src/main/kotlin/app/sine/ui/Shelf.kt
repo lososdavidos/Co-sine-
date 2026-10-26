@@ -1,8 +1,13 @@
 package app.sine.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +25,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -45,21 +52,31 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.MediaItem
 import app.sine.graph
+import app.sine.ui.phase.Ambience
 import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.Initial
 import app.sine.ui.phase.LocalSayName
@@ -78,6 +95,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /*
  * The shelf (§6.3, §6.5): one floating surface at the bottom of every screen
@@ -245,6 +264,10 @@ fun Shelf(
     onPlayerDrag: (Float) -> Unit = {},
     /** The finger let go of it, at this many pixels a second. */
     onPlayerRelease: (Float) -> Unit = {},
+    /** Where the light pill is, in destinations: between two while a finger moves between them (§6.16). */
+    position: Float = destinations.indexOfFirst { it.route == current }.toFloat(),
+    /** Where the shelf is on screen, for now playing to grow out of (§6.6). */
+    onBounds: (Rect) -> Unit = {},
 ) {
     val shelf = LocalShelf.current
     val density = LocalDensity.current
@@ -272,6 +295,7 @@ fun Shelf(
             .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
             .fillMaxWidth()
             .onSizeChanged { shelf.reserve = with(density) { it.height.toDp() } + navBar + 24.dp }
+            .onGloballyPositioned { onBounds(it.boundsInRoot()) }
             .clip(PhaseShape.Floating)
             .background(PhaseColor.Float)
             .border(1.dp, PhaseColor.LineFloat, PhaseShape.Floating)
@@ -281,20 +305,37 @@ fun Shelf(
             QuestionRows(question) { shelf.question = null }
             return@Column
         }
-        val item = state.current
-        if (item != null) {
-            PlayerRow(
-                title = item.mediaMetadata.title?.toString().orEmpty(),
-                artist = item.mediaMetadata.artist?.toString().orEmpty(),
-                art = item.mediaMetadata.artworkUri,
-                playing = state.isPlaying,
-                onOpen = onOpenPlayer,
-                onToggle = player::togglePlay,
-                onNext = player::next,
-                onDrag = onPlayerDrag,
-                onRelease = onPlayerRelease,
-            )
-            Seam(durationMs = state.durationMs, playing = state.isPlaying, key = item.mediaId) { player.positionMs() }
+        // The player row grows out of the shelf when something starts, and
+        // folds back into it when the queue ends, keeping what it showed.
+        val nowItem = state.current
+        val last = remember { arrayOfNulls<MediaItem>(1) }
+        if (nowItem != null) last[0] = nowItem
+        AnimatedVisibility(
+            visible = nowItem != null,
+            enter = expandVertically(tween(220), expandFrom = Alignment.Bottom) + fadeIn(tween(180, delayMillis = 60)),
+            exit = shrinkVertically(tween(180), shrinkTowards = Alignment.Bottom) + fadeOut(tween(120)),
+        ) {
+            val item = nowItem ?: last[0] ?: return@AnimatedVisibility
+            val art = item.mediaMetadata.artworkUri
+            Box {
+                // The cover, blurred behind the row (§6.7), under Float at the
+                // strength that keeps the row's text readable over any cover.
+                Ambience(art, Modifier.matchParentSize(), fadeFrom = null, scrim = PhaseColor.Float.copy(alpha = BAR_SCRIM))
+                Column {
+                    PlayerRow(
+                        title = item.mediaMetadata.title?.toString().orEmpty(),
+                        artist = item.mediaMetadata.artist?.toString().orEmpty(),
+                        art = art,
+                        playing = state.isPlaying,
+                        onOpen = onOpenPlayer,
+                        onToggle = player::togglePlay,
+                        onNext = player::next,
+                        onDrag = onPlayerDrag,
+                        onRelease = onPlayerRelease,
+                    )
+                    Seam(durationMs = state.durationMs, playing = state.isPlaying, key = item.mediaId) { player.positionMs() }
+                }
+            }
         }
         // A message sits above navigation for a few seconds, so you can always
         // get somewhere; tapping it puts it away sooner.
@@ -308,8 +349,26 @@ fun Shelf(
                 signal = m.signal,
             )
         }
-        if (selection != null) SelectionRows(selection) else NavRow(destinations, current, onNavigate)
+        if (selection != null) SelectionRows(selection) else NavRow(destinations, current, position, onNavigate)
     }
+}
+
+/** How much of Float lies over the cover behind the player row: Text 1 keeps 6:1 over a white one. */
+private const val BAR_SCRIM = 0.72f
+
+/** A selection's actions where there's no shelf: now playing's queue (§6.6). Back lets go of it. */
+@Composable
+fun SelectionBar(selection: ShelfSelection, modifier: Modifier = Modifier) {
+    BackHandler { selection.onClear() }
+    Column(
+        modifier
+            .navigationBarsPadding()
+            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+            .fillMaxWidth()
+            .clip(PhaseShape.Floating)
+            .background(PhaseColor.Float)
+            .border(1.dp, PhaseColor.LineFloat, PhaseShape.Floating),
+    ) { SelectionRows(selection) }
 }
 
 @Composable
@@ -374,37 +433,73 @@ private fun Seam(durationMs: Long, playing: Boolean, key: String, position: () -
     }
 }
 
-/** Navigation: three icons, the one you're in on the light pill and named. */
+/**
+ * Navigation: three icons, the one you're in on the light pill and named.
+ * The pill is one thing that moves: with the finger while a swipe carries
+ * you between destinations, and with the slide when one is tapped. A name
+ * comes out from behind its icon as the pill arrives, and goes back in as
+ * it leaves (§6.16).
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NavRow(destinations: List<Destination>, current: String?, onNavigate: (String) -> Unit) {
+private fun NavRow(destinations: List<Destination>, current: String?, position: Float, onNavigate: (String) -> Unit) {
     val sayName = LocalSayName.current
-    Row(Modifier.fillMaxWidth().padding(8.dp).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        for (d in destinations) {
-            val here = d.route == current
-            Row(
-                Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .clip(PhaseShape.Pill)
-                    .background(if (here) PhaseColor.Text1 else PhaseColor.Float)
-                    .combinedClickable(
-                        role = Role.Tab, onClick = { onNavigate(d.route) },
-                        onLongClick = if (here) null else ({ sayName(d.label) }), onLongClickLabel = if (here) null else "Say its name",
+    val gap = 4.dp
+    Box(Modifier.fillMaxWidth().padding(8.dp).height(48.dp)) {
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .layout { measurable, constraints ->
+                    val gapPx = gap.roundToPx()
+                    val slot = (constraints.maxWidth - gapPx * (destinations.size - 1)) / destinations.size
+                    val pill = measurable.measure(Constraints.fixed(slot, constraints.maxHeight))
+                    layout(constraints.maxWidth, constraints.maxHeight) { pill.place(((slot + gapPx) * position).roundToInt(), 0) }
+                }
+                .clip(PhaseShape.Pill)
+                .background(PhaseColor.Text1),
+        )
+        Row(Modifier.fillMaxSize().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            destinations.forEachIndexed { i, d ->
+                val here = d.route == current
+                // How much of the pill is under this one: 1 where you are, 0 two away.
+                val under = (1f - abs(position - i)).coerceIn(0f, 1f)
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(PhaseShape.Pill)
+                        .combinedClickable(
+                            role = Role.Tab, onClick = { onNavigate(d.route) },
+                            onLongClick = if (here) null else ({ sayName(d.label) }), onLongClickLabel = if (here) null else "Say its name",
+                        )
+                        .semantics {
+                            selected = here
+                            contentDescription = d.label
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    PhaseIcon(d.icon, null, size = 22.dp, tone = if (under > 0.5f) IconTone.OnLight else IconTone.Dim)
+                    Text(
+                        d.label,
+                        Modifier.clearAndSetSemantics {}.outFromBehind(under).padding(start = 8.dp),
+                        color = PhaseColor.Ink, style = PhaseType.Button.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, softWrap = false,
                     )
-                    .semantics {
-                        selected = here
-                        if (!here) contentDescription = d.label
-                    },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            ) {
-                PhaseIcon(d.icon, null, size = 22.dp, tone = if (here) IconTone.OnLight else IconTone.Dim)
-                if (here) Text(d.label, color = PhaseColor.Ink, style = PhaseType.Button.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+                }
             }
         }
     }
 }
+
+/** Shows [fraction] of this, its end first, as if it slid out from behind what's before it. */
+private fun Modifier.outFromBehind(fraction: Float) =
+    graphicsLayer { alpha = fraction }
+        .clipToBounds()
+        .layout { measurable, constraints ->
+            val full = measurable.measure(constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity))
+            val shown = (full.width * fraction).roundToInt()
+            layout(shown, full.height) { full.placeRelative(shown - full.width, 0) }
+        }
 
 @Composable
 private fun SelectionRows(selection: ShelfSelection) {
@@ -416,7 +511,7 @@ private fun SelectionRows(selection: ShelfSelection) {
             Text(selection.title, color = PhaseColor.Text1, style = PhaseType.Name.copy(fontWeight = FontWeight.SemiBold))
             selection.note?.let { Text(it, color = PhaseColor.Text2, style = PhaseType.Small.copy(fontSize = 12.sp)) }
         }
-        Pill(null, selection.onClear, kind = PillKind.Quiet, icon = PhaseIcons.Close, height = 40.dp, contentDescription = "Clear")
+        Pill(null, selection.onClear, kind = PillKind.Quiet, icon = PhaseIcons.Close, height = 40.dp, contentDescription = "Clear the selection")
     }
     // One action is the decision this selection is for: it keeps its words.
     val only = selection.actions.singleOrNull()

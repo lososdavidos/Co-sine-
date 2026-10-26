@@ -47,6 +47,10 @@ object PhaseIcons {
         "shuffle",
         line("M3 7h3.5c2 0 3.2 1 4.3 2.7l2.4 4.6c1.1 1.7 2.3 2.7 4.3 2.7H21M18 14l3 3-3 3M3 17h3.5c1.4 0 2.4-.5 3.2-1.4M14.3 8.4c.8-.9 1.8-1.4 3.2-1.4H21M18 4l3 3-3 3", 2.25f),
     )
+    /** Repeat the queue. */
+    val Repeat = icon("repeat", line("M4 11V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 13v2a3 3 0 0 1-3 3H4M7 21l-3-3 3-3", 2.25f))
+    /** Repeat this song: the same loop, a one inside it. */
+    val RepeatOne = icon("repeat-one", line("M4 11V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 13v2a3 3 0 0 1-3 3H4M7 21l-3-3 3-3M11 10.5l1.5-1v5", 2.25f))
 
     // Where you go
     val Home = icon("home", solid("M4.5 10.4L12 4.5l7.5 5.9V19a1 1 0 0 1-1 1h-4v-4.5a1 1 0 0 0-1-1h-3a1 1 0 0 0-1 1V20h-4a1 1 0 0 1-1-1z"))
@@ -75,6 +79,10 @@ object PhaseIcons {
     val OnPhone = icon("on-phone", line("M12 4v10.5M7.5 10l4.5 4.5 4.5-4.5M5 19.5h14", 2.4f))
     val OffPhone = icon("off-phone", line("M12 4v6.5M7.5 10l4.5 4.5 1.2-1.2M5 19.5h14M4.5 4.5l15 15", 2.4f))
     val PlaylistAdd = icon("playlist-add", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M17.5 13v7M14 16.5h7", 2.4f))
+    /** Add to the end of what's playing. */
+    val QueueAdd = icon("queue-add", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6", 2.4f), solid("M15 13.5v6l5-3z"))
+    /** Out of the queue. */
+    val QueueRemove = icon("queue-remove", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M14 16.5h7", 2.4f))
     val PlaylistRemove = icon("playlist-remove", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M14 16.5h7", 2.4f))
     /** Makes a list of songs your own: save as playlist. */
     val PlaylistKeep = icon("playlist-keep", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M13.5 16.5l2.5 2.5 5-5", 2.4f))

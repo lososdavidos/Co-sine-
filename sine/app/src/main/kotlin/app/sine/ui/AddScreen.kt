@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -21,7 +22,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,6 +51,7 @@ import app.sine.core.cosine.ShareText
 import app.sine.core.server.Capability
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
+import app.sine.data.AppGraph
 import app.sine.graph
 import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.PhaseColor
@@ -65,6 +69,7 @@ import app.sine.ui.phase.Tag
 import app.sine.ui.phase.Tick
 import app.sine.ui.phase.rowSurface
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
@@ -73,8 +78,10 @@ import java.io.IOException
 
 /**
  * Add (§6.10): one field for a link or a search; Cosine works out which.
- * Results appear beneath; picking queues the ingest. The queue's state is
+ * Results appear beneath as you type, each with its own add button; an
+ * album or playlist can be added whole from the top. The queue's state is
  * shown here too, because getting music in has visible state (G4, Q13).
+ * Search's + reaches the same sources in place ([SourceFinder]).
  */
 @Composable
 fun AddScreen(session: AccountSession, initialText: String, onCorrect: (trackId: String) -> Unit) {
@@ -88,23 +95,83 @@ fun AddScreen(session: AccountSession, initialText: String, onCorrect: (trackId:
     }
 }
 
+/** Whether this account can add music from the sources at all. */
+fun canAdd(session: AccountSession) = session.cosine != null && Capability.INGEST in session.account.kind.capabilities
+
 @Composable
 private fun AddContent(session: AccountSession, cosine: CosineClient, initialText: String, onCorrect: ((String) -> Unit)?) {
-    val graph = LocalContext.current.graph
-    val scope = rememberCoroutineScope()
     var input by rememberSaveable { mutableStateOf(initialText) }
-    var lookup by remember { mutableStateOf<Lookup?>(null) }
-    // The search an album or playlist was opened from, to go back to.
-    var searched by remember { mutableStateOf<Lookup?>(null) }
-    // A playlist's songs also become a playlist in the library unless unticked.
-    var keepPlaylist by remember { mutableStateOf(true) }
-    var selected by remember { mutableStateOf(setOf<String>()) }
-    var busy by remember { mutableStateOf(false) }
-    var looking by remember { mutableStateOf<Job?>(null) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var messageSignal by remember { mutableStateOf(Signal.None) }
-    var jobs by remember { mutableStateOf<List<IngestJob>>(emptyList()) }
-    var refreshJobs by remember { mutableStateOf(0) }
+    val finder = rememberSourceFinder(session, cosine)
+    // Arriving from the share sheet: look the link up at once, or keep it if offline.
+    LaunchedEffect(Unit) {
+        if (initialText.isBlank()) return@LaunchedEffect
+        if (session.isOnline) finder.look(initialText.trim())
+        else ShareText.extractUrl(initialText)?.let {
+            finder.looked = initialText.trim() // kept, not looked up
+            finder.keepForLater(listOf(it))
+        }
+    }
+    LookAsYouType(finder, input)
+
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
+        item {
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                TopSpace()
+                Text("Add", color = PhaseColor.Text1, style = PhaseType.display(40.sp))
+                PhaseField(
+                    value = input,
+                    onValueChange = { input = it },
+                    label = "Paste a link or search",
+                    leading = PhaseIcons.Search,
+                    onClear = { input = "" },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { finder.look(input.trim()) }),
+                )
+                FinderStatus(finder)
+            }
+        }
+        finderResults(finder, onCorrect)
+    }
+}
+
+/**
+ * Looking music up in the sources and adding it (§6.10), for the Add page
+ * and for Search's + alike: what was found, what's been queued from it,
+ * and Cosine's queue of adds, kept fresh while it's on screen.
+ */
+@Stable
+class SourceFinder internal constructor(
+    private val session: AccountSession,
+    private val cosine: CosineClient,
+    private val graph: AppGraph,
+    private val scope: CoroutineScope,
+) {
+    var lookup by mutableStateOf<Lookup?>(null)
+        private set
+    /** The search an album or playlist was opened from, to go back to. */
+    var searched by mutableStateOf<Lookup?>(null)
+        private set
+    /** A playlist's songs also become a playlist in the library unless unticked. */
+    var keepPlaylist by mutableStateOf(true)
+    /** Adding: the add buttons wait. */
+    var busy by mutableStateOf(false)
+        private set
+    /** Looking up: results may still be coming. */
+    var searching by mutableStateOf(false)
+        private set
+    var message by mutableStateOf<String?>(null)
+        private set
+    var messageSignal by mutableStateOf(Signal.None)
+        private set
+    var jobs by mutableStateOf<List<IngestJob>>(emptyList())
+        internal set
+    /** Links queued from these results, so their rows say so. */
+    var queued by mutableStateOf(setOf<String>())
+        private set
+    internal var refreshJobs by mutableIntStateOf(0)
+    /** The text last looked up, so typing back to it doesn't ask again. */
+    internal var looked: String? = null
+    private var looking: Job? = null
 
     /** Offline, a link is kept and submitted on reconnect, and the screen says so. */
     fun keepForLater(urls: List<String>) {
@@ -114,7 +181,7 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
         messageSignal = Signal.Server
     }
 
-    suspend fun <T> attempt(block: suspend () -> T): T? = try {
+    private suspend fun <T> attempt(block: suspend () -> T): T? = try {
         block()
     } catch (e: CancellationException) {
         throw e
@@ -128,12 +195,13 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
         null
     }
 
-    fun look(text: String = input.trim(), from: Lookup? = null) {
+    fun look(text: String, from: Lookup? = null) {
         if (text.isEmpty()) return
+        looked = text
         // Opening an album from results still coming in stops that search.
         looking?.cancel()
         looking = scope.launch {
-            busy = true
+            searching = true
             message = null
             // A search shows as it goes where Cosine can say (§6.10): the first
             // site's songs in a few seconds, not when the slowest is done.
@@ -146,8 +214,6 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
                         first = false
                         searched = from?.copy(partial = false) // stopped, so as far as it got
                         keepPlaylist = true
-                        // A collection is queued whole unless you untick things; search results start unticked.
-                        selected = if (result.isSearch) emptySet() else result.items.filterNot { it.inLibrary }.map { it.url }.toSet()
                     }
                     if (!result.partial && result.items.isEmpty() && result.collections.isEmpty()) {
                         message = "No results."
@@ -157,12 +223,29 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
             }
             // Cut off part way (the connection lost): what came is all there is.
             lookup = lookup?.takeIf { it.partial }?.copy(partial = false) ?: lookup
-            busy = false
+            searching = false
         }
     }
 
+    /** Nothing to look up: what was found goes. */
+    fun reset() {
+        looking?.cancel()
+        looking = null
+        looked = null
+        lookup = null
+        searched = null
+        message = null
+        searching = false
+    }
+
+    /** Back from an album or playlist to the search it was opened from. */
+    fun back() {
+        lookup = searched
+        searched = null
+    }
+
     fun add(urls: List<String>, force: Boolean = false) {
-        // Songs picked from an album or playlist say where from: an album
+        // Songs added from an album or playlist say where from: an album
         // lends them its name, a playlist becomes one in the library — even
         // with nothing to fetch, from the songs already here.
         val from = lookup?.takeIf { it.isCollection }?.url
@@ -170,20 +253,24 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
         if (urls.isEmpty() && !playlistOnly) return
         if (!session.isOnline) {
             keepForLater(urls)
+            queued = queued + urls
             return
         }
         scope.launch {
             busy = true
-            val queued = attempt { cosine.submit(urls, force, from, keepPlaylist) }
-            if (queued == null && message == Voice.serverUnreachable(true)) keepForLater(urls)
-            if (queued != null) {
+            val done = attempt { cosine.submit(urls, force, from, keepPlaylist) }
+            if (done == null && message == Voice.serverUnreachable(true)) {
+                keepForLater(urls)
+                queued = queued + urls
+            }
+            if (done != null) {
                 messageSignal = Signal.None
                 message = when {
                     playlistOnly -> "Playlist made from the songs already in your library."
-                    queued.size == 1 -> "Queued."
-                    else -> "Queued ${queued.size} links."
+                    done.size == 1 -> "Queued."
+                    else -> "Queued ${done.size} links."
                 }
-                selected = emptySet()
+                queued = queued + urls
                 refreshJobs++
             }
             busy = false
@@ -196,113 +283,117 @@ private fun AddContent(session: AccountSession, cosine: CosineClient, initialTex
             refreshJobs++
         }
     }
+}
 
-    // Arriving from the share sheet: look the link up at once, or keep it if offline.
-    LaunchedEffect(Unit) {
-        if (initialText.isBlank()) return@LaunchedEffect
-        if (session.isOnline) look()
-        else ShareText.extractUrl(initialText)?.let { keepForLater(listOf(it)) }
-    }
-    // Poll the queue while this screen is open: quickly while something is moving.
-    LaunchedEffect(refreshJobs) {
+@Composable
+fun rememberSourceFinder(session: AccountSession, cosine: CosineClient): SourceFinder {
+    val graph = LocalContext.current.graph
+    val scope = rememberCoroutineScope()
+    val finder = remember(session, cosine) { SourceFinder(session, cosine, graph, scope) }
+    // Cosine's queue of adds while this is on screen: quickly while something is moving.
+    LaunchedEffect(finder, finder.refreshJobs) {
         while (true) {
             if (session.isOnline) runCatching {
-                val before = jobs.filter { it.isActive }.map { it.id }.toSet()
-                jobs = cosine.jobs(30)
+                val before = finder.jobs.filter { it.isActive }.map { it.id }.toSet()
+                finder.jobs = cosine.jobs(30)
                 // Something just landed: bring it into the library now.
-                if (jobs.any { it.id in before && !it.isActive }) session.syncSoon()
+                if (finder.jobs.any { it.id in before && !it.isActive }) session.syncSoon()
             }
-            delay(if (jobs.any { it.isActive }) 1_500 else 6_000)
+            delay(if (finder.jobs.any { it.isActive }) 1_500 else 6_000)
         }
     }
+    return finder
+}
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
-        item {
-            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                TopSpace()
-                Text("Add", color = PhaseColor.Text1, style = PhaseType.display(40.sp))
-                PhaseField(
-                    value = input,
-                    onValueChange = { input = it },
-                    label = "Paste a link or search",
-                    onClear = { input = "" },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { look() }),
-                )
-                Pill(if (busy) "Working…" else "Look up", { look() }, enabled = input.isNotBlank() && !busy, icon = PhaseIcons.Search)
-                message?.let { StatusLine(it, signal = messageSignal) }
-                if (lookup?.partial == true) StatusLine("Still searching…", signal = Signal.Server)
-            }
+/**
+ * Looks [text] up by itself (§6.10): a link at once, a search once it's
+ * three characters long and the typing pauses. Return still looks up
+ * straight away.
+ */
+@Composable
+fun LookAsYouType(finder: SourceFinder, text: String) {
+    LaunchedEffect(finder, text) {
+        val t = text.trim()
+        if (t.isEmpty()) {
+            finder.reset()
+            return@LaunchedEffect
         }
+        if (t == finder.looked) return@LaunchedEffect
+        val link = ShareText.extractUrl(t) != null
+        if (!link && t.length < MIN_SEARCH) return@LaunchedEffect
+        if (!link) delay(LOOK_PAUSE_MS)
+        finder.look(t)
+    }
+}
 
-        lookup?.let { l ->
-            searched?.let { back ->
-                item {
-                    Pill(
-                        "Back to search results", { lookup = back; searched = null; selected = emptySet() },
-                        Modifier.padding(horizontal = 8.dp, vertical = 8.dp), kind = PillKind.Quiet, icon = PhaseIcons.Back, height = 40.dp,
-                    )
-                }
-            }
-            if (l.isCollection) item { CollectionHeading(l, keepPlaylist) { keepPlaylist = it } }
-            // Albums and playlists come first when one is what was asked for.
-            val collectionsFirst = l.collections.firstOrNull()?.asked == true
-            if (collectionsFirst) collectionResults(l) { look(it.url, from = l) }
-            if (l.isSearch && l.items.isNotEmpty()) item {
-                SectionHeader(if (l.backend == "api") "Songs, from the source APIs" else "Songs")
-            }
-            // Keyed by position: a result list may repeat a link, and a
-            // repeated LazyColumn key crashes.
-            itemsIndexed(l.items, key = { i, it -> "r:$i:${it.url}" }) { _, item ->
-                ResultRow(item, checked = item.url in selected) {
-                    selected = if (item.url in selected) selected - item.url else selected + item.url
-                }
-            }
-            if (l.items.isNotEmpty()) item {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Pill(
-                        if (selected.size <= 1) "Add" else "Add ${selected.size}",
-                        { add(l.items.map { it.url }.filter { it in selected }) },
-                        kind = PillKind.Primary, enabled = selected.isNotEmpty() && !busy,
-                    )
-                    // Q12: something you already have is refused unless you insist.
-                    val owned = l.items.filter { it.inLibrary }
-                    if (!l.isSearch && owned.isNotEmpty() && selected.isEmpty()) {
-                        if (l.isPlaylist && keepPlaylist) Pill("Make the playlist", { add(emptyList()) }, enabled = !busy)
-                        Pill("Add anyway", { add(owned.map { it.url }, force = true) }, enabled = !busy)
-                    }
-                }
-            }
-            if (!collectionsFirst) collectionResults(l) { look(it.url, from = l) }
-        }
+/** Searching the sources costs Cosine a fetch per site: three letters is the least that narrows it. */
+const val MIN_SEARCH = 3
+private const val LOOK_PAUSE_MS = 500L
 
-        if (jobs.isNotEmpty()) {
-            item {
-                val fetching = jobs.count { it.isActive }
-                SectionLabel("Recent adds", end = if (fetching > 0) "$fetching fetching" else null)
-            }
-            items(jobs, key = { "j:" + it.id }) { job ->
-                // Anything added can be corrected where it was filed, not
-                // only what lands in the review queue (§6.12).
-                val trackId = job.trackId
-                JobRow(
-                    job,
-                    onRetry = { retry(job, false) },
-                    onForce = { retry(job, true) },
-                    onCorrect = if (trackId != null && onCorrect != null) ({ onCorrect(trackId) }) else null,
-                )
-            }
+/** What the finder is doing, under its field. */
+@Composable
+fun FinderStatus(finder: SourceFinder, modifier: Modifier = Modifier) {
+    val l = finder.lookup
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        finder.message?.let { StatusLine(it, signal = finder.messageSignal) }
+        if (finder.searching && (l == null || l.partial)) {
+            val link = finder.looked?.let { ShareText.extractUrl(it) } != null
+            StatusLine(if (link) "Looking it up…" else "Searching the sources…", signal = Signal.Server)
         }
     }
 }
 
-/** What a looked-up album or playlist is, and what adding it does (§3.1a). */
+/** The finder's results, then Cosine's recent adds. */
+fun LazyListScope.finderResults(finder: SourceFinder, onCorrect: ((String) -> Unit)?) {
+    finder.lookup?.let { l ->
+        finder.searched?.let {
+            item {
+                Pill(
+                    "Back to search results", finder::back,
+                    Modifier.padding(horizontal = 8.dp, vertical = 8.dp), kind = PillKind.Quiet, icon = PhaseIcons.Back, height = 40.dp,
+                )
+            }
+        }
+        if (l.isCollection) item { CollectionHeading(l, finder) }
+        // Albums and playlists come first when one is what was asked for.
+        val collectionsFirst = l.collections.firstOrNull()?.asked == true
+        if (collectionsFirst) collectionResults(l) { finder.look(it.url, from = l) }
+        if (l.isSearch && l.items.isNotEmpty()) item {
+            SectionHeader(if (l.backend == "api") "Songs, from the source APIs" else "Songs")
+        }
+        // Keyed by position: a result list may repeat a link, and a
+        // repeated LazyColumn key crashes.
+        itemsIndexed(l.items, key = { i, it -> "r:$i:${it.url}" }) { _, item ->
+            ResultRow(item, queued = item.url in finder.queued, enabled = !finder.busy) { finder.add(listOf(item.url)) }
+        }
+        if (!collectionsFirst) collectionResults(l) { finder.look(it.url, from = l) }
+    }
+
+    val jobs = finder.jobs
+    if (jobs.isNotEmpty()) {
+        item {
+            val fetching = jobs.count { it.isActive }
+            SectionLabel("Recent adds", end = if (fetching > 0) "$fetching fetching" else null)
+        }
+        items(jobs, key = { "j:" + it.id }) { job ->
+            // Anything added can be corrected where it was filed, not
+            // only what lands in the review queue (§6.12).
+            val trackId = job.trackId
+            JobRow(
+                job,
+                onRetry = { finder.retry(job, false) },
+                onForce = { finder.retry(job, true) },
+                onCorrect = if (trackId != null && onCorrect != null) ({ onCorrect(trackId) }) else null,
+            )
+        }
+    }
+}
+
+/** What a looked-up album or playlist is, and adding it whole, at the top (§3.1a). */
 @Composable
-private fun CollectionHeading(l: Lookup, keepPlaylist: Boolean, onKeepPlaylist: (Boolean) -> Unit) {
+private fun CollectionHeading(l: Lookup, finder: SourceFinder) {
     val count = Voice.songs(l.items.size)
+    val keepPlaylist = finder.keepPlaylist
     Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Tag(
             if (l.isAlbum) "Album" else if (l.isPlaylist) "Playlist" else "Collection",
@@ -311,14 +402,14 @@ private fun CollectionHeading(l: Lookup, keepPlaylist: Boolean, onKeepPlaylist: 
         Text(l.title ?: "Untitled", color = PhaseColor.Text1, style = PhaseType.display(32.sp))
         if (l.isAlbum) l.artist?.let { Text(it, color = PhaseColor.Text2, style = PhaseType.Body) }
         Text(
-            if (l.isPlaylist) "$count. ${Voice.PLAYLIST_FILED}" else "$count. Untick what you don't want.",
+            if (l.isPlaylist) "$count. ${Voice.PLAYLIST_FILED}" else "$count. Add them all, or one at a time.",
             color = PhaseColor.Text2, style = PhaseType.Small,
         )
         if (l.isPlaylist) {
             Row(
                 Modifier
                     .clip(PhaseShape.Square)
-                    .toggleable(value = keepPlaylist, role = Role.Checkbox, onValueChange = onKeepPlaylist)
+                    .toggleable(value = keepPlaylist, role = Role.Checkbox, onValueChange = { finder.keepPlaylist = it })
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -326,6 +417,23 @@ private fun CollectionHeading(l: Lookup, keepPlaylist: Boolean, onKeepPlaylist: 
                 Tick(keepPlaylist)
                 Text("Keep it as a playlist in my library, with the songs I already have", color = PhaseColor.Text1, style = PhaseType.Small.copy(fontSize = 14.sp))
             }
+        }
+        val wanted = l.items.filterNot { it.inLibrary || it.url in finder.queued }.map { it.url }
+        // Q12: something you already have is refused unless you insist.
+        val owned = l.items.filter { it.inLibrary && it.url !in finder.queued }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when {
+                wanted.isNotEmpty() -> Pill(
+                    if (wanted.size == l.items.size) "Add all ${wanted.size}" else "Add the other ${wanted.size}",
+                    { finder.add(wanted) }, kind = PillKind.Primary, icon = PhaseIcons.Plus, enabled = !finder.busy,
+                )
+                l.isPlaylist && keepPlaylist && owned.isNotEmpty() ->
+                    Pill("Make the playlist", { finder.add(emptyList()) }, kind = PillKind.Primary, enabled = !finder.busy)
+            }
+            if (owned.isNotEmpty()) Pill("Add anyway", { finder.add(owned.map { it.url }, force = true) }, enabled = !finder.busy)
         }
     }
 }
@@ -345,18 +453,20 @@ private fun LazyListScope.collectionResults(l: Lookup, onOpen: (AddItem) -> Unit
     }
 }
 
-/** A result to tick. Whether it's the song as released is Cosine's finding, so it carries Cosine's dot. */
+/**
+ * A result with its own add button: one tap queues it. What's queued
+ * says so; what's already in the library is marked instead. Whether it's the
+ * song as released is Cosine's finding, so it carries Cosine's dot.
+ */
 @Composable
-private fun ResultRow(item: AddItem, checked: Boolean, onToggle: () -> Unit) {
+private fun ResultRow(item: AddItem, queued: Boolean, enabled: Boolean, onAdd: () -> Unit) {
     Row(
         Modifier
             .rowSurface(false)
-            .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() })
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Tick(checked)
         Art(item.thumbnail, 44.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(item.title, color = PhaseColor.Text1, style = PhaseType.Name, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -373,7 +483,13 @@ private fun ResultRow(item: AddItem, checked: Boolean, onToggle: () -> Unit) {
                 note != null && note.startsWith("Same") -> StatusLine(note, signal = Signal.Server)
                 note != null -> Text(note, color = PhaseColor.Text3, style = PhaseType.Small)
             }
-            if (item.inLibrary) Tag(null, Modifier.padding(top = 2.dp), icon = PhaseIcons.Library, contentDescription = "In your library")
+        }
+        Box(Modifier.size(width = 56.dp, height = 44.dp), contentAlignment = Alignment.Center) {
+            when {
+                queued -> PhaseIcon(PhaseIcons.Check, "Queued", size = 20.dp, tone = IconTone.Sine)
+                item.inLibrary -> PhaseIcon(PhaseIcons.Library, "In your library", size = 20.dp, tone = IconTone.Faint)
+                else -> Pill(null, onAdd, icon = PhaseIcons.Plus, height = 40.dp, enabled = enabled, contentDescription = "Add ${item.title}")
+            }
         }
     }
 }

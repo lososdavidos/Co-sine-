@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,7 +35,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
+import app.sine.core.model.Track
 import app.sine.core.text.Voice
+import app.sine.data.AccountSession
 import app.sine.graph
 import app.sine.ui.phase.Ambience
 import app.sine.ui.phase.Chip
@@ -50,18 +54,25 @@ import app.sine.ui.phase.Tag
 import app.sine.ui.phase.WaveScrubber
 import app.sine.ui.phase.numberColumn
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
- * Now playing (§6.6): a floating sheet with the cover's ambience at its top
- * and the queue beneath on the same surface — one surface at two heights,
- * never an overlay opening another (§6.5). The wave is the position.
+ * Now playing (§6.6): a floating sheet in the cover's ambience, top to
+ * bottom, with the queue beneath on the same surface — one surface at two
+ * heights, never an overlay opening another (§6.5). The wave is the
+ * position. Songs in the queue are held to select them, as anywhere; with
+ * no shelf here, their actions float at the foot of the sheet.
  */
 @Composable
-fun NowPlayingScreen(onClose: () -> Unit) {
+fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
     val player = LocalContext.current.graph.player
+    val nav = LocalPages.current
+    val scope = rememberCoroutineScope()
     val state by player.state.collectAsStateWithLifecycle()
     var positionMs by remember { mutableLongStateOf(0L) }
     var scrub by remember { mutableStateOf<Float?>(null) }
+    // Queue positions held; a change to the queue lets go of them.
+    var selected by remember(state.queue) { mutableStateOf(setOf<Int>()) }
 
     LaunchedEffect(state.current, state.isPlaying) {
         while (true) {
@@ -70,8 +81,16 @@ fun NowPlayingScreen(onClose: () -> Unit) {
         }
     }
 
+    /** The queue's songs as the library knows them, for what needs more than what's playing. */
+    fun withTracks(ids: List<String>, then: (List<Track>) -> Unit) {
+        scope.launch {
+            val tracks = ids.mapNotNull { id -> runCatching { session.track(id).value }.getOrNull() }
+            if (tracks.isEmpty()) say(Voice.TRACK_UNAVAILABLE) else then(tracks)
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(PhaseColor.Ground)) {
-        Column(
+        Box(
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
@@ -81,9 +100,11 @@ fun NowPlayingScreen(onClose: () -> Unit) {
         ) {
             val item = state.current
             if (item == null) {
-                Pill(null, onClose, Modifier.padding(16.dp), kind = PillKind.Quiet, icon = PhaseIcons.Down, height = 40.dp, contentDescription = "Close")
-                Message("Nothing playing.")
-                return@Column
+                Column {
+                    Pill(null, onClose, Modifier.padding(16.dp), kind = PillKind.Quiet, icon = PhaseIcons.Down, height = 40.dp, contentDescription = "Close")
+                    Message("Nothing playing.")
+                }
+                return@Box
             }
             val meta = item.mediaMetadata
             val duration = state.durationMs
@@ -91,32 +112,34 @@ fun NowPlayingScreen(onClose: () -> Unit) {
             val shown = scrub ?: fraction
             val shownMs = (shown * duration).toLong()
 
+            // The cover's ambience behind the whole sheet, not just its top
+            // (§6.7): the same scrim wherever there's text, so it reads over any cover.
+            Ambience(meta.artworkUri, Modifier.matchParentSize(), fadeTo = PhaseColor.Float, fadeFrom = null)
+
             LazyColumn(Modifier.fillMaxSize()) {
                 item {
-                    Ambience(meta.artworkUri, Modifier.fillMaxWidth(), fadeTo = PhaseColor.Float) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Box(
-                                Modifier
-                                    .padding(top = 10.dp)
-                                    .align(Alignment.CenterHorizontally)
-                                    .width(36.dp)
-                                    .height(4.dp)
-                                    .background(PhaseColor.Text1.copy(alpha = 0.4f), RoundedCornerShape(2.dp)),
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Pill(null, onClose, kind = PillKind.Floating, icon = PhaseIcons.Down, height = 40.dp, width = 48.dp, contentDescription = "Close")
-                                Column(Modifier.weight(1f)) {
-                                    PhaseLabel("Playing from", color = PhaseColor.OnScrim)
-                                    Text(
-                                        meta.albumTitle?.toString().orEmpty(), color = PhaseColor.Text1,
-                                        style = PhaseType.Name.copy(fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                // The Device marker (§6.6): where this is playing.
-                                Tag(null, icon = PhaseIcons.Device, contentDescription = "Playing on this phone")
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Box(
+                            Modifier
+                                .padding(top = 10.dp)
+                                .align(Alignment.CenterHorizontally)
+                                .width(36.dp)
+                                .height(4.dp)
+                                .background(PhaseColor.Text1.copy(alpha = 0.4f), RoundedCornerShape(2.dp)),
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Pill(null, onClose, kind = PillKind.Floating, icon = PhaseIcons.Down, height = 40.dp, width = 48.dp, contentDescription = "Close")
+                            Column(Modifier.weight(1f)) {
+                                PhaseLabel("Playing from", color = PhaseColor.OnScrim)
+                                Text(
+                                    meta.albumTitle?.toString().orEmpty(), color = PhaseColor.Text1,
+                                    style = PhaseType.Name.copy(fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
                             }
-                            Art(meta.artworkUri, 350.dp, Modifier.fillMaxWidth().aspectRatio(1f))
+                            // The Device marker (§6.6): where this is playing.
+                            Tag(null, icon = PhaseIcons.Device, contentDescription = "Playing on this phone")
                         }
+                        Art(meta.artworkUri, 350.dp, Modifier.fillMaxWidth().aspectRatio(1f))
                     }
                 }
                 item {
@@ -125,12 +148,12 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                             meta.title?.toString().orEmpty(), color = PhaseColor.Text1, style = PhaseType.display(40.sp),
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
-                        Text(meta.artist?.toString().orEmpty(), color = PhaseColor.Text2, style = PhaseType.Body.copy(fontSize = 17.sp))
+                        Text(meta.artist?.toString().orEmpty(), color = PhaseColor.OnScrim, style = PhaseType.Body.copy(fontSize = 17.sp))
                         val facts = listOfNotNull(
                             meta.trackNumber?.let { "Track $it" },
                             meta.releaseYear?.toString(),
                         )
-                        if (facts.isNotEmpty()) PhaseLabel(facts.joinToString(" · "), Modifier.padding(top = 2.dp))
+                        if (facts.isNotEmpty()) PhaseLabel(facts.joinToString(" · "), Modifier.padding(top = 2.dp), color = PhaseColor.OnScrim)
                     }
                 }
                 item {
@@ -146,8 +169,8 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                             description = "Position, ${Voice.formatDuration((shownMs / 1000).toInt())} of ${Voice.formatDuration((duration / 1000).toInt())}",
                         )
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(Voice.formatDuration((shownMs / 1000).toInt()), color = PhaseColor.Text2, style = PhaseType.Data)
-                            Text("−" + Voice.formatDuration(((duration - shownMs).coerceAtLeast(0) / 1000).toInt()), color = PhaseColor.Text2, style = PhaseType.Data)
+                            Text(Voice.formatDuration((shownMs / 1000).toInt()), color = PhaseColor.OnScrim, style = PhaseType.Data)
+                            Text("−" + Voice.formatDuration(((duration - shownMs).coerceAtLeast(0) / 1000).toInt()), color = PhaseColor.OnScrim, style = PhaseType.Data)
                         }
                     }
                 }
@@ -165,8 +188,25 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                         )
                         Pill(null, player::next, icon = PhaseIcons.Next, height = 56.dp, width = 72.dp, contentDescription = "Next")
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    // How it plays on, and keeping it: shuffle, repeat, add to a playlist.
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                         Chip(null, state.shuffle, player::toggleShuffle, icon = PhaseIcons.Shuffle, contentDescription = "Shuffle")
+                        Chip(
+                            null, state.repeat != Player.REPEAT_MODE_OFF, player::cycleRepeat,
+                            icon = if (state.repeat == Player.REPEAT_MODE_ONE) PhaseIcons.RepeatOne else PhaseIcons.Repeat,
+                            contentDescription = when (state.repeat) {
+                                Player.REPEAT_MODE_ALL -> "Repeat: the queue"
+                                Player.REPEAT_MODE_ONE -> "Repeat: this song"
+                                else -> "Repeat: off"
+                            },
+                        )
+                        if (session.canEditPlaylists) {
+                            Pill(
+                                null, { withTracks(listOf(item.mediaId)) { t -> nav.form { AddToPlaylistForm(session, t) } } },
+                                kind = PillKind.Outline, icon = PhaseIcons.PlaylistAdd, height = 40.dp, width = 52.dp,
+                                contentDescription = "Add to playlist",
+                            )
+                        }
                     }
                     Spacer(Modifier.height(20.dp))
                 }
@@ -188,6 +228,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                 }
                 itemsIndexed(state.queue) { i, q ->
                     val now = i == state.index
+                    val on = i in selected
                     val numbers = numberColumn(state.queue.size)
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).background(PhaseColor.Raised)) {
                         ItemRow(
@@ -196,12 +237,16 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                             art = null,
                             showArt = false,
                             playing = now,
+                            selected = on,
                             leading = {
-                                if (now) PlayingBars(Modifier.width(numbers))
-                                else RowNumber(i + 1, numbers)
+                                if (now) PlayingBars(Modifier.width(numbers), color = if (on) PhaseColor.Ink else PhaseColor.Sine)
+                                else RowNumber(i + 1, numbers, color = if (on) PhaseColor.Ink else PhaseColor.Text3)
                             },
                             modifier = Modifier.padding(horizontal = 0.dp),
-                        ) { player.skipTo(i) }
+                            onLongClick = { selected = selected.toggle(i) },
+                        ) {
+                            if (selected.isNotEmpty()) selected = selected.toggle(i) else player.skipTo(i)
+                        }
                     }
                 }
                 item {
@@ -211,10 +256,33 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                             .padding(horizontal = 8.dp)
                             .background(PhaseColor.Raised)
                             .navigationBarsPadding()
-                            .height(24.dp),
+                            .height(if (selected.isEmpty()) 24.dp else 140.dp),
                     )
                 }
+            }
+
+            if (selected.isNotEmpty()) {
+                val chosen = selected.sorted()
+                val ids = chosen.mapNotNull { state.queue.getOrNull(it)?.mediaId }
+                val actions = buildList {
+                    add(ShelfAction("Play", icon = PhaseIcons.Play) { player.skipTo(chosen.first()); selected = emptySet() })
+                    add(ShelfAction("Take out of the queue", icon = PhaseIcons.QueueRemove) {
+                        player.removeFromQueue(chosen)
+                        say(if (chosen.size == 1) "Taken out of the queue." else "${chosen.size} songs taken out of the queue.")
+                        selected = emptySet()
+                    })
+                    if (session.canEditPlaylists) add(ShelfAction("Add to playlist", icon = PhaseIcons.PlaylistAdd) {
+                        withTracks(ids) { t -> nav.form { AddToPlaylistForm(session, t) } }
+                        selected = emptySet()
+                    })
+                }
+                SelectionBar(
+                    ShelfSelection(if (chosen.size == 1) "1 selected" else "${chosen.size} selected", actions, onClear = { selected = emptySet() }),
+                    Modifier.align(Alignment.BottomCenter),
+                )
             }
         }
     }
 }
+
+private fun Set<Int>.toggle(i: Int) = if (i in this) this - i else this + i

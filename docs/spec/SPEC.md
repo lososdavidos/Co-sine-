@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 166 resolved decisions · last updated 2026-10-26 (icons carry the actions, slightly 3D, §6.1; Phase's two blues, §6.1; motion and gestures, §6.16; Home tiles, §6.4)
+**Status:** COMPLETE DRAFT · 172 resolved decisions · last updated 2026-10-26 (search history, adding from Search, per-song add, §6.8, §6.10; repeat, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -1394,7 +1394,10 @@ Three panes, and the questionable fourth is gone.
 row selects it — the whole row fills Sine with black ink (§6.1) — and the
 shelf's contents swap to the available actions for that
 selection. No overlay is opened, so nothing conflicts, and multi-select comes
-free: long-press one row, tap others, act on all of them.
+free: long-press one row, tap others, act on all of them. Every song row works
+this way, search results and the queue included. For songs the actions are
+Play, Add to queue (to the end of what's playing, or play them if nothing is),
+Download, Add to playlist and, where it applies, Remove.
 
 This also means the shelf has three states, not two:
 
@@ -1429,19 +1432,38 @@ its own, and Close or back slides it down. Open, it covers the whole screen. A
 downward drag closes it only when its content is scrolled to the top, and a
 drag on the wave always seeks.
 
+`REVISED` **The sheet grows out of the shelf.** (Was: it slid up from below
+the screen.) Its surface starts as the shelf's own outline and, as it comes
+up, its top follows the finger while its sides and foot spread to the screen's
+edges and its corners turn from the shelf's to the sheet's. It fades in over
+the first fifth of the way, so the shelf seems to become the sheet rather than
+be covered by it. Going down, the same in reverse.
+
 `RESOLVED` **Jam is a strip inside the sheet.** When a session is active, a
 participant strip sits above the transport — who is listening, who queued the
 current track. Starting a jam is a long-press action on the shelf, like every
 other action in the app. Jam stays attached to what is playing and costs no new
 surface.
 
-`REVISED` **The cover's ambience fills the sheet's top; the cover sits on it,
-whole.** (Was: full-bleed artwork behind a scrim, handing off to glass beneath
-the controls — a resolution of Graphit's glass rule that Phase no longer needs.)
-The sheet is a Float surface with 28dp top corners and a hairline edge. The
-cover, blurred and scrimmed, fills its upper region and fades to Float under the
-title; the cover itself sits on that ambience, square and whole. Title,
-position and transport sit on plain Float, where their contrast is known.
+`REVISED` **The cover's ambience fills the whole sheet; the cover sits on it,
+whole.** (Was: the ambience filled the sheet's top and faded to Float under
+the title, which read as grey with a tinted header.) The sheet is a Float
+surface with 28dp top corners. The cover, blurred, a fixed step more
+saturated and under the constant scrim (§6.7), lies behind everything on it,
+title, wave and transport included, and stays put while the sheet scrolls; the
+cover itself sits on that ambience, square and whole. Text on it is Text 1 or
+On-scrim, never Text 2, so it reads over any cover. The queue sits on its own
+Raised panel, where its contrast is known.
+
+`RESOLVED` **Shuffle, repeat and Add to playlist sit under the transport.**
+Repeat goes off, the whole queue, this song, and off again; its icon gets a
+one for this song. Add to playlist opens the same form as from any selection,
+for the song playing.
+
+`RESOLVED` **The queue's songs are held to select them,** as anywhere (§6.5).
+Now playing has no shelf, so their actions float at the foot of the sheet, in
+the shelf's own surface: Play, Take out of the queue, Add to playlist. Back
+lets go of the selection first.
 
 `REVISED` **Progress is the wave.** (Was: a growing blue plane.) A sine wave
 across the sheet: Sine up to the position, grey after it, with a Sine knob.
@@ -1459,6 +1481,12 @@ in mono, always Text 2, never overlapping.
 progress line along the seam beneath it, and a Device indicator.** The
 Device marker is not decoration — once remote control exists, playback may be on
 the desktop, and without it you press play on the wrong machine.
+
+`REVISED` **The player row carries the cover's ambience and grows out of the
+shelf.** (Was: plain Float, appearing at once.) The cover, blurred, lies behind
+the row under Float at 72%, which keeps Text 1 above 6:1 over a white cover.
+When something starts, the row unfolds upward out of the navigation; when the
+queue ends it folds back in.
 
 `NOTE` There is one honest escape hatch worth remembering: Phase forbids an
 overlay opening *another overlay*, but inline expansion inside an existing
@@ -1478,7 +1506,10 @@ Three rules keep this from going wrong, and all three are non-negotiable:
 1. **Ambience is a header treatment, never a page background.** It occupies the
    top of the screen and fades out; content below sits on the ground. Long lists
    over a photograph are unreadable, and Phase's Text 2 prose rule assumes a
-   known ground.
+   known ground. `REVISED` Now playing is the one exception (§6.6): what sits
+   on it is few, large and fixed, and its long list, the queue, has a panel of
+   its own. The shelf's player row is the other place a cover shows through,
+   under Float rather than the scrim.
 2. **The scrim is constant, never adaptive.** Same discipline as Home (§6.4.3):
    darken always, never sample the image to decide.
 3. **Blur once, at load, not per frame.** The ambience is a pre-blurred,
@@ -1488,7 +1519,9 @@ Three rules keep this from going wrong, and all three are non-negotiable:
 
 `NOTE` Built (0.5.2): the ambience is a 24px copy of the cover drawn large, which
 is the blur: it costs nothing per frame and looks the same on every Android
-version. From API 31 a blur smooths it further.
+version. From API 31 a blur smooths it further. It's drawn 1.35× saturated,
+always, so a cover's colour carries through the scrim; never adapted to the
+image.
 
 ### 6.8 Library and search
 
@@ -1520,6 +1553,21 @@ Mixing Artists, Albums, Tracks and Playlists in one list needs two things:
 
 `RESOLVED` **Search is always global**, unaffected by which Library segment was
 last open.
+
+`RESOLVED` **Results stay while the next ones come.** Typing never blanks the
+list: the mirror answers each keystroke at once, and where the server is asked
+(compat mode) it gets a quarter-second pause, with the last results on screen
+meanwhile.
+
+`RESOLVED` **An empty search shows what you opened from it.** Artists, albums,
+playlists and songs picked from results, newest first, twenty at most: one tap
+opens it again (a song plays), a cross takes one off, Clear empties the list.
+What was typed is never kept, only what was chosen, and only on the phone.
+
+`RESOLVED` **The search field's + looks in the sources instead** (§6.10). On a
+Cosine that can add music, a + at the field's end switches the same text to
+searching YouTube, Bandcamp and SoundCloud, with the results in place, each with
+its own add button. Tapping + again comes back to the library.
 
 `RESOLVED` **Sort and filter options per screen, not remembered.** Artists by
 name or by recently added; a release's tracks always in track order, because
@@ -1588,7 +1636,19 @@ material that needs it.
 `REVISED` **Add opens a page with a single field.** (Was: a sheet. Like every
 form, it slides in from the right; §6.5, §6.16.) Paste a URL or type a
 query into the same input — Cosine works out which it is. Results appear
-beneath; picking one queues the ingest. One surface, no modes, no tabs.
+beneath; picking one queues the ingest. One surface, no modes, no tabs. Search's
++ reaches the same thing without leaving Search (§6.8).
+
+`REVISED` **It looks up as you type.** (Was: on return, or Look up.) A link is
+looked up at once; a search from its third character, once the typing pauses
+for half a second. Searching costs Cosine a fetch per source, so fewer letters
+wait. Return still looks up straight away.
+
+`REVISED` **Each result has its own add button.** (Was: a box to tick on each,
+and Add at the foot of the list.) One tap queues that song and the button turns
+into a tick; a song already in the library shows the library's mark instead.
+An album or a playlist is added whole from the top, under its name: Add all,
+or Add the other N when some are already here, with Add anyway for those.
 
 `RESOLVED` **Sine registers as a share target.** Sharing a track from
 SoundCloud, YouTube or anywhere else opens this same page with the URL already
@@ -1611,7 +1671,7 @@ Consequences worth building for rather than discovering:
   the common one.
 
 `NOTE` Built: a search shows "Albums and playlists" beside the songs, first
-when one is named like the search. Opening one shows its songs to tick, says
+when one is named like the search. Opening one shows its songs, each with its add button, says
 whether it is an album or a playlist, and for a playlist offers "Keep it as a
 playlist in my library" (on by default), with "Make the playlist" when every
 song is already there. "Back to search results" returns to the search.
@@ -1751,7 +1811,7 @@ down.
 |---|---|---|
 | Opening a page (artist, album, playlist, settings, review, a form) | — | Slides in from the right over the current page |
 | Going back | Swipe left to right, starting anywhere on the page | Back slides the page out to the right |
-| Home · Search · Library | Swipe sideways (§6.2) | Tap a word in the bar |
+| Home · Search · Library | Swipe sideways (§6.2) | Tap an icon in the bar |
 | The now-playing sheet | Drag the player row up, or the sheet down (§6.6) | Tap the player row; Close or back |
 | The queue | Drag the sheet further up, or back down | — |
 
@@ -1760,6 +1820,12 @@ wherever the finger puts it, one to one. It holds when the finger holds and
 reverses when the finger does. On release it finishes the move if it's past
 halfway or was flicked that way, and otherwise goes back, carrying on at the
 finger's speed rather than starting a new animation. Nothing overshoots.
+
+`RESOLVED` **The bar's pill moves with the page.** The light pill that says
+where you are is one thing, not three: while a swipe carries you between
+destinations it sits between their icons, as far along as the page is, and a
+tap slides it with the page. The name comes out from behind its icon as the
+pill arrives, its end first, and goes back in as the pill leaves.
 
 `RESOLVED` **The page underneath comes from a blur.** As a page or the sheet
 slides over another, the page being covered blurs and dims slightly as it goes
@@ -2051,6 +2117,14 @@ not silently keep gigabytes.
 | — | Row numbers | At least two digits, in a column as wide as the list's widest number |
 | — | Icons | `REVISED` Icons carry navigation, transport and actions; words carry names, status, questions and forms; where you are is named beside its icon (was: navigation is words) |
 | — | Icon style | Slightly 3D: lit from above, a crisp darker copy below as depth, a rim of light on coloured faces; no blur; Sine and the dashboard alike |
+| — | Search history | What was opened from search, not what was typed; twenty, on the phone |
+| — | Adding from Search | A + in the search field searches the sources in place |
+| — | Looking up as you type | A link at once; a search from three characters, after a half-second pause |
+| — | Adding one song | Each result has its own add button; Add all at the top of an album or playlist (was: ticks and Add at the foot) |
+| — | Queue and song actions | Every song row is held to select, the queue and search included; Add to queue joins the actions |
+| — | Repeat | Off, the queue, this song; beside Shuffle and Add to playlist in now playing |
+| — | Now playing's ambience | `REVISED` The whole sheet, saturated a fixed step, under the constant scrim; the player row shows the cover under Float (was: the sheet's top only) |
+| — | The bar's pill and the sheet | The pill moves with the page and the name slides from behind its icon; now playing grows out of the shelf |
 | — | Type | Instrument Sans (widths 75 to 100) and Martian Mono, bundled under the OFL |
 | — | Shape | Square is read, circle is a person, pill is pressed, slab holds |
 | — | Status marks | A tag asks you to look; a dot starts a sentence of status |

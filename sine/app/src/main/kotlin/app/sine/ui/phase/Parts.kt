@@ -37,6 +37,8 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -393,6 +395,8 @@ fun PhaseField(
     enabled: Boolean = true,
     leading: ImageVector? = null,
     onClear: (() -> Unit)? = null,
+    /** At the field's end, after the clear button: a mode the field is in, say. */
+    trailing: (@Composable () -> Unit)? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
@@ -419,7 +423,7 @@ fun PhaseField(
                         .clip(PhaseShape.Slab)
                         .background(PhaseColor.Raised)
                         .border(1.dp, PhaseColor.LineFloat, PhaseShape.Slab)
-                        .padding(start = if (leading != null) 14.dp else 18.dp, end = if (onClear != null) 4.dp else 18.dp),
+                        .padding(start = if (leading != null) 14.dp else 18.dp, end = if (onClear != null || trailing != null) 4.dp else 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (leading != null) {
@@ -433,8 +437,9 @@ fun PhaseField(
                         inner()
                     }
                     if (onClear != null && value.isNotEmpty()) {
-                        Pill(null, onClear, kind = PillKind.Quiet, icon = PhaseIcons.Close, height = 44.dp, width = 44.dp, contentDescription = "Clear")
+                        Pill(null, onClear, kind = PillKind.Quiet, icon = PhaseIcons.Close, height = 44.dp, width = 44.dp, contentDescription = "Clear the text")
                     }
+                    trailing?.invoke()
                 }
             },
         )
@@ -506,13 +511,22 @@ fun People(names: List<String>, modifier: Modifier = Modifier, size: Dp = 24.dp,
 }
 
 /**
- * A single subject's ambience (§6.7): its cover, blurred, behind a scrim that
- * never changes, fading to the ground. A tiny copy of the cover drawn large
- * is the blur, so it costs nothing per frame and looks the same on every
- * Android version; where the system can blur, it smooths it further.
+ * A single subject's ambience (§6.7): its cover, blurred and a little more
+ * saturated, behind a scrim that never changes, fading to the ground from
+ * [fadeFrom] down (null: no fade, the cover all the way). A tiny copy of the
+ * cover drawn large is the blur, so it costs nothing per frame and looks the
+ * same on every Android version; where the system can blur, it smooths it
+ * further. [scrim] is [PhaseColor.Scrim] wherever text sits on it.
  */
 @Composable
-fun Ambience(model: Any?, modifier: Modifier = Modifier, fadeTo: Color = PhaseColor.Ground, content: @Composable BoxScope.() -> Unit = {}) {
+fun Ambience(
+    model: Any?,
+    modifier: Modifier = Modifier,
+    fadeTo: Color = PhaseColor.Ground,
+    fadeFrom: Float? = 0.55f,
+    scrim: Color = PhaseColor.Scrim,
+    content: @Composable BoxScope.() -> Unit = {},
+) {
     Box(modifier) {
         if (model != null) {
             AsyncImage(
@@ -520,18 +534,24 @@ fun Ambience(model: Any?, modifier: Modifier = Modifier, fadeTo: Color = PhaseCo
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 filterQuality = FilterQuality.High,
+                colorFilter = Vivid,
                 modifier = Modifier.matchParentSize().blur(32.dp),
             )
-            Box(Modifier.matchParentSize().background(PhaseColor.Scrim))
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .background(Brush.verticalGradient(0.55f to fadeTo.copy(alpha = 0f), 1f to fadeTo)),
-            )
+            Box(Modifier.matchParentSize().background(scrim))
+            if (fadeFrom != null) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(Brush.verticalGradient(fadeFrom to fadeTo.copy(alpha = 0f), 1f to fadeTo)),
+                )
+            }
         }
         content()
     }
 }
+
+/** Ambience's colour: the cover's own, a fixed step more saturated, so it reads through the scrim. Never adapted to the image. */
+private val Vivid = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(1.35f) })
 
 /** A raised slab holding a group of things: a setting, an invitation, a file. */
 @Composable

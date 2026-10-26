@@ -160,6 +160,8 @@ private fun MainScaffold(session: AccountSession) {
                     onOpenPlayer = pages::openPlayer,
                     onPlayerDrag = pages::dragPlayer,
                     onPlayerRelease = pages::release,
+                    position = pages.navPosition,
+                    onBounds = { pages.shelfBounds = it },
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             },
@@ -197,7 +199,7 @@ private fun Screen(session: AccountSession, pages: Pages, page: Page) {
         Routes.HOME -> HomeScreen(session, pages)
         Routes.SEARCH -> SearchScreen(session, pages)
         Routes.LIBRARY -> LibraryScreen(session, pages)
-        Routes.NOW_PLAYING -> NowPlayingScreen(onClose = { pages.popBackStack() })
+        Routes.NOW_PLAYING -> NowPlayingScreen(session, onClose = { pages.popBackStack() })
         Routes.SETTINGS -> SettingsScreen(session, pages)
         Routes.REVIEW -> ReviewScreen(session, onOpen = { pages.navigate(Routes.correct(it)) })
         Routes.DOWNLOADED -> DownloadedScreen(session, pages)

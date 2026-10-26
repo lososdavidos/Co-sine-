@@ -26,6 +26,9 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Token + salt login; the password is never stored
 - Several accounts, switched explicitly
 - Browse Artists / Albums / Playlists, search, artist and album pages; pull any list down to refresh it
+- Search keeps its results up while you type, and an empty search shows what you opened from it before
+- Hold any song, in a list, in search or in the queue, to select it: play, add to the queue, download, add to a playlist
+- Now playing: shuffle, repeat (the queue or this song), and add the song playing to a playlist
 - Streaming playback of the original files (`format=raw`, no transcoding), with the media notification, lockscreen, Bluetooth and headset controls from Media3
 - Pinned downloads of a track, album, artist or playlist into a folder you choose (SAF). A `.nomedia` file is written there, the folders follow `Artist/Album/Track`, and downloads wait for an unmetered connection unless you allow mobile data. The download budget is soft: it warns but never refuses.
 - Offline: downloaded music browses, plays and shows artwork with the server gone
@@ -33,7 +36,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Cosine** has its core: first-run setup in a dashboard, Inbox ingest into a content-hashed Store, a tags/filename resolver, and the Subsonic API Sine uses. Sine can log in to it in place of Navidrome. Details in [`cosine/README.md`](cosine/README.md).
 
-**Adding music from links:** paste a link or search in Sine's Add screen (the Library's top-right action on a Cosine account), share a link to Sine from any app, or use the dashboard. Cosine fetches it with yt-dlp and files it. Links shared while offline are kept and sent on reconnect.
+**Adding music from links:** paste a link or search in Sine's Add screen (the Library's top-right action on a Cosine account) or with the + in Search's field, share a link to Sine from any app, or use the dashboard. It looks up as you type: a link at once, a search from the third letter. Each result has its own add button, and an album or playlist can be added whole from the top. Cosine fetches it with yt-dlp and files it. Links shared while offline are kept and sent on reconnect.
 
 **Identifying music:** Cosine cleans uploader noise out of titles ("[HD Upgrade]", "(Official Video)", "PREMIERE:"), then looks everything up in MusicBrainz, Discogs and Bandcamp, in that order, and files it under the first confident match's artist and release, with that catalogue's cover. Anything none of them is sure of goes to the review queue (Sine: Library → Review; also in the dashboard). There you pick a match or type the details yourself. Every correction is logged and can be reverted.
 

@@ -12,6 +12,7 @@ import app.sine.core.cosine.Scrobbling
 import app.sine.core.cosine.SmartPlaylist
 import app.sine.core.download.OfflineLibrary
 import app.sine.core.home.HomeStore
+import app.sine.core.model.SearchHistory
 import app.sine.core.home.Tile
 import app.sine.core.mirror.LibraryMirror
 import app.sine.core.mirror.MirrorLibrary
@@ -76,6 +77,8 @@ class AccountSession(
     val plays = PlayLog(File(dir, "plays.json"))
     /** Home's arrangement (§6.4): kept here, and on Cosine when it keeps one. */
     val home = HomeStore(File(dir, "home.json"))
+    /** What was opened from search, to open again (§6.8). Kept on the phone only. */
+    val searchHistory = SearchHistory(File(dir, "search-history.json"))
     private val coversDir = File(dir, "covers")
 
     /**
