@@ -27,6 +27,9 @@ import (
 // Capability names. Sine hides whatever a server does not list.
 const CapIngest = "ingest"
 
+// CapLookupStream: a search in Add can be followed as it goes (lookupStream).
+const CapLookupStream = "lookup-stream"
+
 type API struct {
 	Auth    *auth.Service
 	Fetcher *fetch.Fetcher // nil when yt-dlp is unavailable
@@ -46,7 +49,7 @@ type API struct {
 func (a *API) capabilities() []string {
 	caps := []string{}
 	if a.Fetcher != nil && a.Fetcher.Runner.Available() {
-		caps = append(caps, CapIngest)
+		caps = append(caps, CapIngest, CapLookupStream)
 	}
 	if a.Review != nil {
 		caps = append(caps, CapReview)
@@ -82,6 +85,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("POST /cosine/v1/auth", a.login)
 	mux.HandleFunc("POST /cosine/v1/lookup", a.authed(a.ingest(a.lookup)))
+	mux.HandleFunc("POST /cosine/v1/lookup/stream", a.authed(a.ingest(a.lookupStream)))
 	mux.HandleFunc("POST /cosine/v1/ingest", a.authed(a.ingest(a.submit)))
 	mux.HandleFunc("GET /cosine/v1/ingest/jobs", a.authed(a.ingest(a.jobs)))
 	mux.HandleFunc("POST /cosine/v1/ingest/jobs/{id}/retry", a.authed(a.ingest(a.retry)))
@@ -179,6 +183,47 @@ func (a *API) lookup(w http.ResponseWriter, r *http.Request, u auth.User) {
 		res.Items = []fetch.Item{}
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// lookupStream is lookup, answered as it goes: a line of JSON each time a
+// source answers, everything found so far and marked partial, then the
+// whole answer, as lookup gives it. A search's first songs show in a few
+// seconds instead of when the slowest source is done.
+func (a *API) lookupStream(w http.ResponseWriter, r *http.Request, u auth.User) {
+	var body struct {
+		Input string `json:"input"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if strings.TrimSpace(body.Input) == "" {
+		writeError(w, http.StatusBadRequest, "Paste a link or type a search.")
+		return
+	}
+	flusher, _ := w.(http.Flusher)
+	started := false
+	send := func(l fetch.Lookup) {
+		if l.Items == nil {
+			l.Items = []fetch.Item{}
+		}
+		if !started {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("X-Accel-Buffering", "no") // nginx: pass each line on as it comes
+			w.WriteHeader(http.StatusOK)
+			started = true
+		}
+		json.NewEncoder(w).Encode(l)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	res, err := a.Fetcher.LookupEach(r.Context(), u.ID, body.Input, send)
+	if err != nil && !started {
+		writeError(w, http.StatusBadGateway, "Couldn't fetch — "+err.Error())
+		return
+	}
+	send(res)
 }
 
 func (a *API) submit(w http.ResponseWriter, r *http.Request, u auth.User) {

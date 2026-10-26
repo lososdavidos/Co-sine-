@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +46,10 @@ func server(t *testing.T, withYtDlp bool) *httptest.Server {
 		bin, _ := testutil.FakeYtDlp(t, map[string]any{
 			trackURL: map[string]any{"_type": "video", "id": "1", "title": "Tides", "uploader": "Skeler",
 				"webpage_url": trackURL, "ext": "opus", "body": "x", "extractor_key": "Soundcloud"},
+			"scsearch": map[string]any{"_type": "playlist", "entries": []map[string]any{
+				{"url": trackURL, "title": "Tides", "uploader": "Skeler", "duration": 200}}},
+			"ytsearch": map[string]any{"_type": "playlist", "entries": []map[string]any{
+				{"url": "https://www.youtube.com/watch?v=tides", "title": "Skeler - Tides", "channel": "Skeler", "duration": 201}}},
 		})
 		runner := ytdlp.Runner{Bin: bin}
 		f := &fetch.Fetcher{DB: d, Runner: runner, WorkDir: filepath.Join(dir, "work"), Workers: 1, Log: log,
@@ -95,7 +100,7 @@ func login(t *testing.T, srv *httptest.Server) string {
 
 func TestCapabilitiesFollowYtDlp(t *testing.T) {
 	_, out := call(t, server(t, true), "GET", "/cosine/v1/capabilities", "", nil)
-	if caps := out["capabilities"].([]any); len(caps) != 1 || caps[0] != "ingest" {
+	if caps := out["capabilities"].([]any); len(caps) != 2 || caps[0] != "ingest" || caps[1] != "lookup-stream" {
 		t.Fatal(out)
 	}
 	srv := server(t, false)
@@ -154,6 +159,80 @@ func TestLookupSubmitJobsRetry(t *testing.T) {
 
 	if code, out := call(t, srv, "POST", "/cosine/v1/ingest", tok, map[string]any{"urls": []string{"just words"}}); code != 400 {
 		t.Fatal(code, out)
+	}
+}
+
+// stream reads a streamed lookup's lines.
+func stream(t *testing.T, srv *httptest.Server, token, input string) (int, string, []map[string]any) {
+	t.Helper()
+	b, _ := json.Marshal(map[string]string{"input": input})
+	req, _ := http.NewRequest("POST", srv.URL+"/cosine/v1/lookup/stream", bytes.NewReader(b))
+	req.Header.Set("Authorization", "Bearer "+token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var lines []map[string]any
+	dec := json.NewDecoder(res.Body)
+	for {
+		var l map[string]any
+		if err := dec.Decode(&l); err != nil {
+			break
+		}
+		lines = append(lines, l)
+	}
+	return res.StatusCode, res.Header.Get("Content-Type"), lines
+}
+
+func TestLookupStreamShowsEachSiteAsItAnswers(t *testing.T) {
+	srv := server(t, true)
+	tok := login(t, srv)
+	urls := func(l map[string]any) (out []string) {
+		for _, it := range l["items"].([]any) {
+			out = append(out, it.(map[string]any)["url"].(string))
+		}
+		return out
+	}
+
+	// Tides is in the library already.
+	call(t, srv, "POST", "/cosine/v1/ingest", tok, map[string]any{"urls": []string{trackURL}})
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if _, out := call(t, srv, "GET", "/cosine/v1/ingest/jobs", tok, nil); out["jobs"].([]any)[0].(map[string]any)["status"] == "done" {
+			break
+		}
+	}
+
+	code, kind, lines := stream(t, srv, tok, "skeler tides")
+	if code != 200 || kind != "application/x-ndjson" || len(lines) != 3 {
+		t.Fatal(code, kind, lines)
+	}
+	// One site, then both, then the whole answer: what lookup gives.
+	if lines[0]["partial"] != true || len(urls(lines[0])) != 1 || lines[1]["partial"] != true || len(urls(lines[1])) != 2 {
+		t.Fatal(lines)
+	}
+	_, whole := call(t, srv, "POST", "/cosine/v1/lookup", tok, map[string]string{"input": "skeler tides"})
+	last := lines[2]
+	if last["partial"] != nil || last["kind"] != "search" || strings.Join(urls(last), " ") != strings.Join(urls(whole), " ") {
+		t.Fatal(last, whole)
+	}
+	// What's already in the library is marked as it shows, not only at the end.
+	for _, l := range lines {
+		for _, it := range l["items"].([]any) {
+			if it := it.(map[string]any); (it["url"] == trackURL) != (it["inLibrary"] == true) {
+				t.Fatal(l)
+			}
+		}
+	}
+
+	// A link is one answer.
+	if code, _, lines := stream(t, srv, tok, trackURL); code != 200 || len(lines) != 1 || lines[0]["kind"] != "single" || lines[0]["partial"] != nil {
+		t.Fatal(code, lines)
+	}
+	// A failure before anything is found is an error, as lookup's is.
+	if code, _, lines := stream(t, srv, tok, "https://example.com/gone"); code != http.StatusBadGateway ||
+		len(lines) != 1 || !strings.HasPrefix(lines[0]["error"].(string), "Couldn't fetch") {
+		t.Fatal(code, lines)
 	}
 }
 
