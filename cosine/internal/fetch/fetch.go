@@ -277,7 +277,7 @@ func (f *Fetcher) work(ctx context.Context) {
 func (f *Fetcher) claim(ctx context.Context) (claimed, error) {
 	var c claimed
 	err := f.DB.QueryRowContext(ctx, `
-		UPDATE ingest_jobs SET status = 'running', updated_at = ?
+		UPDATE ingest_jobs SET status = 'running', error = NULL, updated_at = ?
 		WHERE id = (SELECT id FROM ingest_jobs WHERE status = 'queued' AND url IS NOT NULL ORDER BY id LIMIT 1)
 		RETURNING id, user_id, url, force, COALESCE(collection_id, 0), COALESCE(position, 0)`, db.Now()).
 		Scan(&c.id, &c.user, &c.url, &c.force, &c.collection, &c.position)

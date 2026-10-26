@@ -352,7 +352,7 @@ func TestARefusedDownloadWaitsAndTriesAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j := e.wait(t, jobs[0].ID, StatusDone, StatusFailed); j.Status != StatusDone || j.TrackID == "" {
+	if j := e.wait(t, jobs[0].ID, StatusDone, StatusFailed); j.Status != StatusDone || j.TrackID == "" || j.Error != "" {
 		t.Fatalf("%+v", j)
 	}
 	// Two refusals: a pause, then one twice as long.
