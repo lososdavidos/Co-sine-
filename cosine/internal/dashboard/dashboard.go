@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -29,6 +30,12 @@ import (
 
 //go:embed templates/*.html
 var templateFS embed.FS
+
+// The dashboard's stylesheet and fonts (Phase, §6.18), served from the
+// binary, so the dashboard looks the same with no network.
+//
+//go:embed static
+var staticFS embed.FS
 
 const cookieName = "cosine_session"
 
@@ -120,7 +127,30 @@ func (d *Dashboard) Handler() http.Handler {
 		mux.HandleFunc("GET /corrections", d.admin(d.corrections))
 		mux.HandleFunc("POST /corrections/{id}/revert", d.admin(d.revert))
 	}
-	return d.guard(mux)
+	// Static files are outside the guard: the setup page needs its stylesheet too.
+	outer := http.NewServeMux()
+	outer.Handle("GET /static/", staticFiles())
+	outer.Handle("/", d.guard(mux))
+	return outer
+}
+
+// staticFiles serves the stylesheet, fonts and their licences. Fonts never
+// change under a name, so they cache for a week; the stylesheet is checked
+// each time, so an upgrade shows at once.
+func staticFiles() http.Handler {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		panic(err)
+	}
+	files := http.StripPrefix("/static/", http.FileServerFS(sub))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".woff2") {
+			w.Header().Set("Cache-Control", "public, max-age=604800")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		files.ServeHTTP(w, r)
+	})
 }
 
 // guard sends everything to /setup until an account exists, and rejects

@@ -8,7 +8,7 @@
 {{range .Files}}<tr><td>{{.Artist}}</td><td>{{.Title}}</td><td>{{.Path}}</td><td>{{.Size}}</td></tr>
 {{end}}</table>
 <p>Forgetting removes these files from Cosine for good. Their tracks' plays, stars and playlist places are kept out of sight, and come back if you add the same song again.</p>
-<form method="post" action="/missing/forget"><button>Forget {{len .Files}} missing file{{if ne (len .Files) 1}}s{{end}}</button></form>
+<form method="post" action="/missing/forget"><button class="destroy">Forget {{len .Files}} missing file{{if ne (len .Files) 1}}s{{end}}</button></form>
 {{else}}<p>Nothing is missing.</p>{{end}}
 {{end}}
 {{end}}

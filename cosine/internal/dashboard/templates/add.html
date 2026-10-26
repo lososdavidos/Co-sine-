@@ -32,7 +32,7 @@
 <td>{{duration .DurationSec}}</td><td>{{if .Plays}}{{.Plays}}{{end}}</td><td>{{.Source}}</td>
 <td>{{if .InLibrary}}In your library<br>{{end}}{{if .Preview}}30-second preview only{{end}}{{lengthNote .Result}}</td></tr>
 {{end}}</table>
-<button>Add selected</button>
+<button class="go">Add selected</button>
 </form>
 {{else if not .Collections}}<p>No results.</p>{{end}}
 {{end}}

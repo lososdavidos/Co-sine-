@@ -389,3 +389,25 @@ func TestListeningPage(t *testing.T) {
 		t.Fatal(body)
 	}
 }
+
+func TestPhaseStylesheetAndFonts(t *testing.T) {
+	e := setup(t)
+	// Before setup too: the setup page needs its stylesheet.
+	res, body := e.get(t, "/static/phase.css")
+	if res.StatusCode != http.StatusOK || res.Request.URL.Path != "/static/phase.css" ||
+		!strings.HasPrefix(res.Header.Get("Content-Type"), "text/css") || !strings.Contains(body, "--sine: #D7F144") {
+		t.Fatalf("stylesheet: %d %s %q", res.StatusCode, res.Request.URL.Path, res.Header.Get("Content-Type"))
+	}
+	for _, font := range []string{"/static/fonts/instrument-sans.woff2", "/static/fonts/martian-mono.woff2"} {
+		res, body = e.get(t, font)
+		if res.StatusCode != http.StatusOK || !strings.HasPrefix(body, "wOF2") || !strings.Contains(res.Header.Get("Cache-Control"), "max-age") {
+			t.Fatalf("%s: %d %q", font, res.StatusCode, res.Header.Get("Cache-Control"))
+		}
+	}
+	if res, _ = e.get(t, "/static/fonts/MartianMono-OFL.txt"); res.StatusCode != http.StatusOK {
+		t.Fatal("the fonts' licence should travel with them")
+	}
+	if _, body = e.get(t, "/setup"); !strings.Contains(body, `<link rel="stylesheet" href="/static/phase.css">`) {
+		t.Fatal("pages should link Phase's stylesheet")
+	}
+}
