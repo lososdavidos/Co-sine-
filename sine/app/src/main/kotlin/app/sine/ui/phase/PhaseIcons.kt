@@ -47,6 +47,8 @@ object PhaseIcons {
         "shuffle",
         line("M3 7h3.5c2 0 3.2 1 4.3 2.7l2.4 4.6c1.1 1.7 2.3 2.7 4.3 2.7H21M18 14l3 3-3 3M3 17h3.5c1.4 0 2.4-.5 3.2-1.4M14.3 8.4c.8-.9 1.8-1.4 3.2-1.4H21M18 4l3 3-3 3", 2.25f),
     )
+    val Repeat = icon("repeat", line(REPEAT, 2.25f))
+    val RepeatOne = icon("repeat-one", line(REPEAT, 2.25f), line("M11 10.6l1.4-1.1v5", 2f))
 
     // Where you go
     val Home = icon("home", solid("M4.5 10.4L12 4.5l7.5 5.9V19a1 1 0 0 1-1 1h-4v-4.5a1 1 0 0 0-1-1h-3a1 1 0 0 0-1 1V20h-4a1 1 0 0 1-1-1z"))
@@ -101,6 +103,8 @@ object PhaseIcons {
     val Up = icon("up", line("M6 15l6-6 6 6", 2.6f))
     val Close = icon("close", line("M6.5 6.5l11 11M17.5 6.5l-11 11", 2.6f))
     val Check = icon("check", line("M5 12.5l4.5 4.5L19 7", 2.8f))
+
+    private const val REPEAT = "M17 3l3 3-3 3M4 11.5V10a4 4 0 0 1 4-4h12M7 21l-3-3 3-3M20 12.5V14a4 4 0 0 1-4 4H4"
 
     private class Part(val d: String, val solid: Boolean, val width: Float, val evenOdd: Boolean)
 

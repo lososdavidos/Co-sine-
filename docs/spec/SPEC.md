@@ -539,23 +539,34 @@ so low-confidence entries are visible and correctable rather than silently
 wrong. `OPEN` — how confidence is expressed in the UI.
 
 `RESOLVED` **The artist's own release, not a compilation the source names.** A
-song is filed under the album it has been on, else its EP, else its single;
-compilations, soundtracks and live albums come last, and an album the file
-itself names goes first. A named compilation is the exception: YouTube credits a
+song is filed under the artist's own release it first came out on (an album, an
+EP or a single); compilations, soundtracks and live albums come last, however
+early, and an album the file itself names goes first. A named compilation is the exception: YouTube credits a
 video to whichever release claimed it ("Hot Party Winter 2018") and a ripped
 "NOW" CD names one too, so it only goes ahead of other compilations. A song that
 was only ever on compilations is filed under Various Artists (Q74).
 
 `RESOLVED` **The first release is the original.** Between copies of one song on
 different releases (the same title, a length that agrees or isn't known, a close
-score), a release from the song's first year or the next comes before any
-later one, and the later the worse: a greatest hits or a reissue years on is the
-least likely original. Among the first releases the album still beats its
-single, so a lead single out the year before its album doesn't take its place.
-Every catalogue orders its answers this way, so a copy whose length a catalogue
-happens to give doesn't win on that alone. Discogs gives no formats for a
-master; its pressings in the search say whether it is a compilation, and the
-earliest are looked up first ("Timber" went to Pitbull's 2017 Greatest Hits).
+score), the earliest of the artist's own comes first, and the later the worse: a
+greatest hits or a reissue years on is the least likely original. A lead single
+out before its album wins ("Closer" was a single nine months before the
+Chainsmokers' album). The day decides where the catalogue gives it; between
+releases out the same day, or the same year where only the year is known, the
+album beats the EP and the single. Every catalogue orders its answers this way,
+so a copy whose length a catalogue happens to give doesn't win on that alone.
+Discogs gives no formats for a master; its pressings in the search say whether
+it is a compilation, and the earliest are looked up first ("Timber" went to
+Pitbull's 2017 Greatest Hits).
+
+`RESOLVED` **A credit is asked for two ways.** MusicBrainz is searched for the
+artist as the file credits them or for the lead artist alone, and for the title
+without its "(feat. X)": MusicBrainz credits "Closer" to "The Chainsmokers ft.
+Halsey", and a file's "feat." found only compilations credited that way. A hit
+has more recordings than a search page holds, most of them its copies on
+compilations, and its own can be past the page ("September" by Earth, Wind &
+Fire); when a page comes back full, the recordings that came out on a single
+are asked for too.
 
 `RESOLVED` **A remix is another track.** A catalogue title that names a version
 — remix, rework, VIP, cover, live, acoustic, instrumental, karaoke, nightcore,

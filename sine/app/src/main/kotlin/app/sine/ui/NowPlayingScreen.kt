@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import app.sine.core.text.Voice
 import app.sine.graph
 import app.sine.ui.phase.Ambience
@@ -165,8 +166,17 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                         )
                         Pill(null, player::next, icon = PhaseIcons.Next, height = 56.dp, width = 72.dp, contentDescription = "Next")
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
                         Chip(null, state.shuffle, player::toggleShuffle, icon = PhaseIcons.Shuffle, contentDescription = "Shuffle")
+                        Chip(
+                            null, state.repeat != Player.REPEAT_MODE_OFF, player::toggleRepeat,
+                            icon = if (state.repeat == Player.REPEAT_MODE_ONE) PhaseIcons.RepeatOne else PhaseIcons.Repeat,
+                            contentDescription = when (state.repeat) {
+                                Player.REPEAT_MODE_ALL -> "Repeat all"
+                                Player.REPEAT_MODE_ONE -> "Repeat this song"
+                                else -> "Repeat"
+                            },
+                        )
                     }
                     Spacer(Modifier.height(20.dp))
                 }
@@ -186,7 +196,8 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                         }
                     }
                 }
-                itemsIndexed(state.queue) { i, q ->
+                itemsIndexed(state.queue) { i, queued ->
+                    val q = queued.item
                     val now = i == state.index
                     val numbers = numberColumn(state.queue.size)
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).background(PhaseColor.Raised)) {
@@ -201,7 +212,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                                 else RowNumber(i + 1, numbers)
                             },
                             modifier = Modifier.padding(horizontal = 0.dp),
-                        ) { player.skipTo(i) }
+                        ) { player.skipTo(queued.at) }
                     }
                 }
                 item {
