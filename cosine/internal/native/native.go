@@ -16,6 +16,7 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/homes"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
@@ -44,6 +45,8 @@ type API struct {
 	Scrobbler *scrobble.Service
 	Version   string
 	Log       *slog.Logger
+	// Homes keeps each account's Home arrangement; nil: Sine keeps it on the phone only.
+	Homes *homes.Service
 }
 
 func (a *API) capabilities() []string {
@@ -74,6 +77,9 @@ func (a *API) capabilities() []string {
 	}
 	if a.Scrobbler != nil {
 		caps = append(caps, CapScrobbling)
+	}
+	if a.Homes != nil {
+		caps = append(caps, CapHome)
 	}
 	return caps
 }
@@ -109,6 +115,9 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Scrobbler != nil {
 		a.registerScrobbling(mux)
+	}
+	if a.Homes != nil {
+		a.registerHome(mux)
 	}
 }
 

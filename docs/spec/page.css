@@ -3,12 +3,12 @@
    Sine is you, now; Cosine is the server at work; red is for faults. */
 :root{
   color-scheme:dark;
-  --bg-0:#0B0B0C; --bg-2:#161618; --surf-2:#202023; --bg-3:#2E2E33;
-  --float:#202023;
-  --line-1:#2A2A2F; --line-2:#34343A; --line-3:#45454B;
-  --txt-1:#F3F3F0; --txt-2:#A6A6AB; --txt-3:#8A8A90;
-  --sine:#D7F144; --cosine:#46D3E6; --fault:#F75E51;
-  --ink:#0B0B0C; --focus:#F3F3F0;
+  --bg-0:#0A0B0C; --bg-2:#151618; --surf-2:#1F2123; --bg-3:#2C2F32;
+  --float:#1F2123;
+  --line-1:#282B2E; --line-2:#323539; --line-3:#42464A;
+  --txt-1:#F1F3F5; --txt-2:#A4A7AA; --txt-3:#888B8F;
+  --sine:#53A4FF; --cosine:#1070C5; --fault:#F75E51;
+  --ink:#0A0B0C; --on-cosine:#F1F3F5; --focus:#F1F3F5;
   --sans:"Instrument Sans",system-ui,sans-serif;
   --mono:"Martian Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
@@ -107,7 +107,7 @@ blockquote p{margin:0; color:var(--txt-1); font-weight:500}
        border:1px solid var(--line-3); border-radius:var(--r-tag); padding:2px 6px;
        font-family:var(--mono); font-stretch:87.5%; font-size:9.5px; font-weight:500;
        letter-spacing:.05em; text-transform:uppercase; vertical-align:1px}
-.plane-server{background:var(--cosine); border-color:var(--cosine); color:var(--ink); font-weight:600}
+.plane-server{background:var(--cosine); border-color:var(--cosine); color:var(--on-cosine); font-weight:600}
 .plane-fault{background:var(--fault); border-color:var(--fault); color:var(--ink); font-weight:600}
 
 /* --------------------------------------------------------------- WARNINGS */

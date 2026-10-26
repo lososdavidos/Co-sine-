@@ -1,5 +1,6 @@
 package app.sine.core.cosine
 
+import app.sine.core.home.HomeLayout
 import app.sine.core.mirror.PlaylistOp
 import app.sine.core.mirror.PlaylistOpResult
 import app.sine.core.mirror.SyncChanges
@@ -160,6 +161,7 @@ data class IngestJob(
 @Serializable private data class AcceptResponse(val added: Int = 0)
 @Serializable private data class TokenRequest(val token: String)
 @Serializable private data class UsernameResponse(val username: String = "")
+@Serializable private data class HomeDoc(val layout: HomeLayout? = null)
 
 /**
  * Cosine's native protocol (§2.1). Authenticates once with the Subsonic
@@ -329,6 +331,14 @@ class CosineClient(
 
     suspend fun disconnectScrobbler(service: String) {
         send(delete("scrobbling/$service"), OkResponse.serializer())
+    }
+
+    /** Home's arrangement for a kind of [device] as last sent (§6.4); null when none has been. */
+    suspend fun home(device: String): HomeLayout? = send(get("home/$device"), HomeDoc.serializer()).layout
+
+    suspend fun saveHome(device: String, layout: HomeLayout) {
+        val body = WireJson.encodeToString(HomeDoc.serializer(), HomeDoc(layout)).toRequestBody(JSON)
+        send(Request.Builder().url(url("home/$device")).put(body), HomeDoc.serializer())
     }
 
     suspend fun confirm(trackId: String): ReviewItem =

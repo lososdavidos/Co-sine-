@@ -32,7 +32,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.sine.core.model.Album
@@ -40,7 +39,6 @@ import app.sine.core.model.Artist
 import app.sine.core.model.SearchHit
 import app.sine.core.model.SearchRanking
 import app.sine.core.server.Capability
-import app.sine.core.subsonic.AlbumListType
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.data.Sourced
@@ -67,51 +65,8 @@ fun playingId(): String? = LocalContext.current.graph.player.state.collectAsStat
 
 // ---------------------------------------------------------------- Home
 
-/**
- * Placeholder for the tile canvas (§6.4), which isn't built yet. For now:
- * the user's own history in plain lists — nothing here suggests music from
- * outside the library (NG3).
- */
 @Composable
-fun HomeScreen(session: AccountSession, nav: NavController) {
-    val player = LocalContext.current.graph.player
-    val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
-    val load = rememberLoad(session) {
-        session.fetch(
-            offline = { lib -> listOf("Downloaded" to lib.albums()) },
-            remote = { c ->
-                listOf(
-                    "Recently added" to c.albums(AlbumListType.NEWEST, 12),
-                    "Recently played" to c.albums(AlbumListType.RECENT, 12),
-                    "Most played" to c.albums(AlbumListType.FREQUENT, 12),
-                )
-            },
-        )
-    }
-    Column(Modifier.fillMaxSize()) {
-        TitleBar("Home")
-        LoadContent(load) { sections, _ ->
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding()) {
-                if (downloads.isNotEmpty()) item {
-                    Pill(
-                        "Shuffle downloads", { player.play(session, session.offline().all(), shuffle = true) },
-                        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                        icon = PhaseIcons.Shuffle, count = downloads.size.toString(),
-                    )
-                }
-                for ((title, albums) in sections) {
-                    if (albums.isEmpty()) continue
-                    item(key = "h:$title") { SectionHeader(title) }
-                    items(albums, key = { "$title:${it.id}" }) { album -> AlbumRow(session, album, nav) }
-                }
-                if (sections.all { it.second.isEmpty() }) item { Message(Voice.NO_DOWNLOADS) }
-            }
-        }
-    }
-}
-
-@Composable
-fun AlbumRow(session: AccountSession, album: Album, nav: NavController) {
+fun AlbumRow(session: AccountSession, album: Album, nav: Pages) {
     ItemRow(album.name, album.subtitle(), session.artwork(album.coverArt, 150)) {
         nav.navigate(Routes.album(album.id))
     }
@@ -125,7 +80,7 @@ fun AlbumRow(session: AccountSession, album: Album, nav: NavController) {
  * result's kind is a mono label, not a plane.
  */
 @Composable
-fun SearchScreen(session: AccountSession, nav: NavController) {
+fun SearchScreen(session: AccountSession, nav: Pages) {
     val player = LocalContext.current.graph.player
     val playing = playingId()
     var query by rememberSaveable { mutableStateOf("") }
@@ -199,7 +154,7 @@ private val segments = listOf("Artists", "Albums", "Playlists")
  * its title, only where the server can do them: compat mode has neither (§2.1).
  */
 @Composable
-fun LibraryScreen(session: AccountSession, nav: NavController) {
+fun LibraryScreen(session: AccountSession, nav: Pages) {
     val context = LocalContext.current
     var segment by rememberSaveable { mutableIntStateOf(0) }
     var downloadedOnly by rememberSaveable { mutableStateOf(false) }
@@ -259,7 +214,7 @@ private fun Artist.letter(): String {
 }
 
 @Composable
-private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
+private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: Pages) {
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
     val load = rememberLoad(session, downloadedOnly, refreshOn = mirrored) {
         if (downloadedOnly) Sourced(session.offline().artists(), true) else session.artists()
@@ -298,7 +253,7 @@ private fun LetterDivider(letter: String) {
 }
 
 @Composable
-private fun AlbumList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
+private fun AlbumList(session: AccountSession, downloadedOnly: Boolean, nav: Pages) {
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
     val load = rememberLoad(session, downloadedOnly, refreshOn = mirrored) {
         if (downloadedOnly) Sourced(session.offline().albums(), true) else session.allAlbums()

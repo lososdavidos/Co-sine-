@@ -191,6 +191,9 @@ class MirrorLibrary private constructor(
 
     fun track(id: String): Track? = tracksById[id]
 
+    /** Every song, in no order: for shuffling the lot. */
+    fun tracks(): List<Track> = tracks
+
     // ------------------------------------------------------------ playlists (§2.4)
 
     /** A playlist's id now: one made here goes by Cosine's once the sync has brought it. */
@@ -238,6 +241,9 @@ class MirrorLibrary private constructor(
 
     /** A smart playlist's rule, to edit. */
     fun smartRule(id: String): SmartPlaylist? = smart.firstOrNull { it.id == id }?.toRule()
+
+    /** The account's smart playlists' rules, in Cosine's order. */
+    fun smartPlaylists(): List<SmartPlaylist> = smart.map { it.toRule() }
 
     /**
      * Search as you type (§6.8): names first, and a track or album also when

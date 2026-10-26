@@ -5,6 +5,10 @@ import app.sine.core.cosine.CosineException
 import app.sine.core.cosine.PendingShare
 import app.sine.core.cosine.PendingShares
 import app.sine.core.cosine.ShareText
+import app.sine.core.home.HomeLayout
+import app.sine.core.home.Tile
+import app.sine.core.home.TileKind
+import app.sine.core.home.TileSize
 import app.sine.core.mirror.PlaylistOps
 import app.sine.core.subsonic.SubsonicCredentials
 import app.sine.core.text.Voice
@@ -33,6 +37,7 @@ class CosineClientTest {
     private var validSession = ""
     private val requests = mutableListOf<String>()
     private val bodies = mutableListOf<String>()
+    private var home: String? = null
 
     // A search followed as it goes: a site's songs, then both, then the whole answer.
     private val streamLines = listOf(
@@ -120,6 +125,10 @@ class CosineClientTest {
                         if ((request.body?.utf8() ?: "").contains("bad")) json("""{"error":"ListenBrainz didn't accept that token."}""", 400)
                         else json("""{"username":"alice_lb"}""")
                     "/cosine/v1/scrobbling/lastfm" -> json("""{"ok":true}""")
+                    "/cosine/v1/home/phone" -> {
+                        if (request.method == "PUT") home = request.body?.utf8()
+                        json(home ?: """{"layout":null}""")
+                    }
                     else -> json("""{"error":"Only failed or refused jobs can be retried"}""", 409)
                 }
             }
@@ -130,6 +139,17 @@ class CosineClientTest {
 
     private fun json(body: String, code: Int = 200) =
         MockResponse.Builder().code(code).addHeader("Content-Type", "application/json").body(body).build()
+
+    @Test
+    fun `home goes up whole and comes back as it was sent`() = runTest {
+        val c = client()
+        assertNull(c.home("phone"))
+        val layout = HomeLayout(listOf(Tile(TileKind.NOW_PLAYING, size = TileSize.Wide), Tile(TileKind.PLAYLIST, "sp-1", name = "Fresh")), updated = 42)
+        c.saveHome("phone", layout)
+        assertTrue(requests.contains("PUT /cosine/v1/home/phone"), "$requests")
+        assertTrue(home!!.startsWith("""{"layout":{"tiles":[{"kind":"now-playing","size":"4x2"}"""), home)
+        assertEquals(layout, c.home("phone"))
+    }
 
     @Test
     fun `capabilities need no session`() = runTest {

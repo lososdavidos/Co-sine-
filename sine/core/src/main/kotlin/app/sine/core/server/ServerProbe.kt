@@ -55,6 +55,8 @@ object Capability {
     const val SCROBBLING = "scrobbling"
     /** A search in Add can be followed as it goes: each source's results show as they come (§6.10). */
     const val LOOKUP_STREAM = "lookup-stream"
+    /** Home's arrangement is kept on the server, one per kind of device (§6.4). */
+    const val HOME_LAYOUT = "home-layout"
 }
 
 sealed interface ProbeResult {

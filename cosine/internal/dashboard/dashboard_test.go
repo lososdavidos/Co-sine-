@@ -395,7 +395,7 @@ func TestPhaseStylesheetAndFonts(t *testing.T) {
 	// Before setup too: the setup page needs its stylesheet.
 	res, body := e.get(t, "/static/phase.css")
 	if res.StatusCode != http.StatusOK || res.Request.URL.Path != "/static/phase.css" ||
-		!strings.HasPrefix(res.Header.Get("Content-Type"), "text/css") || !strings.Contains(body, "--sine: #D7F144") {
+		!strings.HasPrefix(res.Header.Get("Content-Type"), "text/css") || !strings.Contains(body, "--sine: #53A4FF") {
 		t.Fatalf("stylesheet: %d %s %q", res.StatusCode, res.Request.URL.Path, res.Header.Get("Content-Type"))
 	}
 	for _, font := range []string{"/static/fonts/instrument-sans.woff2", "/static/fonts/martian-mono.woff2"} {

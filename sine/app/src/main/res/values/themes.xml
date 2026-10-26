@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Phase's ground (§6), so nothing flashes before Compose draws. -->
-    <color name="phase_ground">#0B0B0C</color>
+    <color name="phase_ground">#0A0B0C</color>
     <style name="Theme.Sine" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/phase_ground</item>
         <item name="android:colorBackground">@color/phase_ground</item>

@@ -11,6 +11,8 @@ import app.sine.core.cosine.LastFmApproval
 import app.sine.core.cosine.Scrobbling
 import app.sine.core.cosine.SmartPlaylist
 import app.sine.core.download.OfflineLibrary
+import app.sine.core.home.HomeStore
+import app.sine.core.home.Tile
 import app.sine.core.mirror.LibraryMirror
 import app.sine.core.mirror.MirrorLibrary
 import app.sine.core.mirror.PlaylistInvite
@@ -72,6 +74,8 @@ class AccountSession(
         if (initial.isCosine) CosineClient(initial.serverUrl, initial.credentials, http) else null
     val downloads = DownloadIndex(File(dir, "downloads.json"))
     val plays = PlayLog(File(dir, "plays.json"))
+    /** Home's arrangement (§6.4): kept here, and on Cosine when it keeps one. */
+    val home = HomeStore(File(dir, "home.json"))
     private val coversDir = File(dir, "covers")
 
     /**
@@ -148,6 +152,7 @@ class AccountSession(
                 }
                 val changes = c.sync(m.cursor, m.smartTag)
                 withContext(Dispatchers.IO) { m.apply(changes) }
+                if (can(Capability.HOME_LAYOUT)) syncHome(c)
                 _reachable.value = true
             } catch (e: IOException) {
                 _reachable.value = false
@@ -156,6 +161,24 @@ class AccountSession(
                 // Signed out or refused: the copy stays as it is.
             }
         }
+    }
+
+    /** Home goes to Cosine when it was changed here, and comes from it otherwise: another phone's, or an earlier install's. */
+    private suspend fun syncHome(c: CosineClient) {
+        val local = home.layout.value
+        if (home.unsent && local != null) {
+            c.saveHome(HOME_DEVICE, local)
+            withContext(Dispatchers.IO) { home.sent(local) }
+        } else {
+            val remote = c.home(HOME_DEVICE)
+            withContext(Dispatchers.IO) { home.received(remote) }
+        }
+    }
+
+    /** Rearranges Home, and sends it to Cosine as soon as it can. */
+    fun editHome(tiles: List<Tile>) {
+        home.edit(tiles)
+        syncSoon()
     }
 
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -192,6 +215,18 @@ class AccountSession(
         sync()
         return n
     }
+
+    /** Every song in the library, when the mirror has them; null means only the server knows. */
+    fun libraryTracks(): List<Track>? = library()?.tracks()
+
+    /** The account's smart playlists as the mirror has them; none in compat mode. */
+    fun mirroredSmart(): List<SmartPlaylist> = library()?.smartPlaylists().orEmpty()
+
+    /** One song: from the mirror, else the server's. */
+    suspend fun track(id: String): Sourced<Track> = library()?.track(id)?.let { Sourced(it, false) } ?: fetch(
+        offline = { lib -> lib.all().firstOrNull { it.id == id } ?: throw NotAvailableOffline() },
+        remote = { it.track(id) },
+    )
 
     /** Searches the mirror, or null when there is none and the server must be asked. */
     fun searchMirror(query: String) = library()?.search(query)
@@ -421,5 +456,7 @@ class AccountSession(
 
     companion object {
         private const val RETRY_AFTER_MS = 30_000L
+        /** Sine on Android keeps the phone's Home; the desktop will keep its own (§6.15). */
+        private const val HOME_DEVICE = "phone"
     }
 }

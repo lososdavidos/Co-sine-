@@ -1,7 +1,7 @@
 package app.sine.ui.phase
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -55,11 +55,15 @@ fun WaveScrubber(
             }
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
-                detectHorizontalDragGestures(
+                // Any drag that starts on the wave seeks, whichever way it goes: it never scrolls or closes the sheet (§6.16).
+                detectDragGestures(
                     onDragStart = { o -> scrub((o.x / size.width).coerceIn(0f, 1f)) },
                     onDragEnd = { end() },
                     onDragCancel = { end() },
-                ) { change, _ -> scrub((change.position.x / size.width).coerceIn(0f, 1f)) }
+                ) { change, _ ->
+                    change.consume()
+                    scrub((change.position.x / size.width).coerceIn(0f, 1f))
+                }
             },
     ) {
         val mid = size.height / 2

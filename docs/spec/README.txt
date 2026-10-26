@@ -1,7 +1,7 @@
 Sine & Cosine — specification bundle
 ====================================
 
-SPEC.md           The specification. Single source of truth, 126 resolved
+SPEC.md           The specification. Single source of truth, 162 resolved
                   decisions. Edit this.
 
 sine-cosine.html  The published page, generated from SPEC.md. Self-contained

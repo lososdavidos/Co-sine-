@@ -18,47 +18,52 @@ import androidx.compose.ui.unit.sp
 import app.sine.R
 
 /*
- * Phase, Sine's design language (§6). Two signals a quarter turn apart:
- * Sine is you, now (what's playing, what you've selected, the one action a
- * screen is for); Cosine is the server at work (fetching, matching, syncing,
- * waiting for your review). Red is for faults. Everything else is grey or
- * artwork. No glass: surfaces step up in lightness, so every Android version,
- * the widget and the web look the same.
+ * Phase, Sine's design language (§6). Monochrome, with two blues of one hue:
+ * Sine, the bright one, is you, now (what's playing, what you've selected, the
+ * one action a screen is for); Cosine, the deep one, is the server at work
+ * (fetching, matching, syncing, waiting for your review). Red is for faults.
+ * Everything else is grey or artwork. No glass: surfaces step up in
+ * lightness, so every Android version, the widget and the web look the same.
  */
 
 object PhaseColor {
+    // The greys carry a trace of the blues' hue (oklch hue 250, chroma under
+    // 0.01): cool, never violet.
+
     /** Every page. Not pure black: pixels that switch fully off smear when a list scrolls on OLED. */
-    val Ground = Color(0xFF0B0B0C)
+    val Ground = Color(0xFF0A0B0C)
     /** Tiles, fields, the queue, a pressed row. */
-    val Raised = Color(0xFF161618)
+    val Raised = Color(0xFF151618)
     /** The shelf, the now-playing sheet, menus: what stays put while content moves. */
-    val Float = Color(0xFF202023)
+    val Float = Color(0xFF1F2123)
     /** Secondary pills, and anything pressed on a floating surface. */
-    val Lift = Color(0xFF2E2E33)
+    val Lift = Color(0xFF2C2F32)
     /** Hairlines on the ground. */
-    val Line = Color(0xFF2A2A2F)
+    val Line = Color(0xFF282B2E)
     /** The edge of a floating surface. */
-    val LineFloat = Color(0xFF34343A)
+    val LineFloat = Color(0xFF323539)
     /** Outlines of neutral tags and chips. */
-    val LineStrong = Color(0xFF45454B)
+    val LineStrong = Color(0xFF42464A)
     /** Chart bars and the unplayed part of the wave. */
-    val Bar = Color(0xFF3A3A40)
+    val Bar = Color(0xFF383B3F)
 
-    val Text1 = Color(0xFFF3F3F0)
-    val Text2 = Color(0xFFA6A6AB)
-    /** Labels, and what can't be played right now. 5.7:1 on the ground, 4.7:1 on Float. */
-    val Text3 = Color(0xFF8A8A90)
+    val Text1 = Color(0xFFF1F3F5)
+    val Text2 = Color(0xFFA4A7AA)
+    /** Labels, and what can't be played right now. 5.8:1 on the ground, 4.7:1 on Float. */
+    val Text3 = Color(0xFF888B8F)
     /** Secondary text over a scrimmed cover. */
-    val OnScrim = Color(0xFFD9D9DC)
+    val OnScrim = Color(0xFFD7DADC)
 
-    /** You, now. oklch(0.91 0.19 118). */
-    val Sine = Color(0xFFD7F144)
-    /** The server at work: Sine's hue plus 90°. oklch(0.80 0.12 208). */
-    val Cosine = Color(0xFF46D3E6)
+    /** You, now: blue. oklch(0.71 0.155 253). */
+    val Sine = Color(0xFF53A4FF)
+    /** The server at work: the same blue, deep. oklch(0.54 0.155 252); 3.9:1 on the ground. */
+    val Cosine = Color(0xFF1070C5)
     /** Broken or missing, and the button that removes or deletes. */
     val Fault = Color(0xFFF75E51)
-    /** Text on any of the three signals. */
-    val Ink = Color(0xFF0B0B0C)
+    /** Text on Sine and on red. */
+    val Ink = Color(0xFF0A0B0C)
+    /** Text on Cosine, which is too deep for [Ink]: 4.6:1. */
+    val OnCosine = Text1
 
     /** Over artwork, always at this strength; never adapted to the image. */
     val Scrim = Ground.copy(alpha = 0.64f)
@@ -126,9 +131,9 @@ object PhaseShape {
 private val colors = darkColorScheme(
     primary = PhaseColor.Sine, onPrimary = PhaseColor.Ink,
     primaryContainer = PhaseColor.Sine, onPrimaryContainer = PhaseColor.Ink, inversePrimary = PhaseColor.Sine,
-    secondary = PhaseColor.Cosine, onSecondary = PhaseColor.Ink,
+    secondary = PhaseColor.Cosine, onSecondary = PhaseColor.OnCosine,
     secondaryContainer = PhaseColor.Lift, onSecondaryContainer = PhaseColor.Text1,
-    tertiary = PhaseColor.Cosine, onTertiary = PhaseColor.Ink,
+    tertiary = PhaseColor.Cosine, onTertiary = PhaseColor.OnCosine,
     tertiaryContainer = PhaseColor.Lift, onTertiaryContainer = PhaseColor.Text1,
     background = PhaseColor.Ground, onBackground = PhaseColor.Text1,
     surface = PhaseColor.Ground, onSurface = PhaseColor.Text1,

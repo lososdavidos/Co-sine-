@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -40,11 +41,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -98,7 +101,8 @@ fun Pill(
         PillKind.Quiet, PillKind.QuietFault, PillKind.Outline -> Color.Transparent
     }
     val ink = when (kind) {
-        PillKind.Primary, PillKind.Server, PillKind.Fault -> PhaseColor.Ink
+        PillKind.Primary, PillKind.Fault -> PhaseColor.Ink
+        PillKind.Server -> PhaseColor.OnCosine
         PillKind.SecondaryFault, PillKind.QuietFault -> PhaseColor.Fault
         PillKind.Quiet -> PhaseColor.Text2
         else -> PhaseColor.Text1
@@ -158,7 +162,11 @@ fun Tag(text: String, modifier: Modifier = Modifier, kind: TagKind = TagKind.Neu
     ) {
         Text(
             text.uppercase(Locale.ROOT),
-            color = if (filled) PhaseColor.Ink else PhaseColor.Text2,
+            color = when (kind) {
+                TagKind.Neutral -> PhaseColor.Text2
+                TagKind.Server -> PhaseColor.OnCosine
+                TagKind.Fault -> PhaseColor.Ink
+            },
             style = PhaseType.Label.copy(fontWeight = if (filled) FontWeight.SemiBold else FontWeight.Medium),
             maxLines = 1,
         )
@@ -321,6 +329,27 @@ fun PlayingBars(modifier: Modifier = Modifier, color: Color = PhaseColor.Sine) {
     ) {
         for (h in listOf(8, 14, 5)) Box(Modifier.width(4.dp).height(h.dp).background(color))
     }
+}
+
+/**
+ * How wide a list's column of row numbers is: its widest number in
+ * [PhaseType.Data], and never narrower than two digits or [PlayingBars], so
+ * titles stay in line past 99 and past 999.
+ */
+@Composable
+fun numberColumn(largest: Int): Dp {
+    val digits = maxOf(2, largest.toString().length)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    return remember(digits, density) {
+        with(density) { measurer.measure("0".repeat(digits), PhaseType.Data).size.width.toDp() }.coerceAtLeast(22.dp)
+    }
+}
+
+/** A row's number, zero-padded to two digits, in a column [numberColumn] made wide enough. */
+@Composable
+fun RowNumber(number: Int, width: Dp, modifier: Modifier = Modifier, color: Color = PhaseColor.Text3) {
+    Text(number.toString().padStart(2, '0'), modifier.width(width), color = color, style = PhaseType.Data, maxLines = 1, softWrap = false)
 }
 
 /** A mark, not a plane: being on the phone is the common case (§6.8). */
