@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -59,10 +60,12 @@ import app.sine.ui.phase.Pill
 import app.sine.ui.phase.PillKind
 import app.sine.ui.phase.PhaseShape
 import app.sine.ui.phase.PlayingBars
+import app.sine.ui.phase.RowNumber
 import app.sine.ui.phase.SectionLabel
 import app.sine.ui.phase.Signal
 import app.sine.ui.phase.StatusLine
 import app.sine.ui.phase.Tag
+import app.sine.ui.phase.numberColumn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -220,6 +223,7 @@ internal fun TrackListScreen(
     var selected by remember(tracks) { mutableStateOf(setOf<String>()) }
     val canRemove = removable && session.can(Capability.REMOVE)
     val downloadedHere = tracks.count { it.id in downloads }
+    val numbers = numberColumn(if (showTrackArtist) tracks.size else tracks.maxOfOrNull { it.trackNumber ?: 0 } ?: 0)
 
     ShowSelection(
         if (selected.isEmpty() || onMove != null) null else {
@@ -285,18 +289,16 @@ internal fun TrackListScreen(
             val playable = session.playSource(track) != PlaySource.Unavailable
             val on = track.id in selected
             val isPlaying = track.id == playing
-            val number = (if (showTrackArtist) i + 1 else track.trackNumber)?.toString()?.padStart(2, '0').orEmpty()
+            val number = if (showTrackArtist) i + 1 else track.trackNumber
             ItemRow(
                 title = track.title,
                 subtitle = if (showTrackArtist) track.artist else null,
                 art = null,
                 showArt = false,
                 leading = {
-                    if (isPlaying) PlayingBars(Modifier.width(22.dp), color = if (on) PhaseColor.Ink else PhaseColor.Sine)
-                    else Text(
-                        number, Modifier.width(22.dp), style = PhaseType.Data,
-                        color = if (on) PhaseColor.Ink else PhaseColor.Text3, maxLines = 1,
-                    )
+                    if (isPlaying) PlayingBars(Modifier.width(numbers), color = if (on) PhaseColor.Ink else PhaseColor.Sine)
+                    else if (number != null) RowNumber(number, numbers, color = if (on) PhaseColor.Ink else PhaseColor.Text3)
+                    else Spacer(Modifier.width(numbers))
                 },
                 playing = isPlaying,
                 // A mark, not a highlight: downloaded is the common case (§6.8).

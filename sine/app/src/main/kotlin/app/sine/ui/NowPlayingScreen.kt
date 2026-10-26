@@ -45,8 +45,10 @@ import app.sine.ui.phase.PhaseType
 import app.sine.ui.phase.Pill
 import app.sine.ui.phase.PillKind
 import app.sine.ui.phase.PlayingBars
+import app.sine.ui.phase.RowNumber
 import app.sine.ui.phase.Tag
 import app.sine.ui.phase.WaveScrubber
+import app.sine.ui.phase.numberColumn
 import kotlinx.coroutines.delay
 
 /**
@@ -186,6 +188,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                 }
                 itemsIndexed(state.queue) { i, q ->
                     val now = i == state.index
+                    val numbers = numberColumn(state.queue.size)
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).background(PhaseColor.Raised)) {
                         ItemRow(
                             title = q.mediaMetadata.title?.toString().orEmpty(),
@@ -194,8 +197,8 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                             showArt = false,
                             playing = now,
                             leading = {
-                                if (now) PlayingBars(Modifier.width(22.dp))
-                                else Text((i + 1).toString().padStart(2, '0'), Modifier.width(22.dp), color = PhaseColor.Text3, style = PhaseType.Data)
+                                if (now) PlayingBars(Modifier.width(numbers))
+                                else RowNumber(i + 1, numbers)
                             },
                             modifier = Modifier.padding(horizontal = 0.dp),
                         ) { player.skipTo(i) }

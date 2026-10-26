@@ -613,7 +613,7 @@ private fun ReviewFace(session: AccountSession, size: TileSize) {
                     .clip(PhaseShape.Pill)
                     .background(if (n > 0) PhaseColor.Cosine else PhaseColor.Lift)
                     .padding(horizontal = 10.dp, vertical = 2.dp),
-            ) { RollingCount(n, PhaseType.Data.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), if (n > 0) PhaseColor.Ink else PhaseColor.Text2) }
+            ) { RollingCount(n, PhaseType.Data.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), if (n > 0) PhaseColor.OnCosine else PhaseColor.Text2) }
         },
     )
 }
@@ -645,7 +645,7 @@ private fun IngestFace(session: AccountSession, size: TileSize) {
         },
         corner = if (active.size > 1 || (size == TileSize.Small && active.isNotEmpty())) ({
             Box(Modifier.clip(PhaseShape.Pill).background(PhaseColor.Cosine).padding(horizontal = 10.dp, vertical = 2.dp)) {
-                RollingCount(active.size, PhaseType.Data.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), PhaseColor.Ink)
+                RollingCount(active.size, PhaseType.Data.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), PhaseColor.OnCosine)
             }
         }) else null,
         below = {

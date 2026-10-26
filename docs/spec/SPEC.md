@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 162 resolved decisions · last updated 2026-10-26 (motion and gestures, §6.16; Home tiles, §6.4)
+**Status:** COMPLETE DRAFT · 164 resolved decisions · last updated 2026-10-26 (Phase's two blues, §6.1; motion and gestures, §6.16; Home tiles, §6.4)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -73,9 +73,9 @@ is inspectable; the Store still makes sense as folders of music without the
 server running.
 
 **G7 — One design language, applied properly.**
-Phase. A near-black ground and greys; two signals a quarter turn apart — Sine
-(lime) for you, now, and Cosine (sky) for the server at work — and red for
-faults; type doing the work; no glass. See §6.
+Phase. Monochrome: a near-black ground and greys, with two blues of one hue —
+Sine (blue) for you, now, and Cosine (deep blue) for the server at work — and
+red for faults; type doing the work; no glass. See §6.
 
 **G8 — Portable to iOS later.**
 Nothing in the client design bets on Android-only capability; nothing on the
@@ -1063,16 +1063,17 @@ These are not open. They arrive with the system and shape every screen below.
 | Rule | Consequence for Sine |
 |---|---|
 | **Type carries the interface** | Names are set large in Instrument Sans at width 75, bold; data — lengths, counts, years, sources — small in Martian Mono. Navigation is words. Icons are kept for transport, where everyone knows them, and for marks too small for a word. |
-| **Two signals, a quarter turn apart** | **Sine** (lime, `#D7F144`, oklch 0.91 0.19 118) is you, now: what's playing, what's selected, the one action a screen is for. **Cosine** (sky, `#46D3E6`, Sine's hue plus 90°, as the names say) is the server at work: fetching, matching, syncing, waiting for your review. Both take black ink. |
+| **Monochrome, with two blues** | **Sine** (blue, `#53A4FF`, oklch 0.71 0.155 253) is you, now: what's playing, what's selected, the one action a screen is for. **Cosine** (deep blue, `#1070C5`, oklch 0.54 0.155 252: the same wave, shifted, as the names say) is the server at work: fetching, matching, syncing, waiting for your review. Both sit at hue 252, short of the 260s where blue starts to read violet, and the greys carry a trace of the same hue rather than none. Sine takes black ink; Cosine, too deep for it, takes Text 1. `REVISED` (was: lime and sky, a quarter turn apart). |
 | **Red is for faults** | `#F75E51`: broken or missing, a fetch that failed, and the button that removes or deletes. Never decoration. Everything that isn't a signal is grey or artwork. |
 | **Artwork is the only colour that varies** | Covers are shown whole, and blurred into headers behind a scrim that never changes. Never sampled into a palette, so the signals mean the same beside any cover. |
 | **Shape says what a thing is** | Square (3dp corners): something you read — a cover, a tag. Circle: a person — an artist's picture, an account. Pill: something you press, transport included, wider than tall so it never reads as a person. Slab (16dp; 24dp when floating): a surface that holds things. |
-| **Depth by light, not glass** | No glass, and nothing rests blurred. Ground `#0B0B0C` — not pure black, because fully-off pixels smear when a list scrolls on OLED — then Raised `#161618`, Float `#202023` and Lift `#2E2E33`. A floating surface is Float with a hairline edge. The one blur is movement: a page blurs as something slides over it and comes back into focus as it's uncovered (§6.16). `REVISED` (was: no blur anywhere). Android below API 31, the widget and the web look identical: one code path. |
+| **Depth by light, not glass** | No glass, and nothing rests blurred. Ground `#0A0B0C` — not pure black, because fully-off pixels smear when a list scrolls on OLED — then Raised `#151618`, Float `#1F2123` and Lift `#2C2F32`. A floating surface is Float with a hairline edge. The one blur is movement: a page blurs as something slides over it and comes back into focus as it's uncovered (§6.16). `REVISED` (was: no blur anywhere). Android below API 31, the widget and the web look identical: one code path. |
 | **An overlay never opens another overlay** | See §6.5. This is the single hardest constraint for a music app. |
-| **Selection is Sine** | The whole row fills lime and its text turns black. Where you are — the current destination, segment or filter — is the light pill instead: location, not selection, so never a signal. |
+| **Selection is Sine** | The whole row fills blue and its text turns black. Where you are — the current destination, segment or filter — is the light pill instead: location, not selection, so never a signal. |
 | **A tag or a dot** | A tag is one filled word on a row and asks you to look: UNSURE in Cosine, MISSING in red; an outlined tag only describes. A dot starts a sentence of status: Cosine for work in progress or waiting on the server, red for something that has stopped. |
-| **One Sine pill per screen** | The primary action is lime; everything else you press is Lift or quiet text. A destructive pill is red, names the verb and the count, and never sits beside the primary. |
-| **Long-form prose uses Text 2** | `#A6A6AB`: pure white blooms at paragraph length on OLED. Names and titles are Text 1 (`#F3F3F0`); labels, and what can't play right now, are Text 3 (`#8A8A90`, 5.7:1 on the ground, 4.7:1 on Float). |
+| **One Sine pill per screen** | The primary action is blue; everything else you press is Lift or quiet text. A destructive pill is red, names the verb and the count, and never sits beside the primary. |
+| **Long-form prose uses Text 2** | `#A4A7AA`: pure white blooms at paragraph length on OLED. Names and titles are Text 1 (`#F1F3F5`); labels, and what can't play right now, are Text 3 (`#888B8F`, 5.8:1 on the ground, 4.7:1 on Float). |
+| **Numbers keep their column** | A list's row numbers (a release's track numbers, a playlist's or the queue's positions) are mono, at least two digits, in a column as wide as the list's widest number, so a hundredth row neither clips nor wraps and every title stays in line. |
 | **Four-pixel grid** | Every dimension is a multiple of 4. Rows are 52dp for one line and 64dp with art; hit areas are never under 44dp. |
 
 Phase has no glass, so floating costs no filter; it still costs reserved space
@@ -1174,7 +1175,7 @@ Three places the two systems disagree, where Phase wins:
 
 | Metro did | Phase requires |
 |---|---|
-| White text on the accent colour | **Black ink.** Sine, Cosine and red all take black ink, no exceptions. |
+| White text on the accent colour | **Ink by lightness.** Sine and red take black ink; Cosine, the deep blue, takes Text 1. No other pairings. `REVISED` (was: black ink on all three). |
 | An accent colour per user, any hue | **Signals only where they mean something.** A tile is artwork, a Raised slab, or a signal: Cosine for the review queue's count, Sine only for what's playing. Nothing else. |
 | Tiles bleed to the screen edge, gap-separated | **4px grid, 16dp slabs.** Tiles keep their gaps — a grid is not a list — and every dimension is a multiple of 4. |
 
@@ -1970,7 +1971,7 @@ not silently keep gigabytes.
 | — | Now-playing screen | Overlay sheet with the queue as an internal pane |
 | — | Shelf | One floating surface; splits into player + nav when playing; three states |
 | — | Context actions | Long-press selection + action row in the shelf; multi-select free |
-| — | Home | Metro-style tile grid, solid slabs, black ink on the signals |
+| — | Home | Metro-style tile grid, solid slabs, the signals' own ink |
 | — | Home layout | Fully user-arranged: pin, resize, reorder. No fixed design |
 | — | Tile liveness | Content cycles; the tile stays put, the parts inside it may slide, spin or fade |
 | — | Play history | Never pruned — retrospective tiles depend on it |
@@ -2026,8 +2027,10 @@ not silently keep gigabytes.
 | — | Smart playlists offline | Sent with the sync as last worked out, again only when they change |
 | — | Last.fm account | One API account per server, entered by its admin; each account approves Cosine on Last.fm |
 | — | Scrobbling start | Plays from the moment an account connects; earlier history isn't sent |
-| — | Design language | Phase replaces Graphit v0.7 (0.5.2): two signals a quarter turn apart, red for faults, type doing the work, no glass |
-| — | Ground | `#0B0B0C`, not pure black; depth by light: Raised, Float, Lift |
+| — | Design language | Phase replaces Graphit v0.7 (0.5.2): two signals, red for faults, type doing the work, no glass |
+| — | Signals | `REVISED` Monochrome with two blues of one hue (oklch 252, never toward violet): Sine `#53A4FF` with black ink, Cosine `#1070C5` with light ink (was: lime and sky) |
+| — | Ground | `#0A0B0C`, not pure black; depth by light: Raised, Float, Lift; greys tinted faintly toward the blues, not violet |
+| — | Row numbers | At least two digits, in a column as wide as the list's widest number |
 | — | Type | Instrument Sans (widths 75 to 100) and Martian Mono, bundled under the OFL |
 | — | Shape | Square is read, circle is a person, pill is pressed, slab holds |
 | — | Status marks | A tag asks you to look; a dot starts a sentence of status |

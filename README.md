@@ -67,7 +67,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 Sine and Cosine's dashboard use **Phase**, the design language that replaced Graphit v0.7 in 0.5.2 (spec §6):
 
-- **Two signals, a quarter turn apart.** Sine (lime) is you, now: what's playing, what's selected, the one action a screen is for. Cosine (sky, Sine's hue plus 90°) is the server at work: fetching, matching, syncing, waiting for your review. Red is for faults and deleting. Everything else is grey or artwork.
+- **Monochrome, with two blues.** Sine (blue) is you, now: what's playing, what's selected, the one action a screen is for. Cosine (deep blue, the same hue darker) is the server at work: fetching, matching, syncing, waiting for your review. Both are blues that stay blue, never leaning violet, and the greys share their faint cool tint. Red is for faults and deleting. Everything else is grey or artwork.
 - **Type carries the interface.** Names in Instrument Sans, condensed and large; lengths, counts and sources in Martian Mono. Navigation is three words.
 - **Shape says what a thing is.** Square: something you read (a cover, a tag). Circle: a person. Pill: something you press. Slab: a surface that holds things.
 - **No glass.** Surfaces step up in lightness from a near-black ground, so every Android version, the widget and the web look the same. Nothing rests blurred.

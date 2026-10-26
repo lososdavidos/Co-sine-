@@ -1,7 +1,8 @@
 /*
  * Phase, Cosine's dashboard (§6.18): the same language as Sine, in the browser.
- * Sine (lime) is your next action; Cosine (sky) is the server at work; red
- * is for faults and for deleting. Everything else is grey. No glass, no blur.
+ * Monochrome, with two blues of one hue: Sine (blue) is your next action;
+ * Cosine (deep blue) is the server at work; red is for faults and for
+ * deleting. Everything else is grey. No glass, no blur.
  * Admin work is tabular, so tables, mono figures and plain forms carry it.
  */
 
@@ -22,21 +23,22 @@
 
 :root {
   color-scheme: dark;
-  --ground: #0B0B0C;
-  --raised: #161618;
-  --float: #202023;
-  --lift: #2E2E33;
-  --line: #2A2A2F;
-  --line-float: #34343A;
-  --line-strong: #45454B;
-  --bar: #3A3A40;
-  --text-1: #F3F3F0;
-  --text-2: #A6A6AB;
-  --text-3: #8A8A90;
-  --sine: #D7F144;
-  --cosine: #46D3E6;
+  --ground: #0A0B0C;
+  --raised: #151618;
+  --float: #1F2123;
+  --lift: #2C2F32;
+  --line: #282B2E;
+  --line-float: #323539;
+  --line-strong: #42464A;
+  --bar: #383B3F;
+  --text-1: #F1F3F5;
+  --text-2: #A4A7AA;
+  --text-3: #888B8F;
+  --sine: #53A4FF;
+  --cosine: #1070C5;
   --fault: #F75E51;
-  --ink: #0B0B0C;
+  --ink: #0A0B0C;
+  --on-cosine: #F1F3F5;
   --sans: "Instrument Sans", system-ui, sans-serif;
   --mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -140,7 +142,7 @@ p.ok, p.err { display: flex; padding: 14px 16px; border-radius: 16px; background
   font: 600 10px/14px var(--mono); font-stretch: 87.5%; letter-spacing: .05em; text-transform: uppercase;
   border: 1px solid var(--line-strong); color: var(--text-2);
 }
-.tag.server { background: var(--cosine); border-color: var(--cosine); color: var(--ink); }
+.tag.server { background: var(--cosine); border-color: var(--cosine); color: var(--on-cosine); }
 .tag.fault { background: var(--fault); border-color: var(--fault); color: var(--ink); }
 
 /* Figures are mono, tabular. */

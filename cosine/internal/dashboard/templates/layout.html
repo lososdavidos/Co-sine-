@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0B0B0C">
+<meta name="theme-color" content="#0A0B0C">
 <title>{{.Title}} · Cosine</title>
 <!-- Phase (§6.18): the same design language as Sine. -->
 <link rel="preload" href="/static/fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
@@ -12,7 +12,7 @@
 <body>
 <div class="page">
 <header class="top">
-<a class="mark" href="/"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="13" cy="17" r="11" fill="none" stroke="#45454B" stroke-width="1.5"/><line x1="13" y1="17" x2="20.1" y2="17" stroke="#46D3E6" stroke-width="3"/><line x1="20.1" y1="17" x2="20.1" y2="8.6" stroke="#D7F144" stroke-width="3"/><circle cx="20.1" cy="8.6" r="2.5" fill="#F3F3F0"/></svg>Cosine</a>
+<a class="mark" href="/"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="13" cy="17" r="11" fill="none" stroke="#42464A" stroke-width="1.5"/><line x1="13" y1="17" x2="20.1" y2="17" stroke="#1070C5" stroke-width="3"/><line x1="20.1" y1="17" x2="20.1" y2="8.6" stroke="#53A4FF" stroke-width="3"/><circle cx="20.1" cy="8.6" r="2.5" fill="#F1F3F5"/></svg>Cosine</a>
 {{if .User}}<div class="who"><span class="label">{{.User.Name}} · admin</span><form method="post" action="/logout"><button class="quiet">Log out</button></form></div>{{end}}
 </header>
 {{if .User}}<nav class="main" aria-label="Dashboard">
