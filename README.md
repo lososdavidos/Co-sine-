@@ -59,7 +59,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, the Home tile canvas and the statistics screen in Sine, remote control, Jam, and the desktop client.
+**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, the Home tile canvas, the sliding gestures and the statistics screen in Sine, remote control, Jam, and the desktop client.
 
 ## Design
 
@@ -68,7 +68,8 @@ Sine and Cosine's dashboard use **Phase**, the design language that replaced Gra
 - **Two signals, a quarter turn apart.** Sine (lime) is you, now: what's playing, what's selected, the one action a screen is for. Cosine (sky, Sine's hue plus 90°) is the server at work: fetching, matching, syncing, waiting for your review. Red is for faults and deleting. Everything else is grey or artwork.
 - **Type carries the interface.** Names in Instrument Sans, condensed and large; lengths, counts and sources in Martian Mono. Navigation is three words.
 - **Shape says what a thing is.** Square: something you read (a cover, a tag). Circle: a person. Pill: something you press. Slab: a surface that holds things.
-- **No glass.** Surfaces step up in lightness from a near-black ground, so every Android version, the widget and the web look the same.
+- **No glass.** Surfaces step up in lightness from a near-black ground, so every Android version, the widget and the web look the same. Nothing rests blurred.
+- **Things slide, with the finger.** A page opens from the right and goes back out to the right; swipe left to right anywhere on it to go back. Swipe sideways to move between Home, Search and Library. Now playing comes up from the bottom and is dragged back down. A gesture follows the finger, holds when it holds, and on release finishes or goes back. The page underneath blurs as it's covered and sharpens as it's uncovered: Phase's one blur, and only while something moves. Small forms are pages too; Sine has no pop-ups.
 - **The shelf** at the bottom is navigation, the player, the actions for a selection, and where Sine talks back: a short message above navigation, or a question that waits for an answer.
 
 Sine's implementation is `sine/app/src/main/kotlin/app/sine/ui/phase` (tokens, type, parts, the wave) and `ui/Shelf.kt`; the dashboard's is one stylesheet, `cosine/internal/dashboard/static/phase.css`, served from the binary with the fonts. Phase is dark only.

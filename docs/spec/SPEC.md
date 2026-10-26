@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 146 resolved decisions · last updated 2026-10-26 (0.5.2: Phase replaces Graphit, §6)
+**Status:** COMPLETE DRAFT · 161 resolved decisions, 1 open · last updated 2026-10-26 (motion and gestures, §6.16; Home tiles, §6.4)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -983,8 +983,9 @@ Three commitments elsewhere in this spec made the decision:
 
 Compose gives the same draw-every-pixel freedom a cross-platform toolkit would —
 it is a custom rendering toolkit, not a wrapper over platform widgets — so
-the design language loses nothing. Phase uses no backdrop blur at all (§6.1),
-so no surface costs a filter.
+the design language loses nothing. Phase uses no backdrop filter at all
+(§6.1): its one blur, on a page while something slides over it, is a snapshot
+drawn small and then large (§6.16), so no surface costs a filter.
 
 Language count for the whole system: Kotlin and Go.
 
@@ -1058,7 +1059,7 @@ These are not open. They arrive with the system and shape every screen below.
 | **Red is for faults** | `#F75E51`: broken or missing, a fetch that failed, and the button that removes or deletes. Never decoration. Everything that isn't a signal is grey or artwork. |
 | **Artwork is the only colour that varies** | Covers are shown whole, and blurred into headers behind a scrim that never changes. Never sampled into a palette, so the signals mean the same beside any cover. |
 | **Shape says what a thing is** | Square (3dp corners): something you read — a cover, a tag. Circle: a person — an artist's picture, an account. Pill: something you press, transport included, wider than tall so it never reads as a person. Slab (16dp; 24dp when floating): a surface that holds things. |
-| **Depth by light, not glass** | No blur anywhere. Ground `#0B0B0C` — not pure black, because fully-off pixels smear when a list scrolls on OLED — then Raised `#161618`, Float `#202023` and Lift `#2E2E33`. A floating surface is Float with a hairline edge. Android below API 31, the widget and the web look identical: one code path. |
+| **Depth by light, not glass** | No glass, and nothing rests blurred. Ground `#0B0B0C` — not pure black, because fully-off pixels smear when a list scrolls on OLED — then Raised `#161618`, Float `#202023` and Lift `#2E2E33`. A floating surface is Float with a hairline edge. The one blur is movement: a page blurs as something slides over it and comes back into focus as it's uncovered (§6.16). `REVISED` (was: no blur anywhere). Android below API 31, the widget and the web look identical: one code path. |
 | **An overlay never opens another overlay** | See §6.5. This is the single hardest constraint for a music app. |
 | **Selection is Sine** | The whole row fills lime and its text turns black. Where you are — the current destination, segment or filter — is the light pill instead: location, not selection, so never a signal. |
 | **A tag or a dot** | A tag is one filled word on a row and asks you to look: UNSURE in Cosine, MISSING in red; an outlined tag only describes. A dot starts a sentence of status: Cosine for work in progress or waiting on the server, red for something that has stopped. |
@@ -1080,6 +1081,22 @@ nothing is fetched to draw a screen.
 Playlists — so playlists sit as an equal to the canonical tree rather than
 bolted onto it. Downloaded and Recently added are filters within a segment, not
 segments of their own.
+
+`RESOLVED` **Swipe sideways between the three.** Home, Search and Library sit in
+a row in the bar's order. Swiping right to left moves to the next one, left to
+right to the previous, and the page follows the finger (§6.16). They stack in
+that order: going right, the next page slides in from the right over the
+current one, which blurs underneath; going left, the current page slides away
+to the right and the one beneath comes back into focus. That is the same
+movement as opening a page and going back, so one gesture means one thing
+everywhere. Tapping a word in the bar runs the same slide in the same
+direction, skipping the page between when there is one, and Android's back
+from Search or Library goes to Home the same way. Past either end, the page
+doesn't move.
+
+`RESOLVED` **On these three, sideways always means the destinations.**
+Library's segments are tapped, not swiped, so a swipe never has two meanings.
+Anything inside a page that scrolls sideways itself takes the drag first.
 
 `RESOLVED` **Add is not a tab.** Ingest lives as an action in the top right of
 the Library screen only. It is something you do while looking at your library,
@@ -1157,10 +1174,23 @@ Three places the two systems disagree, where Phase wins:
 and reorders tiles freely. There is no fixed layout — a default arrangement on
 first run, and everything after that is theirs.
 
+`RESOLVED` **The layout is kept on Cosine,** per account and per kind of
+device: phone and desktop each have their own (§6.15). It survives a reinstall
+or a new phone. Changes made offline stay on the phone and go with the next
+sync.
+
 `RESOLVED` **Tiles are live in content, not in motion.** Artwork cycles, counts
 update, the current track changes. Tiles do not flip, slide or animate between
 faces. A grid of animating blocks fights everything else in Phase, and the
-liveness people actually value is the content being current.
+liveness people actually value is the content being current. Pages slide
+(§6.16); tiles are the exception, because their content changes and they don't
+go anywhere.
+
+`RESOLVED` **How often.** A tile that cycles shows its next cover every 8 to 10
+seconds, staggered so neighbours don't change together. Tiles cycle only while
+Home is on screen, and not at all with Android's animations removed.
+
+`OPEN` **Whether a cover changes by a short fade or a cut** (§10).
 
 #### 6.4.1 Tile catalogue
 
@@ -1176,7 +1206,7 @@ same long-press selection used everywhere else:
 
 | Tile | What it shows |
 |---|---|
-| **Now playing** | Current track and artwork; absent when nothing is playing |
+| **Now playing** | Current track and artwork; when nothing is playing, what played last, and tapping it picks up from there |
 | **Resume** | The most recent session, and which Device it belongs to |
 | **Shuffle all** | Action tile — plays the whole Library shuffled |
 | **Recently added** | Cycles artwork of new Pointers, using the per-Pointer date |
@@ -1189,6 +1219,30 @@ same long-press selection used everywhere else:
 | **Review queue** | Live count of Tracks awaiting a resolver correction; tapping opens it |
 | **Ingest activity** | What Cosine is fetching, with progress and failures |
 | **Jam** | Active session, or an invite to start one |
+
+`REVISED` **Now playing never leaves Home.** (Was: absent when nothing is
+playing, which contradicted §6.4.5: a tile keeps its place.)
+
+`RESOLVED` **A list tile opens its list.** Recently added, Most played, This
+time last year, Forgotten, Never played, Downloaded and Favourites open the way
+a playlist does; a tile's shuffle variant plays instead. Shuffle all, Now
+playing and Resume play. Review queue, Ingest activity and Jam open what they
+summarise.
+
+`RESOLVED` **A list tile is a smart playlist** (§2.4), and its rule is the
+smart playlist's. Most played's window — 30 days, this year or all time — is
+the one its smart playlist has; for another window, make that smart playlist
+and pin it too. The six every account starts with (Recently added, Most played
+this year, Recently played, Forgotten, Never played, This time last year) are
+pinnable as they are.
+
+`RESOLVED` **Generated tiles are added from Home.** An Add tile action lists
+them alongside your smart playlists. Pinned items still come from their own
+screens.
+
+`RESOLVED` **Resume, Jam and Favourites wait for their features.** Resume
+needs per-Device sessions (§4B), Jam needs Jam (§4C), and Favourites needs a
+way to star a song in Sine. Until then those tiles aren't offered.
 
 `NOTE` The retrospective tiles — *this time last year*, *forgotten*, *most played
 this year* — are only possible because plays are stored as append-only
@@ -1206,6 +1260,9 @@ discovery, nothing that suggests music from outside what they already have.
 `RESOLVED` **Four columns**, with three tile sizes: **1×1**, **2×2**, **4×2**.
 Metro's actual proportions — small square, medium square, wide — which on a
 phone puts the unit at roughly 80px, comfortably on the 4px grid. No 4×4.
+
+`RESOLVED` **What each size shows.** 1×1: the cover, or the count. 2×2 adds the
+name. 4×2 adds a second line: the artist, the window, or what's fetching.
 
 #### 6.4.3 Tile appearance — artwork as ambience
 
@@ -1303,12 +1360,28 @@ This also means the shelf has three states, not two:
 
 So the fourth "Options" pane in the now-playing sheet is not needed.
 
+`RESOLVED` **No pop-ups.** Small forms — naming a playlist, sharing it, adding
+to one, a smart playlist's rules — are pages. They slide in from the right like
+any other page, and swiping back cancels. A dialog would be an overlay, and
+opened from the now-playing sheet it would be an overlay on an overlay. A page
+opened from the sheet slides in over it like over any page, and back returns
+to the sheet.
+
 ### 6.6 The now-playing sheet
 
 `RESOLVED` **The sheet has two heights, not three panes.** Dragged up from the
 shelf it shows now playing; dragged further, the queue rises from its bottom
 edge. This is one surface at two heights, not an overlay opening an overlay, so
 the rule holds.
+
+`REVISED` **The sheet follows the finger.** (Was: it opened on a drag, then
+played its own 220ms.) Dragging the player row up brings the sheet up from the
+bottom under the finger; dragging further brings the queue up; dragging down
+takes them back. The page beneath blurs as the sheet covers it and comes back
+into focus as it goes (§6.16). Tapping the player row slides the sheet up on
+its own, and Close or back slides it down. Open, it covers the whole screen. A
+downward drag closes it only when its content is scrolled to the top, and a
+drag on the wave always seeks.
 
 `RESOLVED` **Jam is a strip inside the sheet.** When a session is active, a
 participant strip sits above the transport — who is listening, who queued the
@@ -1466,12 +1539,13 @@ material that needs it.
 
 ### 6.10 Adding music
 
-`RESOLVED` **Add opens a sheet with a single field.** Paste a URL or type a
+`REVISED` **Add opens a page with a single field.** (Was: a sheet. Like every
+form, it slides in from the right; §6.5, §6.16.) Paste a URL or type a
 query into the same input — Cosine works out which it is. Results appear
 beneath; picking one queues the ingest. One surface, no modes, no tabs.
 
 `RESOLVED` **Sine registers as a share target.** Sharing a track from
-SoundCloud, YouTube or anywhere else opens this same sheet with the URL already
+SoundCloud, YouTube or anywhere else opens this same page with the URL already
 in the field. This is the fastest path from hearing something to owning it, and
 it is probably how most music will actually enter the library.
 
@@ -1619,23 +1693,75 @@ since what you want at a desk is not what you want on a phone.
 
 ### 6.16 Motion
 
-`RESOLVED` **Strictly by Phase's three durations.** No custom curves, no
-signature transition.
+`REVISED` **Things slide, and they move with the finger.** (Was: strictly
+Phase's three durations, pages changing by a 160ms fade, and the sheet playing
+a timed 220ms however it was dragged.) Motion says where a page is. A page that
+opens comes in from the right over the one you were on; closing it sends it
+back out the way it came. Now playing comes up from the bottom and goes back
+down.
+
+| Movement | By hand | By tap |
+|---|---|---|
+| Opening a page (artist, album, playlist, settings, review, a form) | — | Slides in from the right over the current page |
+| Going back | Swipe left to right, starting anywhere on the page | Back slides the page out to the right |
+| Home · Search · Library | Swipe sideways (§6.2) | Tap a word in the bar |
+| The now-playing sheet | Drag the player row up, or the sheet down (§6.6) | Tap the player row; Close or back |
+| The queue | Drag the sheet further up, or back down | — |
+
+`RESOLVED` **A gesture moves with the finger and stops with it.** The page is
+wherever the finger puts it, one to one. It holds when the finger holds and
+reverses when the finger does. On release it finishes the move if it's past
+halfway or was flicked that way, and otherwise goes back, carrying on at the
+finger's speed rather than starting a new animation. Nothing overshoots.
+
+`RESOLVED` **The page underneath comes from a blur.** As a page or the sheet
+slides over another, the page being covered blurs and dims slightly as it goes
+under; as it's uncovered it comes back into focus. How blurred it is follows
+the slide's progress, whether a finger or a tap drives it. Nothing rests
+blurred: a covered page isn't drawn, and a finished slide leaves every surface
+sharp. This is the one blur in Phase (§6.1).
+
+`RESOLVED` **The blur is a snapshot, not a filter.** When a slide starts, the
+page underneath is captured once and drawn small, then large, which is the
+ambience's trick (§6.7). The slide fades between the sharp capture and the
+blurred one. Nothing is blurred per frame, so it costs the same and looks the
+same from Android 8 up, with no separate path below API 31.
+
+`RESOLVED` **Who gets the drag.**
+- Something under the finger that moves sideways by itself takes a sideways
+  drag first: a row that scrolls sideways, or the wave, which always seeks. The
+  page moves only from places that don't.
+- A drag is sideways or up-and-down from its first few pixels, and stays that
+  way, so scrolling a list never turns into a swipe.
+- While something is selected, sideways swipes are off, and back clears the
+  selection first. That includes a selected tile being dragged on Home.
+- A swipe that starts at the screen's very edge is Android's back gesture. From
+  Android 14, predictive back drives the same slide, so it follows the finger
+  too; before that, back plays the tapped slide.
 
 | Change | Token |
 |---|---|
 | Selection, hover, press, fills | State: 100ms |
-| Shelf splitting and collapsing, padding reflow, tile resize, page changes | Move: 160ms |
-| Sheet and menu entry | Overlay: 220ms; leaving in 160ms, opacity only |
+| Shelf splitting and collapsing, padding reflow, tile resize, shelf messages | Move: 160ms |
+| A page, a destination or the sheet, by tap | Slide: 300ms, easing out |
+| The same, let go mid-gesture | From the finger's speed to rest, no overshoot |
+
+`RESOLVED` **With Android's animations removed,** a tap changes the page at
+once. A page moved by hand still follows the finger, because that is the
+person moving it rather than an animation, and on release it jumps to where it
+was going. Tiles don't cycle (§6.4).
 
 Two consequences accepted deliberately:
 
-- **No shared-element transition.** The shelf's artwork does not travel into the
-  sheet — it cross-fades. Less of a moment, one fewer bespoke animation, and
-  consistent with Phase's line that motion is feedback rather than atmosphere.
-- **The sheet is timed, not finger-tracked.** It opens on a drag but plays its
-  own 220ms rather than following the gesture. Cheaper, less tactile; revisit
-  only if it feels wrong in the hand.
+- **Still no shared-element transition.** The shelf's artwork does not travel
+  into the sheet; the sheet slides up carrying its own cover. That's one fewer
+  bespoke animation, and motion stays about where things are.
+- **Desktop has no swipes.** Clicks run the same slides. Its panels (§6.15)
+  don't slide, because they don't cover anything. The dashboard (§6.18) is a
+  set of web pages and keeps ordinary page loads.
+
+`PLANNED` None of this section is built yet. As of 0.5.3, pages fade on the
+160ms move and the sheet on its old 220ms.
 
 ### 6.17 Voice
 
@@ -1812,7 +1938,7 @@ not silently keep gigabytes.
 | — | Tile ground | Artwork as ambience, always scrimmed; never sampled into a palette |
 | — | Tile editing | Long-press selection + shelf actions, same as everywhere |
 | — | Empty tiles | Keep their place, show a resting state |
-| — | Now-playing sheet | One surface, two heights; queue rises from the bottom edge |
+| — | Now-playing sheet | One surface, two heights; queue rises from the bottom edge; follows the finger up and down |
 | — | NP artwork | Ambience across the sheet's top, the cover whole on it; controls on plain Float |
 | — | Progress | The wave on now playing, Sine up to the position; a straight line everywhere else |
 | — | Player row | Artwork, title, play/pause, skip, progress hairline, Device indicator |
@@ -1820,7 +1946,7 @@ not silently keep gigabytes.
 | — | Ambience | Any single-subject screen; header only, constant scrim, pre-blurred |
 | — | Track rows | Quiet by default; a tag means exception, not status |
 | — | Search | Instant, local, one ranked list |
-| — | Add | Single-field sheet; Sine is a share target for URLs |
+| — | Add | Single-field page; Sine is a share target for URLs |
 | — | Review queue | List, tap to correct; count as a Cosine pill |
 | — | Offline | Everything visible, unplayable dimmed |
 | — | First run | Type the address; mDNS suggests; mode shown explicitly |
@@ -1833,7 +1959,7 @@ not silently keep gigabytes.
 | — | No artwork | Flat ground, no ambience, no generated colour |
 | — | Desktop Home | Same unit size, more columns; separate layout from the phone |
 | — | Artist ordering | Interleaved chronologically, albums and singles together |
-| — | Motion | Phase's three durations only; no shared-element transition, sheet is timed |
+| — | Motion | Things slide and follow the finger: pages from the right, now playing from the bottom; a tapped slide is 300ms; still no shared-element transition |
 | — | Voice | Plain and factual; state what is true and what happens next |
 | — | Dashboard | Phase's stylesheet and fonts, served from the binary; tabular, no ambience |
 | — | Search ranking | As proposed in §6.8 |
@@ -1866,6 +1992,21 @@ not silently keep gigabytes.
 | — | Status marks | A tag asks you to look; a dot starts a sentence of status |
 | — | Shelf messages | Above navigation for four seconds; a question takes the shelf until answered |
 | — | Offline, no copy | Dimmed only, never red: red stays for a missing Object |
+| — | Swipe back | Left to right, starting anywhere on a page; Android's edge back gesture runs the same slide |
+| — | Destination swipe | Home · Search · Library side to side in the bar's order; the next page slides over, the previous is uncovered |
+| — | Library segments | Tapped, never swiped |
+| — | Blur in motion | The page underneath blurs as it's covered and sharpens as it's uncovered; nothing rests blurred |
+| — | How it blurs | A snapshot drawn small then large; no per-frame filter, one code path from Android 8 |
+| — | Letting go | Finishes past halfway or on a flick, otherwise goes back; carries on at the finger's speed, no overshoot |
+| — | No pop-ups | Small forms are pages that slide in from the right; swiping back cancels |
+| — | Now playing tile | Never leaves Home; shows what played last when nothing is playing |
+| — | Tile tap | A list tile opens its list; its shuffle variant plays |
+| — | Tile rules | A list tile is a smart playlist; Most played's window is its smart playlist's |
+| — | Home layout storage | On Cosine, per account and per kind of device; offline changes go with the next sync |
+| — | Adding tiles | Generated tiles and smart playlists from Home's Add tile action |
+| — | Tile sizes | 1×1 the cover or count; 2×2 adds the name; 4×2 a second line |
+| — | Tiles not yet possible | Resume, Jam and Favourites aren't offered until their features exist |
+| — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; none with animations removed |
 
 ---
 
@@ -1988,6 +2129,11 @@ from the first endpoint rather than remembered at version four.
 
 ## 10. Open questions
 
-Nothing is open. Every question in this document is answered, and every proposal
-in §8 stands except the cover-art scope, which was overturned in §3.2a.
+One question is open. Every other question in this document is answered, and
+every proposal in §8 stands except the cover-art scope, which was overturned in
+§3.2a.
+
+| # | Question | Where it matters |
+|---|---|---|
+| Q86 | When a Home tile shows its next cover, is the change a short fade or a cut? §6.4 says tiles don't animate between faces, and a fade could read either way. | §6.4, §6.16 |
 
