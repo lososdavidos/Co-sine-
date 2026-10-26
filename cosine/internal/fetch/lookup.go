@@ -76,8 +76,14 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 	}
 
 	var collections []search.Result
+	var released *search.Result
 	var wg sync.WaitGroup
 	wg.Go(func() { collections = f.Search.Collections(ctx, input) })
+	wg.Go(func() {
+		if r, ok := f.Search.Release(ctx, input); ok {
+			released = &r
+		}
+	})
 	res, backend, err := f.Search.Search(ctx, input, searchResults)
 	wg.Wait()
 	if err != nil && len(collections) == 0 {
@@ -89,7 +95,7 @@ func (f *Fetcher) Lookup(ctx context.Context, userID int64, input string) (Looku
 	}
 	// The song as released first; videos with intros, extended uploads
 	// and previews (which can't be added) after.
-	for _, r := range search.ByRelease(input, res) {
+	for _, r := range search.ByRelease(input, res, released) {
 		l.Items = append(l.Items, Item{Result: r})
 	}
 	f.markLibrary(ctx, userID, l.Items)

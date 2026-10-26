@@ -68,6 +68,9 @@ type Service struct {
 	NewAPI func(soundCloudID, youTubeKey string) Backend
 	// Bandcamp searches Bandcamp's albums; nil: not searched.
 	Bandcamp func(ctx context.Context, query string, n int) ([]Result, error)
+	// Released finds the song a search asks for as released, for its
+	// length (ByRelease); nil: only YouTube Music's uploads are used.
+	Released func(ctx context.Context, query string) (Result, bool)
 
 	mu     sync.Mutex
 	status string

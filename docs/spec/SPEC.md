@@ -437,10 +437,18 @@ without a music video's intro or outro, at the release's length, carrying the
 release's artist, title and album. The first few are described in full, and the
 one that is the song asked for is listed first.
 
-`RESOLVED` **Results are ranked by the song as released.** That upload's length
-is the release's. Every result that is the same song is labelled with how its
-length compares ("Same length as the release", "0:44 longer than the
-release"); those of the release's length come first, those much longer or
+`NOTE` Since October 2026 YouTube Music lists songs and albums only to
+listeners who are signed in: a signed-out search, which is what yt-dlp makes,
+offers videos, artists, profiles and podcasts, in every region tried. Cosine
+still asks, and uses what it lists when it lists something.
+
+`RESOLVED` **Results are ranked by the song as released.** The released length
+comes from Deezer's catalogue (public, no key): its listing of the song asked
+for, not one of its versions ("(Stripped)", a remix) unless the search names
+it. Failing that, a YouTube Music upload's length is the release's. Every result
+that is the same song is labelled with how its length compares ("Same length as
+the release", "0:44 longer than the release"); those of the release's length
+come first, the artist's own uploads before others, those much longer or
 shorter (a video's intro, a 12-minute extended upload) after everything else,
 and previews last. With nothing to compare against, the sites' own order stands.
 
@@ -483,11 +491,12 @@ songs the account already had; adding it again fills the same one, and it can be
 declined to take only the songs. A channel's uploads are just songs.
 
 `RESOLVED` **Albums and playlists can be searched for, on every source that
-allows it.** Add's search also lists YouTube Music's albums and YouTube's
-playlists (through yt-dlp), Bandcamp's albums (through Bandcamp's own search),
-and SoundCloud's albums and playlists (through its API, when a client ID is set;
-yt-dlp searches SoundCloud's tracks only). Picking one shows its songs, as
-pasting its link would. Those named like the search come first.
+allows it.** Add's search also lists YouTube's playlists (through yt-dlp),
+Bandcamp's albums (through Bandcamp's own search), SoundCloud's albums and
+playlists (through its API, when a client ID is set; yt-dlp searches
+SoundCloud's tracks only), and YouTube Music's albums when it lists them (see
+above: not to signed-out searches). Picking one shows its songs, as pasting its
+link would. Those named like the search come first.
 
 ### 3.2 The resolver
 

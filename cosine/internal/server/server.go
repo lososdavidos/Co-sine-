@@ -86,7 +86,8 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	})
 	bc := bandcamp.New(lookups, d, ua)
 	covers := musicbrainz.CoverArt{HTTP: lookups, UserAgent: ua}
-	s.portraits = &portraits.Service{DB: d, DataDir: cfg.DataDir, Deezer: deezer.New(lookups, ua),
+	dz := deezer.New(lookups, ua)
+	s.portraits = &portraits.Service{DB: d, DataDir: cfg.DataDir, Deezer: dz,
 		Links: mb.ArtistLinks, Image: covers.Image, Log: log.With("component", "portraits")}
 	s.ingester = &ingest.Ingester{
 		DB:              d,
@@ -129,6 +130,20 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 			DB:     d,
 			YtDlp:  search.YtDlpSearch{Runner: runner},
 			NewAPI: search.NewSourceAPIs(httpClient),
+			// YouTube Music lists songs only to the signed in, so the
+			// length of the song as released comes from Deezer.
+			Released: func(ctx context.Context, q string) (search.Result, bool) {
+				tracks, err := dz.SearchTracks(ctx, q, 10)
+				if err != nil {
+					return search.Result{}, false
+				}
+				found := make([]search.Released, len(tracks))
+				for i, t := range tracks {
+					found[i] = search.Released{Title: firstNonEmpty(t.TitleShort, t.Title), Version: t.TitleVersion,
+						Artist: t.Artist.Name, DurationSec: t.DurationSec}
+				}
+				return search.AskedRelease(q, found)
+			},
 			Bandcamp: func(ctx context.Context, q string, n int) ([]search.Result, error) {
 				albums, err := bc.Albums(ctx, q, n)
 				out := make([]search.Result, 0, len(albums))
@@ -282,4 +297,13 @@ func (s *Server) stopInbox() {
 		<-s.inboxDone
 		s.inboxCancel, s.inboxDone = nil, nil
 	}
+}
+
+func firstNonEmpty(s ...string) string {
+	for _, v := range s {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
