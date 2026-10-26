@@ -56,7 +56,9 @@ with open(f"{work}/files/fetched.mp3", "wb") as f:
 PY
 # Moved in whole, the way a finished copy lands.
 mv "$WORK/staging/tides.mp3" "$WORK/staging/surge.mp3" "$WORK/inbox/"
-for _ in $(seq 1 100); do
+# Each file is looked up in MusicBrainz, Discogs and Bandcamp, which are
+# paced and on a CI runner can take a while: up to two minutes.
+for _ in $(seq 1 600); do
 	[[ "$(sqlite3 "$WORK/data/cosine.db" "SELECT COUNT(*) FROM objects")" == 2 ]] && break
 	sleep 0.2
 done
