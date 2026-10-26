@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -327,5 +328,65 @@ func TestPreviewOnlyTrackIsRefused(t *testing.T) {
 	l, _ = e.f.Lookup(ctx, e.alice, snip)
 	if len(l.Items) != 1 || !l.Items[0].Preview {
 		t.Fatalf("%+v", l.Items)
+	}
+}
+
+func TestARefusedDownloadWaitsAndTriesAgain(t *testing.T) {
+	// YouTube refuses an address that asks too often (#28): the job waits
+	// out a pause and goes again, instead of failing part way through an
+	// album; a job refused every time fails in the end.
+	defer func(p time.Duration) { firstPause = p }(firstPause)
+	firstPause = 40 * time.Millisecond
+	refusal := "unable to download video data: HTTP Error 403: Forbidden"
+	url, stubborn := "https://www.youtube.com/watch?v=tides", "https://www.youtube.com/watch?v=never"
+	formats := []map[string]any{{"format_id": "251"}}
+	e := setup(t, map[string]any{
+		url: track(url, "tides", "Skeler - Tides", "Skeler", "tides-bytes",
+			map[string]any{"extractor_key": "Youtube", "formats": formats, "download_fails": 2, "download_error": refusal}),
+		stubborn: track(stubborn, "never", "Skeler - Never", "Skeler", "never-bytes",
+			map[string]any{"extractor_key": "Youtube", "formats": formats, "download_fails": 99, "download_error": refusal}),
+	})
+	ctx := context.Background()
+	start := time.Now()
+	jobs, err := e.f.Submit(ctx, e.alice, []string{url}, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := e.wait(t, jobs[0].ID, StatusDone, StatusFailed); j.Status != StatusDone || j.TrackID == "" {
+		t.Fatalf("%+v", j)
+	}
+	// Two refusals: a pause, then one twice as long.
+	if took := time.Since(start); took < 3*firstPause {
+		t.Fatalf("tried again after %v, without waiting", took)
+	}
+	// Downloaded from what the probe found, not by asking again.
+	if b, _ := os.ReadFile(e.counter + ".from-info"); strings.Count(string(b), "\n") != 3 {
+		t.Fatalf("downloads from the probe: %q", b)
+	}
+
+	jobs, _ = e.f.Submit(ctx, e.alice, []string{stubborn}, false, nil)
+	j := e.wait(t, jobs[0].ID, StatusFailed, StatusDone)
+	if j.Status != StatusFailed || !strings.Contains(j.Error, "kept refusing") || !strings.Contains(j.Error, "HTTP Error 403") {
+		t.Fatalf("%+v", j)
+	}
+	if b, _ := os.ReadFile(e.counter + ".fails"); strings.Count(string(b), stubborn) != refusedTries {
+		t.Fatalf("tries: %q", b)
+	}
+}
+
+func TestOnlyRefusalsAreTriedAgain(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"unable to download video data: HTTP Error 403: Forbidden":           true,
+		"HTTP Error 429: Too Many Requests":                                  true,
+		"Sign in to confirm you’re not a bot. Use --cookies-from-browser":    true,
+		"Video unavailable. This video has been removed by the uploader":     false,
+		"SoundCloud only offers a 30-second preview of this track; search …": false,
+	} {
+		if refused(errors.New(msg)) != want {
+			t.Errorf("%q: refused = %v", msg, !want)
+		}
+	}
+	if inAWhile(2*time.Minute) != "in 2 minutes" || inAWhile(time.Minute) != "in a minute" || inAWhile(time.Second) != "in a moment" {
+		t.Fatal(inAWhile(2*time.Minute), inAWhile(time.Minute))
 	}
 }

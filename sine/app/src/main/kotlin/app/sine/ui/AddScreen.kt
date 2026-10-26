@@ -409,7 +409,7 @@ private fun JobRow(job: IngestJob, onRetry: () -> Unit, onForce: () -> Unit, onC
 
 /** Plain and factual (§6.17). */
 fun jobStatus(job: IngestJob): String = when (job.status) {
-    "queued" -> "Queued."
+    "queued" -> job.error ?: "Queued." // waiting out a site's refusal says so
     "running" -> "Fetching, ${(job.progress * 100).toInt()}%."
     "done" -> "Added."
     "duplicate" -> "Added. It was already in the Store."

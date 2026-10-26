@@ -436,6 +436,14 @@ the concrete form of G4, and the replacement for the yt-dlp/beets cron pipeline.
 Mixcloud and the rest — yt-dlp maintains the extractors, the server doesn't
 maintain a whitelist.
 
+`RESOLVED` **A site's refusal is waited out, not a failure.** YouTube refuses an
+address that asks too often (HTTP 403 or 429, or a sign-in "to confirm you're
+not a bot"), and a large album or playlist ran into it part way. A refused job
+goes back in the queue saying so ("Trying again in 2 minutes"), and every
+download waits out a pause of a minute, doubling with each refusal in a row; a
+job refused six times fails with the reason. Each song is downloaded from what
+the probe already found, so it asks the site once, not twice.
+
 `RESOLVED` **Search has two switchable backends,** selected in the dashboard:
 
 | Backend | Behaviour |
