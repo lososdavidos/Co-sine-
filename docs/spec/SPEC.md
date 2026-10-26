@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 172 resolved decisions · last updated 2026-10-26 (search history, adding from Search, per-song add, §6.8, §6.10; repeat, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 175 resolved decisions · last updated 2026-10-26 (the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -330,9 +330,11 @@ song it followed.
 
 `NOTE` Built: a smart playlist is a saved rule — one of the statistics views
 (most played in a period, recently played, not played in N months, never
-played, this time last year, added in the last N days) with its one setting.
-Every account starts with one of each and can make, change, rename or delete
-them; a deleted one does not come back. Over the Subsonic API they are listed
+played, this time last year, added in the last N days, liked) with its one
+setting. Every account starts with one of each, and Favourites (most played in
+the last 30 days: your current favourites), and can make, change, rename or
+delete them; a deleted one does not come back. Defaults added later reach older
+accounts once. Over the Subsonic API they are listed
 beside manual playlists as read-only (OpenSubsonic's `readonly`), with the
 rule in words as their comment, and their songs are worked out each time one
 is opened. Sine's "Save as playlist" is the conversion to a manual playlist.
@@ -435,6 +437,14 @@ the concrete form of G4, and the replacement for the yt-dlp/beets cron pipeline.
 `RESOLVED` **Any source yt-dlp supports.** SoundCloud, YouTube, Bandcamp,
 Mixcloud and the rest — yt-dlp maintains the extractors, the server doesn't
 maintain a whitelist.
+
+`RESOLVED` **A site's refusal is waited out, not a failure.** YouTube refuses an
+address that asks too often (HTTP 403 or 429, or a sign-in "to confirm you're
+not a bot"), and a large album or playlist ran into it part way. A refused job
+goes back in the queue saying so ("Trying again in 2 minutes"), and every
+download waits out a pause of a minute, doubling with each refusal in a row; a
+job refused six times fails with the reason. Each song is downloaded from what
+the probe already found, so it asks the site once, not twice.
 
 `RESOLVED` **Search has two switchable backends,** selected in the dashboard:
 
@@ -539,23 +549,34 @@ so low-confidence entries are visible and correctable rather than silently
 wrong. `OPEN` — how confidence is expressed in the UI.
 
 `RESOLVED` **The artist's own release, not a compilation the source names.** A
-song is filed under the album it has been on, else its EP, else its single;
-compilations, soundtracks and live albums come last, and an album the file
-itself names goes first. A named compilation is the exception: YouTube credits a
+song is filed under the artist's own release it first came out on (an album, an
+EP or a single); compilations, soundtracks and live albums come last, however
+early, and an album the file itself names goes first. A named compilation is the exception: YouTube credits a
 video to whichever release claimed it ("Hot Party Winter 2018") and a ripped
 "NOW" CD names one too, so it only goes ahead of other compilations. A song that
 was only ever on compilations is filed under Various Artists (Q74).
 
 `RESOLVED` **The first release is the original.** Between copies of one song on
 different releases (the same title, a length that agrees or isn't known, a close
-score), a release from the song's first year or the next comes before any
-later one, and the later the worse: a greatest hits or a reissue years on is the
-least likely original. Among the first releases the album still beats its
-single, so a lead single out the year before its album doesn't take its place.
-Every catalogue orders its answers this way, so a copy whose length a catalogue
-happens to give doesn't win on that alone. Discogs gives no formats for a
-master; its pressings in the search say whether it is a compilation, and the
-earliest are looked up first ("Timber" went to Pitbull's 2017 Greatest Hits).
+score), the earliest of the artist's own comes first, and the later the worse: a
+greatest hits or a reissue years on is the least likely original. A lead single
+out before its album wins ("Closer" was a single nine months before the
+Chainsmokers' album). The day decides where the catalogue gives it; between
+releases out the same day, or the same year where only the year is known, the
+album beats the EP and the single. Every catalogue orders its answers this way,
+so a copy whose length a catalogue happens to give doesn't win on that alone.
+Discogs gives no formats for a master; its pressings in the search say whether
+it is a compilation, and the earliest are looked up first ("Timber" went to
+Pitbull's 2017 Greatest Hits).
+
+`RESOLVED` **A credit is asked for two ways.** MusicBrainz is searched for the
+artist as the file credits them or for the lead artist alone, and for the title
+without its "(feat. X)": MusicBrainz credits "Closer" to "The Chainsmokers ft.
+Halsey", and a file's "feat." found only compilations credited that way. A hit
+has more recordings than a search page holds, most of them its copies on
+compilations, and its own can be past the page ("September" by Earth, Wind &
+Fire); when a page comes back full, the recordings that came out on a single
+are asked for too.
 
 `RESOLVED` **A remix is another track.** A catalogue title that names a version
 — remix, rework, VIP, cover, live, acoustic, instrumental, karaoke, nightcore,
@@ -1243,7 +1264,8 @@ same long-press selection used everywhere else:
 | **Forgotten** | In your Library, not played in N months |
 | **Never played** | Ingested and never once opened |
 | **Downloaded** | What is available offline right now |
-| **Favourites** | Starred Tracks |
+| **Liked songs** | Songs you liked, the latest first: two taps on Add to playlist in Now playing, or a star from any Subsonic app |
+| **Favourites** | Your current favourites: what you've played most in the last 30 days |
 | **Review queue** | Live count of Tracks awaiting a resolver correction; tapping opens it |
 | **Ingest activity** | What Cosine is fetching, with progress and failures |
 | **Jam** | Active session, or an invite to start one |
@@ -1252,7 +1274,7 @@ same long-press selection used everywhere else:
 playing, which contradicted §6.4.5: a tile keeps its place.)
 
 `RESOLVED` **A list tile opens its list.** Recently added, Most played, This
-time last year, Forgotten, Never played, Downloaded and Favourites open the way
+time last year, Forgotten, Never played, Downloaded, Liked songs and Favourites open the way
 a playlist does; a tile's shuffle variant plays instead. Shuffle all, Now
 playing and Resume play. Review queue, Ingest activity and Jam open what they
 summarise.
@@ -1260,17 +1282,18 @@ summarise.
 `RESOLVED` **A list tile is a smart playlist** (§2.4), and its rule is the
 smart playlist's. Most played's window — 30 days, this year or all time — is
 the one its smart playlist has; for another window, make that smart playlist
-and pin it too. The six every account starts with (Recently added, Most played
-this year, Recently played, Forgotten, Never played, This time last year) are
-pinnable as they are.
+and pin it too. The eight every account starts with (Recently added, Most played
+this year, Recently played, Forgotten, Never played, This time last year, Liked
+songs, Favourites) are pinnable as they are.
 
 `RESOLVED` **Generated tiles are added from Home.** An Add tile action lists
 them alongside your smart playlists. Pinned items still come from their own
 screens.
 
-`RESOLVED` **Resume, Jam and Favourites wait for their features.** Resume
-needs per-Device sessions (§4B), Jam needs Jam (§4C), and Favourites needs a
-way to star a song in Sine. Until then those tiles aren't offered.
+`REVISED` **Resume and Jam wait for their features.** (Was: Favourites waited
+too, for a way to star a song in Sine; two taps on Add to playlist now like
+one, §6.6.) Resume needs per-Device sessions (§4B) and Jam needs Jam (§4C).
+Until then those tiles aren't offered.
 
 `NOTE` The retrospective tiles — *this time last year*, *forgotten*, *most played
 this year* — are only possible because plays are stored as append-only
@@ -1455,11 +1478,6 @@ cover itself sits on that ambience, square and whole. Text on it is Text 1 or
 On-scrim, never Text 2, so it reads over any cover. The queue sits on its own
 Raised panel, where its contrast is known.
 
-`RESOLVED` **Shuffle, repeat and Add to playlist sit under the transport.**
-Repeat goes off, the whole queue, this song, and off again; its icon gets a
-one for this song. Add to playlist opens the same form as from any selection,
-for the song playing.
-
 `RESOLVED` **The queue's songs are held to select them,** as anywhere (§6.5).
 Now playing has no shelf, so their actions float at the foot of the sheet, in
 the shelf's own surface: Play, Take out of the queue, Add to playlist. Back
@@ -1472,7 +1490,18 @@ product's name, where it belongs — and everywhere else progress is a straight
 line: the shelf's seam in Sine, a fetch's bar in Cosine.
 
 `RESOLVED` **The timecode sits off the wave** — elapsed and remaining below it,
-in mono, always Text 2, never overlapping.
+in mono, never overlapping; On-scrim, since it sits on the ambience.
+
+`RESOLVED` **Shuffle, Repeat and Add to playlist sit under the transport.**
+Repeat goes from off to the whole queue to the one song, and is remembered. A
+tap on Add to playlist picks a playlist for the song; two taps like it, or stop
+liking it (Subsonic's star, which every client shares), and a heart by the
+artist says it's liked. A screen reader has Like as an action of its own.
+
+`RESOLVED` **Shuffle plays everything once.** A queue started shuffled begins
+at the top of its shuffled order, from the start of its first song; shuffle
+turned on mid-queue starts its order with the song playing, so nothing before it
+in the order is skipped. Up next lists the queue in the order it will play.
 
 - Growth is continuous: motion here is feedback about a real process, not
   atmosphere.
@@ -2122,7 +2151,7 @@ not silently keep gigabytes.
 | — | Looking up as you type | A link at once; a search from three characters, after a half-second pause |
 | — | Adding one song | Each result has its own add button; Add all at the top of an album or playlist (was: ticks and Add at the foot) |
 | — | Queue and song actions | Every song row is held to select, the queue and search included; Add to queue joins the actions |
-| — | Repeat | Off, the queue, this song; beside Shuffle and Add to playlist in now playing |
+| — | Repeat | Off, the queue, this song, remembered; beside Shuffle and Add to playlist (two taps like) in now playing |
 | — | Now playing's ambience | `REVISED` The whole sheet, saturated a fixed step, under the constant scrim; the player row shows the cover under Float (was: the sheet's top only) |
 | — | The bar's pill and the sheet | The pill moves with the page and the name slides from behind its icon; now playing grows out of the shelf |
 | — | Type | Instrument Sans (widths 75 to 100) and Martian Mono, bundled under the OFL |
@@ -2143,7 +2172,7 @@ not silently keep gigabytes.
 | — | Home layout storage | On Cosine, per account and per kind of device; offline changes go with the next sync |
 | — | Adding tiles | Generated tiles and smart playlists from Home's Add tile action |
 | — | Tile sizes | 1×1 the cover or count; 2×2 adds the name; 4×2 a second line |
-| — | Tiles not yet possible | Resume, Jam and Favourites aren't offered until their features exist |
+| — | Tiles not yet possible | Resume and Jam aren't offered until their features exist |
 | — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; with animations removed, content changes without moving |
 | — | Tile motion | Home is the one place motion is for liveliness; Phase's colour and scrim rules still hold inside a tile |
 

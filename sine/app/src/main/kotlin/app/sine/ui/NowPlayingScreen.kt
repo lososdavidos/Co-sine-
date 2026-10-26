@@ -30,6 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,14 +67,16 @@ import kotlinx.coroutines.launch
  * no shelf here, their actions float at the foot of the sheet.
  */
 @Composable
-fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
-    val player = LocalContext.current.graph.player
-    val nav = LocalPages.current
-    val scope = rememberCoroutineScope()
+fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val player = context.graph.player
     val state by player.state.collectAsStateWithLifecycle()
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     var positionMs by remember { mutableLongStateOf(0L) }
     var scrub by remember { mutableStateOf<Float?>(null) }
-    // Queue positions held; a change to the queue lets go of them.
+    // Songs held in the queue, by their place in the player's list
+    // ([app.sine.playback.Queued.at]); a change to the queue lets go of them.
     var selected by remember(state.queue) { mutableStateOf(setOf<Int>()) }
 
     LaunchedEffect(state.current, state.isPlaying) {
@@ -108,6 +113,11 @@ fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
             }
             val meta = item.mediaMetadata
             val duration = state.durationMs
+            // The song as the library has it: to add to a playlist, and whether it's liked.
+            var track by remember(item.mediaId) { mutableStateOf<Track?>(null) }
+            LaunchedEffect(item.mediaId, mirrored) {
+                track = runCatching { session.track(item.mediaId).value }.getOrNull()
+            }
             val fraction = if (duration > 0) (positionMs.toFloat() / duration).coerceIn(0f, 1f) else 0f
             val shown = scrub ?: fraction
             val shownMs = (shown * duration).toLong()
@@ -148,7 +158,10 @@ fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
                             meta.title?.toString().orEmpty(), color = PhaseColor.Text1, style = PhaseType.display(40.sp),
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
-                        Text(meta.artist?.toString().orEmpty(), color = PhaseColor.OnScrim, style = PhaseType.Body.copy(fontSize = 17.sp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(meta.artist?.toString().orEmpty(), color = PhaseColor.OnScrim, style = PhaseType.Body.copy(fontSize = 17.sp))
+                            if (track?.liked == true) Tag(null, icon = PhaseIcons.Liked, contentDescription = "Liked")
+                        }
                         val facts = listOfNotNull(
                             meta.trackNumber?.let { "Track $it" },
                             meta.releaseYear?.toString(),
@@ -192,7 +205,7 @@ fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                         Chip(null, state.shuffle, player::toggleShuffle, icon = PhaseIcons.Shuffle, contentDescription = "Shuffle")
                         Chip(
-                            null, state.repeat != Player.REPEAT_MODE_OFF, player::cycleRepeat,
+                            null, state.repeat != Player.REPEAT_MODE_OFF, player::toggleRepeat,
                             icon = if (state.repeat == Player.REPEAT_MODE_ONE) PhaseIcons.RepeatOne else PhaseIcons.Repeat,
                             contentDescription = when (state.repeat) {
                                 Player.REPEAT_MODE_ALL -> "Repeat: the queue"
@@ -200,13 +213,30 @@ fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
                                 else -> "Repeat: off"
                             },
                         )
-                        if (session.canEditPlaylists) {
-                            Pill(
-                                null, { withTracks(listOf(item.mediaId)) { t -> nav.form { AddToPlaylistForm(session, t) } } },
-                                kind = PillKind.Outline, icon = PhaseIcons.PlaylistAdd, height = 40.dp, width = 52.dp,
-                                contentDescription = "Add to playlist",
-                            )
+                        // A tap adds the song to a playlist; two like it, or stop liking it (#34).
+                        val song = track
+                        val like = {
+                            if (song != null) scope.launch {
+                                val liked = !song.liked
+                                attemptChange(context.applicationContext, session) {
+                                    session.like(song.id, liked)
+                                    track = song.copy(liked = liked)
+                                    Voice.liked(song.title, liked)
+                                }
+                            }
                         }
+                        Pill(
+                            null,
+                            { if (song != null) nav.form { AddToPlaylistForm(session, listOf(song)) } },
+                            // Two taps can't be made with a screen reader: liking is an action of its own there.
+                            Modifier.semantics {
+                                customActions = listOf(CustomAccessibilityAction(if (song?.liked == true) "Stop liking" else "Like") { like(); true })
+                            },
+                            enabled = song != null && session.canEditPlaylists,
+                            kind = PillKind.Outline, icon = PhaseIcons.PlaylistAdd, height = 40.dp, width = 52.dp,
+                            contentDescription = "Add to playlist. Tap twice to like",
+                            onDoubleClick = { like() },
+                        )
                     }
                     Spacer(Modifier.height(20.dp))
                 }
@@ -226,9 +256,10 @@ fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
                         }
                     }
                 }
-                itemsIndexed(state.queue) { i, q ->
+                itemsIndexed(state.queue) { i, queued ->
+                    val q = queued.item
                     val now = i == state.index
-                    val on = i in selected
+                    val on = queued.at in selected
                     val numbers = numberColumn(state.queue.size)
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).background(PhaseColor.Raised)) {
                         ItemRow(
@@ -243,9 +274,9 @@ fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
                                 else RowNumber(i + 1, numbers, color = if (on) PhaseColor.Ink else PhaseColor.Text3)
                             },
                             modifier = Modifier.padding(horizontal = 0.dp),
-                            onLongClick = { selected = selected.toggle(i) },
+                            onLongClick = { selected = selected.toggle(queued.at) },
                         ) {
-                            if (selected.isNotEmpty()) selected = selected.toggle(i) else player.skipTo(i)
+                            if (selected.isNotEmpty()) selected = selected.toggle(queued.at) else player.skipTo(queued.at)
                         }
                     }
                 }
@@ -262,12 +293,13 @@ fun NowPlayingScreen(session: AccountSession, onClose: () -> Unit) {
             }
 
             if (selected.isNotEmpty()) {
-                val chosen = selected.sorted()
-                val ids = chosen.mapNotNull { state.queue.getOrNull(it)?.mediaId }
+                // In the order they play.
+                val chosen = state.queue.filter { it.at in selected }
+                val ids = chosen.map { it.item.mediaId }
                 val actions = buildList {
-                    add(ShelfAction("Play", icon = PhaseIcons.Play) { player.skipTo(chosen.first()); selected = emptySet() })
+                    add(ShelfAction("Play", icon = PhaseIcons.Play) { chosen.firstOrNull()?.let { player.skipTo(it.at) }; selected = emptySet() })
                     add(ShelfAction("Take out of the queue", icon = PhaseIcons.QueueRemove) {
-                        player.removeFromQueue(chosen)
+                        player.removeFromQueue(chosen.map { it.at })
                         say(if (chosen.size == 1) "Taken out of the queue." else "${chosen.size} songs taken out of the queue.")
                         selected = emptySet()
                     })

@@ -19,10 +19,11 @@ const (
 	ViewNeverPlayed = "never-played"        // in the Library, never played, newest first
 	ViewLastYear    = "this-time-last-year" // played in the fortnight around this day a year ago
 	ViewAdded       = "added"               // added in the last N days, newest first
+	ViewLiked       = "liked"               // starred, the latest first
 )
 
 // Views lists the view names, for clients to discover.
-var Views = []string{ViewMostPlayed, ViewRecent, ViewForgotten, ViewNeverPlayed, ViewLastYear, ViewAdded}
+var Views = []string{ViewMostPlayed, ViewRecent, ViewForgotten, ViewNeverPlayed, ViewLastYear, ViewAdded, ViewLiked}
 
 var ErrView = errors.New("unknown view")
 
@@ -79,6 +80,8 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 		}
 		cutoff := now.AddDate(0, 0, -days).UnixMilli()
 		where, order = "added >= "+strconv.FormatInt(cutoff, 10), "added DESC"
+	case ViewLiked:
+		where, order = "liked > 0", "liked DESC"
 	case ViewLastYear:
 		ago := now.AddDate(-1, 0, 0)
 		from, to = ago.AddDate(0, 0, -7).UnixMilli(), ago.AddDate(0, 0, 7).UnixMilli()
@@ -88,7 +91,7 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 	}
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT * FROM (
-			SELECT t.id, t.title, ta.name, r.title, p.added_at AS added,
+			SELECT t.id, t.title, ta.name, r.title, p.added_at AS added, COALESCE(p.starred_at, 0) AS liked,
 			       (SELECT COUNT(*) FROM plays pl WHERE pl.user_id = p.user_id AND pl.track_id = t.id
 			          AND pl.played_at >= ?2 AND pl.played_at < ?3) AS plays,
 			       COALESCE((SELECT MAX(pl.played_at) FROM plays pl WHERE pl.user_id = p.user_id AND pl.track_id = t.id), 0) AS last_played
@@ -105,8 +108,8 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 	out := []Track{}
 	for rows.Next() {
 		var t Track
-		var id, added, last int64
-		if err := rows.Scan(&id, &t.Title, &t.Artist, &t.Album, &added, &t.Plays, &last); err != nil {
+		var id, added, liked, last int64
+		if err := rows.Scan(&id, &t.Title, &t.Artist, &t.Album, &added, &liked, &t.Plays, &last); err != nil {
 			return nil, err
 		}
 		t.ID, t.Added = "tr-"+strconv.FormatInt(id, 10), time.UnixMilli(added)

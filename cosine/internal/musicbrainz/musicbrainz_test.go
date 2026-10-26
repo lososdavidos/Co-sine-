@@ -3,6 +3,7 @@ package musicbrainz
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -385,10 +386,10 @@ func TestOnlyALiveVersionKnownIsAGuess(t *testing.T) {
 	}
 }
 
-func TestAnAlbumOutranksTheSingle(t *testing.T) {
+func TestTheSongsFirstReleaseWins(t *testing.T) {
 	// "Around the World": the single's recording and the album's are
-	// separate in MusicBrainz, the single is a year older than the reissue
-	// the search returns, and the album must still win.
+	// separate in MusicBrainz, and the single came out first. The first
+	// release is the original, unless the file names the album.
 	body := `{"recordings":[
  {"id":"rec-single","score":100,"title":"Around the World","length":239000,
   "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
@@ -400,20 +401,74 @@ func TestAnAlbumOutranksTheSingle(t *testing.T) {
  {"id":"rec-album","score":100,"title":"Around the World","length":239000,
   "artist-credit":[{"name":"Red Hot Chili Peppers","artist":{"id":"art-rhcp","name":"Red Hot Chili Peppers"}}],
   "releases":[
-   {"id":"rel-ep","title":"Around the World EP","status":"Official","date":"1999",
-    "release-group":{"id":"rg-e","primary-type":"EP"}},
-   {"id":"rel-album","title":"Californication","status":"Official","date":"2000",
+   {"id":"rel-reissue","title":"Californication","status":"Official","date":"2000",
+    "release-group":{"id":"rg-a","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"1"}]}]},
+   {"id":"rel-album","title":"Californication","status":"Official","date":"1999-06-08",
     "release-group":{"id":"rg-a","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"1"}]}]}]}
 ]}`
 	c := client(t, newFake(t, body), false)
-	r, ok, _ := c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Around the World", DurationSec: 239})
-	if !ok || r.Release != "Californication" || r.TrackNo != 1 || r.Confidence < 0.8 {
+	r, ok, _ := c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", DurationSec: 239})
+	if !ok || r.IDs.MBRelease != "rel-single" || r.Confidence < 0.8 {
 		t.Fatalf("%+v", r)
 	}
-	// Named by the file, the single is chosen after all.
-	r, _, _ = c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Around the World (Single)", DurationSec: 239})
-	if r.IDs.MBRelease != "rel-single" {
+	// Named by the file, the album is chosen, as it first came out.
+	r, _, _ = c.Match(context.Background(), Hint{Artist: "Red Hot Chili Peppers", Title: "Around the World", Release: "Californication", DurationSec: 239})
+	if r.IDs.MBRelease != "rel-album" || r.TrackNo != 1 || r.Year != 1999 {
 		t.Fatalf("%+v", r)
+	}
+}
+
+func TestACreditWrittenAnotherWayStillFindsTheSong(t *testing.T) {
+	// MusicBrainz credits "Closer" to "The Chainsmokers ft. Halsey"; a file
+	// saying "feat." found only compilations credited that way. The lead
+	// artist is asked for too, and the title without its "(feat. X)".
+	f := newFake(t, tidesSearch)
+	c := client(t, f, false)
+	c.Match(context.Background(), Hint{Artist: "The Chainsmokers feat. Halsey", Title: "Closer (feat. Halsey)"})
+	if q := f.lastQuery.Load().(string); !strings.HasPrefix(q, `recording:"Closer" AND artist:("The Chainsmokers feat. Halsey" OR "The Chainsmokers")`) {
+		t.Fatal(q)
+	}
+}
+
+func TestAHitsOwnRecordingIsFoundPastTheCompilations(t *testing.T) {
+	// "September": a full page of compilation copies, its own recording
+	// not among them; the recordings on a single are asked for too.
+	var comps []string
+	for i := range page {
+		comps = append(comps, fmt.Sprintf(`{"id":"rec-%d","score":100,"title":"September","length":212000,
+  "artist-credit":[{"name":"Earth, Wind & Fire","artist":{"id":"art-ewf","name":"Earth, Wind & Fire"}}],
+  "releases":[{"id":"rel-%d","title":"Disco Hits %d","status":"Official","date":"%d",
+   "artist-credit":[{"name":"Various Artists","artist":{"id":"art-va","name":"Various Artists"}}],
+   "release-group":{"id":"rg-%d","primary-type":"Album","secondary-types":["Compilation"]}}]}`, i, i, i, 1990+i%30, i))
+	}
+	own := `{"recordings":[{"id":"rec-own","score":100,"title":"September","length":215000,
+  "artist-credit":[{"name":"Earth, Wind & Fire","artist":{"id":"art-ewf","name":"Earth, Wind & Fire"}}],
+  "releases":[{"id":"rel-single","title":"September","status":"Official","date":"1978-11-18",
+   "release-group":{"id":"rg-s","primary-type":"Single"},"media":[{"position":1,"track":[{"number":"A"}]}]}]}]}`
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("query")
+		queries = append(queries, q)
+		if strings.HasSuffix(q, "AND primarytype:single") {
+			w.Write([]byte(own))
+			return
+		}
+		w.Write([]byte(`{"recordings":[` + strings.Join(comps, ",") + `]}`))
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), BaseURL: srv.URL, UserAgent: UserAgent("test"), Interval: time.Millisecond}
+	r, ok, err := c.Match(context.Background(), Hint{Artist: "Earth, Wind & Fire", Title: "September", DurationSec: 215})
+	if err != nil || !ok || r.IDs.MBRelease != "rel-single" || r.Artist != "Earth, Wind & Fire" || r.Confidence < 0.8 {
+		t.Fatalf("%v %+v", err, r)
+	}
+	if len(queries) != 2 {
+		t.Fatal(queries)
+	}
+	// A page with room to spare had everything: no second search.
+	f := newFake(t, tidesSearch)
+	client(t, f, false).Match(context.Background(), Hint{Artist: "Skeler", Title: "Tides"})
+	if n := f.calls.Load(); n != 1 {
+		t.Fatal(n)
 	}
 }
 
@@ -443,7 +498,8 @@ func TestTheAlbumsRecordingBeatsACompilationCopy(t *testing.T) {
 func TestALaterReleaseLosesToTheFirst(t *testing.T) {
 	// "Timber": a greatest hits from 2017, entered as a plain album and a
 	// recording of its own, whose length is closer to the file's than the
-	// 2013 album's. The first release is the likeliest original.
+	// 2013 single's and album's. The first release is the likeliest
+	// original: the single, out six weeks before the album.
 	body := `{"recordings":[
  {"id":"rec-hits","score":100,"title":"Timber","length":204000,
   "artist-credit":[{"name":"Pitbull","artist":{"id":"art-p","name":"Pitbull"}}],
@@ -463,7 +519,7 @@ func TestALaterReleaseLosesToTheFirst(t *testing.T) {
 	for _, r := range got {
 		order = append(order, r.Release)
 	}
-	if err != nil || strings.Join(order, ", ") != "Global Warming: Meltdown, Timber, Greatest Hits" || got[0].Confidence < 0.8 {
+	if err != nil || strings.Join(order, ", ") != "Timber, Global Warming: Meltdown, Greatest Hits" || got[0].Confidence < 0.8 {
 		t.Fatalf("%v %+v", err, got)
 	}
 }

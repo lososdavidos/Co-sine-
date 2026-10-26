@@ -73,6 +73,7 @@ type Fetcher struct {
 	wakeOnce sync.Once
 	wake     chan struct{}
 	recent   recentCollections
+	pause    pause
 }
 
 // init creates the wake channel exactly once. Run and Submit both reach
@@ -253,6 +254,9 @@ type claimed struct {
 
 func (f *Fetcher) work(ctx context.Context) {
 	for {
+		if !f.pause.wait(ctx) {
+			return
+		}
 		job, err := f.claim(ctx)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			f.Log.Error("claiming a job", "err", err)
@@ -273,7 +277,7 @@ func (f *Fetcher) work(ctx context.Context) {
 func (f *Fetcher) claim(ctx context.Context) (claimed, error) {
 	var c claimed
 	err := f.DB.QueryRowContext(ctx, `
-		UPDATE ingest_jobs SET status = 'running', updated_at = ?
+		UPDATE ingest_jobs SET status = 'running', error = NULL, updated_at = ?
 		WHERE id = (SELECT id FROM ingest_jobs WHERE status = 'queued' AND url IS NOT NULL ORDER BY id LIMIT 1)
 		RETURNING id, user_id, url, force, COALESCE(collection_id, 0), COALESCE(position, 0)`, db.Now()).
 		Scan(&c.id, &c.user, &c.url, &c.force, &c.collection, &c.position)
@@ -284,10 +288,23 @@ func (f *Fetcher) process(parent context.Context, job claimed) {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Hour) // a long DJ mix is allowed to take a while
 	defer cancel()
 	err := f.fetch(ctx, job)
-	if err != nil {
-		if parent.Err() != nil {
-			return // shutting down: the job is requeued on next start
+	switch {
+	case err == nil:
+		f.pause.done(job.id)
+	case parent.Err() != nil:
+		return // shutting down: the job is requeued on next start
+	case refused(err):
+		wait, again := f.pause.refused(job.id)
+		f.Log.Warn("fetch refused", "url", job.url, "err", err, "again", again, "wait", wait)
+		if again {
+			f.set(job.id, "status = 'queued', error = ?, progress = 0",
+				fmt.Sprintf("The site refused it for now (%v). Trying again %s.", err, inAWhile(wait)))
+			f.nudge()
+			return
 		}
+		f.set(job.id, "status = 'failed', error = ?, progress = 0",
+			fmt.Sprintf("the site kept refusing it (%v); retry in a while", err))
+	default:
 		f.Log.Warn("fetch failed", "url", job.url, "err", err)
 		f.set(job.id, "status = 'failed', error = ?, progress = 0", err.Error())
 	}
@@ -361,7 +378,9 @@ func (f *Fetcher) fetch(ctx context.Context, job claimed) error {
 	defer os.RemoveAll(dir)
 
 	var last time.Time
-	path, err := f.Runner.Download(ctx, link, dir, func(p float64) {
+	// From what the probe found: asking the site again for every song is
+	// what gets an address refused (refusal.go).
+	path, err := f.Runner.DownloadInfo(ctx, info, dir, func(p float64) {
 		if time.Since(last) > 500*time.Millisecond {
 			last = time.Now()
 			f.set(job.id, "progress = ?", p*0.95) // the last 5% is filing

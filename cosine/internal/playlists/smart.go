@@ -32,14 +32,24 @@ const (
 var ErrRule = errors.New("unknown rule")
 
 // defaults are what every account starts with: the Home tiles of §6.4.1
-// that are rules over one's own listening.
-var defaults = []Smart{
-	{Name: "Recently added", Rule: stats.ViewAdded, Days: 30},
-	{Name: "Most played this year", Rule: stats.ViewMostPlayed, Span: "year"},
-	{Name: "Recently played", Rule: stats.ViewRecent},
-	{Name: "Forgotten", Rule: stats.ViewForgotten, Months: 6},
-	{Name: "Never played", Rule: stats.ViewNeverPlayed},
-	{Name: "This time last year", Rule: stats.ViewLastYear},
+// that are rules over one's own listening. They came in generations; an
+// account is given each one once (users.smart_seeded counts them), so one
+// made before a generation gets it later, and a default it deleted
+// doesn't come back.
+var defaults = [][]Smart{
+	{
+		{Name: "Recently added", Rule: stats.ViewAdded, Days: 30},
+		{Name: "Most played this year", Rule: stats.ViewMostPlayed, Span: "year"},
+		{Name: "Recently played", Rule: stats.ViewRecent},
+		{Name: "Forgotten", Rule: stats.ViewForgotten, Months: 6},
+		{Name: "Never played", Rule: stats.ViewNeverPlayed},
+		{Name: "This time last year", Rule: stats.ViewLastYear},
+	},
+	{
+		{Name: "Liked songs", Rule: stats.ViewLiked},
+		// Current favourites: what you keep coming back to lately.
+		{Name: "Favourites", Rule: stats.ViewMostPlayed, Span: "30d"},
+	},
 }
 
 // Describe says what a rule picks, for people.
@@ -68,6 +78,8 @@ func (s Smart) Describe() string {
 		return "Never played, newest first"
 	case stats.ViewLastYear:
 		return "Played around this day a year ago"
+	case stats.ViewLiked:
+		return "Songs you liked, the latest first"
 	}
 	return s.Rule
 }
@@ -164,20 +176,29 @@ func (s *Service) seed(ctx context.Context, user int64) error {
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, "UPDATE users SET smart_seeded = 1 WHERE id = ? AND smart_seeded = 0", user)
+	var given int
+	if err := tx.QueryRowContext(ctx, "SELECT smart_seeded FROM users WHERE id = ?", user).Scan(&given); err != nil {
+		return err
+	}
+	if given >= len(defaults) {
+		return nil
+	}
+	res, err := tx.ExecContext(ctx, "UPDATE users SET smart_seeded = ? WHERE id = ? AND smart_seeded = ?", len(defaults), user, given)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return nil
+		return nil // given them at the same moment elsewhere
 	}
-	for _, d := range defaults {
-		sm, err := s.normalise(d)
-		if err != nil {
-			return err
-		}
-		if _, err := insertSmart(ctx, tx, user, sm); err != nil {
-			return err
+	for _, generation := range defaults[given:] {
+		for _, d := range generation {
+			sm, err := s.normalise(d)
+			if err != nil {
+				return err
+			}
+			if _, err := insertSmart(ctx, tx, user, sm); err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()

@@ -8,6 +8,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import app.sine.core.model.Track
@@ -22,12 +23,17 @@ data class PlayerState(
     val current: MediaItem? = null,
     val isPlaying: Boolean = false,
     val durationMs: Long = 0,
-    val queue: List<MediaItem> = emptyList(),
+    /** The queue in the order it plays: shuffled while shuffle is on. */
+    val queue: List<Queued> = emptyList(),
+    /** Where [current] is in [queue]. */
     val index: Int = -1,
     val shuffle: Boolean = false,
     /** [Player.REPEAT_MODE_OFF], [Player.REPEAT_MODE_ALL] (the queue, round again) or [Player.REPEAT_MODE_ONE] (this song). */
     val repeat: Int = Player.REPEAT_MODE_OFF,
 )
+
+/** A song in the queue, and its place in the player's own list. */
+data class Queued(val item: MediaItem, val at: Int)
 
 /**
  * What played last, for Home's Now playing tile when nothing is (§6.4):
@@ -64,12 +70,21 @@ class PlayerConnection(private val context: Context) {
     fun connect() {
         if (future != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        val f = MediaController.Builder(context, token).buildAsync()
+        val f = MediaController.Builder(context, token)
+            .setListener(object : MediaController.Listener {
+                override fun onDisconnected(controller: MediaController) = dropped(controller)
+            })
+            .buildAsync()
         future = f
         f.addListener({
-            val c = runCatching { f.get() }.getOrNull() ?: run { future = null; return@addListener }
+            // Released or replaced while it connected (the app stopped and
+            // started again): not this one's to keep. Kept, a released
+            // controller says nothing is playing while the service plays on.
+            if (future !== f) return@addListener
+            val c = runCatching { f.get() }.getOrNull()?.takeIf { it.isConnected } ?: run { future = null; return@addListener }
             controller = c
             c.addListener(listener)
+            c.repeatMode = prefs.getInt("repeat", Player.REPEAT_MODE_OFF)
             pending.forEach { it(c) }
             pending.clear()
             refresh()
@@ -77,13 +92,28 @@ class PlayerConnection(private val context: Context) {
     }
 
     fun disconnect() {
+        val f = future ?: return
         controller?.removeListener(listener)
+        future = null
+        controller = null
+        MediaController.releaseFuture(f)
+    }
+
+    /**
+     * The session went away under the controller: the service stopped, or
+     * was stopped. Nothing plays any more; the next action connects again.
+     */
+    private fun dropped(c: MediaController) {
+        if (controller !== c) return
+        c.removeListener(listener)
         future?.let { MediaController.releaseFuture(it) }
         future = null
         controller = null
+        _state.value = PlayerState()
     }
 
     private fun withController(action: (MediaController) -> Unit) {
+        controller?.let { if (!it.isConnected) dropped(it) }
         val c = controller
         if (c != null) action(c) else {
             pending += action
@@ -104,7 +134,12 @@ class PlayerConnection(private val context: Context) {
         prefs.edit().putString("account", session.account.id).apply()
         withController { c ->
             c.shuffleModeEnabled = shuffle
-            c.setMediaItems(items.map { it.second }, if (shuffle) C.INDEX_UNSET else index, startMs)
+            // Shuffled, the queue starts at the first song of its shuffled
+            // order, from the top. (C.INDEX_UNSET would keep the song before's
+            // place and position: the new one started 0:52 in, and midway
+            // through the order, so shuffle stopped early.)
+            if (shuffle) c.setMediaItems(items.map { it.second }, /* resetPosition = */ true)
+            else c.setMediaItems(items.map { it.second }, index, startMs)
             c.prepare()
             c.play()
         }
@@ -114,16 +149,18 @@ class PlayerConnection(private val context: Context) {
     fun next() = withController { it.seekToNextMediaItem() }
     fun previous() = withController { it.seekToPrevious() }
     fun seekTo(ms: Long) = withController { it.seekTo(ms) }
-    fun skipTo(index: Int) = withController { it.seekToDefaultPosition(index) }
+    /** Plays the queue's song at [at], its place in the player's list ([Queued.at]). */
+    fun skipTo(at: Int) = withController { it.seekToDefaultPosition(at) }
     fun toggleShuffle() = withController { it.shuffleModeEnabled = !it.shuffleModeEnabled }
 
-    /** Repeat goes off, the whole queue, this song, and off again. */
-    fun cycleRepeat() = withController {
+    /** Repeat off, then the whole queue, then the one song. */
+    fun toggleRepeat() = withController {
         it.repeatMode = when (it.repeatMode) {
             Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
             Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
             else -> Player.REPEAT_MODE_OFF
         }
+        prefs.edit().putInt("repeat", it.repeatMode).apply()
     }
 
     /**
@@ -145,20 +182,25 @@ class PlayerConnection(private val context: Context) {
         return items.size
     }
 
-    /** Takes the songs at [indices] out of the queue. Taking out the one playing moves on to the next. */
-    fun removeFromQueue(indices: Collection<Int>) = withController { c ->
-        for (i in indices.sortedDescending()) if (i in 0 until c.mediaItemCount) c.removeMediaItem(i)
+    /**
+     * Takes the songs at [at] out of the queue: their places in the player's
+     * list ([Queued.at]), not in the order they play. Taking out the one
+     * playing moves on to the next.
+     */
+    fun removeFromQueue(at: Collection<Int>) = withController { c ->
+        for (i in at.sortedDescending()) if (i in 0 until c.mediaItemCount) c.removeMediaItem(i)
     }
     fun positionMs(): Long = controller?.currentPosition ?: 0
 
     private fun refresh() {
         val c = controller ?: return
+        val order = playOrder(c.currentTimeline, c.shuffleModeEnabled)
         _state.value = PlayerState(
             current = c.currentMediaItem,
             isPlaying = c.isPlaying,
             durationMs = c.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L,
-            queue = (0 until c.mediaItemCount).map { c.getMediaItemAt(it) },
-            index = c.currentMediaItemIndex,
+            queue = order.map { Queued(c.getMediaItemAt(it), it) },
+            index = order.indexOf(c.currentMediaItemIndex),
             shuffle = c.shuffleModeEnabled,
             repeat = c.repeatMode,
         )
@@ -169,6 +211,17 @@ class PlayerConnection(private val context: Context) {
             account, item.mediaId, item.mediaMetadata.title?.toString().orEmpty(),
             item.mediaMetadata.artist?.toString().orEmpty(), item.mediaMetadata.artworkUri?.toString(), c.currentPosition,
         ))
+    }
+
+    /** The player's list in the order it plays, shuffled or not. */
+    private fun playOrder(timeline: Timeline, shuffle: Boolean): List<Int> {
+        val out = ArrayList<Int>(timeline.windowCount)
+        var i = timeline.getFirstWindowIndex(shuffle)
+        while (i != C.INDEX_UNSET && out.size < timeline.windowCount) {
+            out += i
+            i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, shuffle)
+        }
+        return out
     }
 
     private fun remember(last: LastPlayed) {

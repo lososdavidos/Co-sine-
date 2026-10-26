@@ -172,4 +172,20 @@ class SubsonicClientTest {
         assertEquals("flac", client.track("t5").suffix)
         assertEquals("/navidrome/rest/getSong.view", server.takeRequest().url.encodedPath)
     }
+
+    @Test
+    fun `liking is the star every client shares`() = runTest {
+        respond(""""song":{"id":"t5","title":"Five","starred":"2026-10-26T22:00:00Z"}""")
+        assertEquals(true, client.track("t5").liked)
+        server.takeRequest()
+        respond(""""x":1""")
+        client.like("t5", true)
+        server.takeRequest().url.let {
+            assertEquals("/navidrome/rest/star.view", it.encodedPath)
+            assertEquals("t5", it.queryParameter("id"))
+        }
+        respond(""""x":1""")
+        client.like("t5", false)
+        assertEquals("/navidrome/rest/unstar.view", server.takeRequest().url.encodedPath)
+    }
 }

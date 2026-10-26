@@ -37,6 +37,9 @@ object Voice {
     /** Playlists (§2.4). */
     const val SMART_PLAYLIST_RULE = "A rule picks this playlist's songs. Save it as a playlist to choose them yourself."
 
+    /** Liking a song (#34): two taps on Add to playlist. */
+    fun liked(title: String, liked: Boolean) = if (liked) "Liked $title." else "No longer liked: $title."
+
     fun addedToPlaylist(count: Int, name: String) =
         if (count == 1) "Added 1 song to $name." else "Added $count songs to $name."
 

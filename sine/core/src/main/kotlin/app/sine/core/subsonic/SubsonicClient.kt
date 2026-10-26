@@ -154,6 +154,11 @@ class SubsonicClient(
         call("scrobble", "id" to trackId, "time" to timeMillis, "submission" to true)
     }
 
+    /** Likes a song, or stops liking it: Subsonic's star, which every client shares. */
+    suspend fun like(trackId: String, liked: Boolean) {
+        call(if (liked) "star" else "unstar", "id" to trackId)
+    }
+
     fun streamUrl(trackId: String): String =
         url("stream", "id" to trackId, "format" to "raw").toString()
 

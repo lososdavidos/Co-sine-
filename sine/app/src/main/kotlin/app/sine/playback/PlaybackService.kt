@@ -12,11 +12,13 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import app.sine.MainActivity
 import app.sine.core.play.PlayEvent
 import app.sine.core.play.PlayLog
+import app.sine.core.play.shuffledFrom
 import app.sine.graph
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -26,6 +28,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /**
  * Owns the player. MediaSessionService gives the media notification, lockscreen
@@ -55,6 +58,17 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+        // Shuffle turned on mid-queue starts its order with what's playing,
+        // so everything else still plays after it (shuffledFrom).
+        player.addListener(object : Player.Listener {
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                if (shuffleModeEnabled && player.mediaItemCount > 1) {
+                    player.setShuffleOrder(
+                        ShuffleOrder.DefaultShuffleOrder(shuffledFrom(player.currentMediaItemIndex, player.mediaItemCount), Random.nextLong())
+                    )
+                }
+            }
+        })
 
         val openApp = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
