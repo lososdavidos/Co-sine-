@@ -4,9 +4,7 @@ package app.sine.ui
 
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -14,12 +12,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -27,14 +23,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.NavHostController
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.graph
@@ -47,21 +35,31 @@ object Routes {
     const val HOME = "home"
     const val SEARCH = "search"
     const val LIBRARY = "library"
-    const val ARTIST = "artist/{id}"
-    const val ALBUM = "album/{id}"
-    const val PLAYLIST = "playlist/{id}"
     const val NOW_PLAYING = "now-playing"
     const val SETTINGS = "settings"
     const val ADD_ACCOUNT = "add-account"
-    const val ADD = "add?text={text}"
     const val REVIEW = "review"
-    const val CORRECT = "review/{track}"
+    private const val ARTIST = "artist/"
+    private const val ALBUM = "album/"
+    private const val PLAYLIST = "playlist/"
+    private const val ADD = "add?text="
+    private const val CORRECT = "review/"
 
-    fun artist(id: String) = "artist/${Uri.encode(id)}"
-    fun album(id: String) = "album/${Uri.encode(id)}"
-    fun playlist(id: String) = "playlist/${Uri.encode(id)}"
-    fun add(text: String = "") = "add?text=${Uri.encode(text)}"
-    fun correct(track: String) = "review/${Uri.encode(track)}"
+    fun artist(id: String) = ARTIST + Uri.encode(id)
+    fun album(id: String) = ALBUM + Uri.encode(id)
+    fun playlist(id: String) = PLAYLIST + Uri.encode(id)
+    fun add(text: String = "") = ADD + Uri.encode(text)
+    fun correct(track: String) = CORRECT + Uri.encode(track)
+
+    /** What a route of the kind [prefix] names, decoded; null for a route of another kind. */
+    private fun arg(route: String, prefix: String): String? =
+        if (route.startsWith(prefix)) Uri.decode(route.removePrefix(prefix)) else null
+
+    fun artistOf(route: String) = arg(route, ARTIST)
+    fun albumOf(route: String) = arg(route, ALBUM)
+    fun playlistOf(route: String) = arg(route, PLAYLIST)
+    fun addOf(route: String) = arg(route, ADD)
+    fun correctionOf(route: String) = arg(route, CORRECT)
 }
 
 @Composable
@@ -109,18 +107,13 @@ private val destinations = listOf(
 @Composable
 private fun MainScaffold(session: AccountSession) {
     val graph = LocalContext.current.graph
-    val nav = rememberNavController()
-    val entry by nav.currentBackStackEntryAsState()
-    val route = entry?.destination?.route
-    val topLevel = destinations.any { it.route == route }
+    val pages = rememberPages(destinations.map { it.route })
     val network by graph.network.state.collectAsStateWithLifecycle()
     val reachable by session.reachable.collectAsStateWithLifecycle()
     val offline = !network.connected || !reachable
     val account by session.accountFlow.collectAsStateWithLifecycle()
     val share by graph.incomingShare.collectAsStateWithLifecycle()
     val shelf = remember { ShelfController() }
-    // Which of the three the shelf shows as here: the last one you were on.
-    var here by rememberSaveable { mutableStateOf(Routes.HOME) }
 
     // The mirror (§5.2) catches up every minute while Sine is on screen, and
     // straight away when it comes back on screen.
@@ -140,97 +133,86 @@ private fun MainScaffold(session: AccountSession) {
         val text = share ?: return@LaunchedEffect
         if (graph.accounts.state.value.shareTarget?.id == account.id) {
             graph.incomingShare.value = null
-            nav.navigate(Routes.add(text)) { launchSingleTop = true }
+            pages.navigate(Routes.add(text), singleTop = true)
         }
     }
 
-    LaunchedEffect(route) {
-        if (topLevel && route != null) here = route
-        shelf.question = null // a question belongs to the screen that asked it
-    }
+    // A question belongs to the page that asked it.
+    LaunchedEffect(pages.top.id) { shelf.question = null }
+    // Sideways goes nowhere while something is selected or asked (§6.16).
+    SideEffect { pages.swipes = shelf.selection == null && shelf.question == null }
     // Losing the server is said once, in the shelf; the Offline mark stays in the top bar.
     LaunchedEffect(offline) {
         if (offline) say(Voice.serverUnreachable(session.account.isCosine), Signal.Server)
     }
 
-    val chrome = Chrome(
-        offline = offline,
-        onRetry = { session.forceOnlineRetry() },
-        // The account control (§6.11): every screen except now-playing, and Settings itself.
-        onAccount = if (route == Routes.SETTINGS) null else ({ nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }),
-    )
-
-    CompositionLocalProvider(LocalShelf provides shelf, LocalChrome provides chrome) {
-        Box(Modifier.fillMaxSize()) {
-            NavHost(
-                nav, startDestination = Routes.HOME, modifier = Modifier.fillMaxSize(),
-                enterTransition = { fadeIn(tween(160)) }, exitTransition = { fadeOut(tween(160)) },
-            ) {
-                composable(Routes.HOME) { HomeScreen(session, nav) }
-                composable(Routes.SEARCH) { SearchScreen(session, nav) }
-                composable(Routes.LIBRARY) { LibraryScreen(session, nav) }
-                composable(Routes.ARTIST, arguments = listOf(navArgument("id") { type = NavType.StringType })) {
-                    ArtistScreen(session, it.arguments?.getString("id").orEmpty(), nav)
-                }
-                composable(Routes.ALBUM, arguments = listOf(navArgument("id") { type = NavType.StringType })) {
-                    AlbumScreen(session, it.arguments?.getString("id").orEmpty(), nav)
-                }
-                composable(Routes.PLAYLIST, arguments = listOf(navArgument("id") { type = NavType.StringType })) {
-                    PlaylistScreen(session, it.arguments?.getString("id").orEmpty(), nav)
-                }
-                // The sheet (§6.6) comes in on the overlay's 220ms and leaves on 160, opacity only.
-                composable(
-                    Routes.NOW_PLAYING,
-                    enterTransition = { fadeIn(tween(220)) }, exitTransition = { fadeOut(tween(160)) },
-                ) { NowPlayingScreen(onClose = { nav.popBackStack() }) }
-                composable(Routes.SETTINGS) { SettingsScreen(session, nav) }
-                composable(
-                    Routes.ADD,
-                    arguments = listOf(navArgument("text") { type = NavType.StringType; defaultValue = "" }),
-                ) {
-                    AddScreen(session, it.arguments?.getString("text").orEmpty(), onCorrect = { track -> nav.navigate(Routes.correct(track)) })
-                }
-                composable(Routes.REVIEW) { ReviewScreen(session, onOpen = { nav.navigate(Routes.correct(it)) }) }
-                composable(Routes.CORRECT, arguments = listOf(navArgument("track") { type = NavType.StringType })) {
-                    CorrectionScreen(session, it.arguments?.getString("track").orEmpty(), onDone = { nav.popBackStack() })
-                }
-                composable(Routes.ADD_ACCOUNT) {
-                    AddAccountScreen(onDone = { nav.popBackStack() }, onCancel = { nav.popBackStack() })
-                }
-            }
-            if (!topLevel && route != null && route != Routes.NOW_PLAYING && route != Routes.ADD_ACCOUNT) {
-                DetailBar(
-                    back = backLabel(nav.previousBackStackEntry?.destination?.route),
-                    onBack = { nav.popBackStack() },
-                    showAccount = route != Routes.SETTINGS,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                )
-            }
-            if (route != Routes.NOW_PLAYING && route != Routes.ADD_ACCOUNT) {
+    CompositionLocalProvider(LocalShelf provides shelf, LocalPages provides pages) {
+        PageHost(
+            pages,
+            shelf = {
                 Shelf(
-                    destinations, here,
-                    onNavigate = { nav.navigateTopLevel(it) },
-                    onOpenPlayer = { nav.navigate(Routes.NOW_PLAYING) { launchSingleTop = true } },
+                    destinations, pages.here,
+                    onNavigate = pages::go,
+                    onOpenPlayer = pages::openPlayer,
+                    onPlayerDrag = pages::dragPlayer,
+                    onPlayerRelease = pages::release,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
+            },
+        ) { page ->
+            // The account control (§6.11): every page except now playing, and Settings itself.
+            val chrome = Chrome(
+                offline = offline,
+                onRetry = { session.forceOnlineRetry() },
+                onAccount = if (page.route == Routes.SETTINGS) null else ({ pages.navigate(Routes.SETTINGS, singleTop = true) }),
+            )
+            CompositionLocalProvider(LocalChrome provides chrome) {
+                Box(Modifier.fillMaxSize().background(PhaseColor.Ground)) {
+                    Screen(session, pages, page)
+                    if (page.route !in pages.destinations && !page.isSheet && page.route != Routes.ADD_ACCOUNT) {
+                        DetailBar(
+                            back = if (page.form != null) "Cancel" else backLabel(pages.below(page)?.route),
+                            onBack = { pages.popBackStack() },
+                            showAccount = page.route != Routes.SETTINGS,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-private fun NavHostController.navigateTopLevel(route: String) = navigate(route) {
-    popUpTo(graph.findStartDestination().id) { saveState = true }
-    launchSingleTop = true
-    restoreState = true
+/** The screen a page shows. */
+@Composable
+private fun Screen(session: AccountSession, pages: Pages, page: Page) {
+    page.form?.let { return it() }
+    val route = page.route
+    when (route) {
+        Routes.HOME -> HomeScreen(session, pages)
+        Routes.SEARCH -> SearchScreen(session, pages)
+        Routes.LIBRARY -> LibraryScreen(session, pages)
+        Routes.NOW_PLAYING -> NowPlayingScreen(onClose = { pages.popBackStack() })
+        Routes.SETTINGS -> SettingsScreen(session, pages)
+        Routes.REVIEW -> ReviewScreen(session, onOpen = { pages.navigate(Routes.correct(it)) })
+        Routes.ADD_ACCOUNT -> AddAccountScreen(onDone = { pages.popBackStack() }, onCancel = { pages.popBackStack() })
+        else -> {
+            Routes.artistOf(route)?.let { return ArtistScreen(session, it, pages) }
+            Routes.albumOf(route)?.let { return AlbumScreen(session, it, pages) }
+            Routes.playlistOf(route)?.let { return PlaylistScreen(session, it, pages) }
+            Routes.addOf(route)?.let { return AddScreen(session, it, onCorrect = { track -> pages.navigate(Routes.correct(track)) }) }
+            Routes.correctionOf(route)?.let { return CorrectionScreen(session, it, onDone = { pages.popBackStack() }) }
+        }
+    }
 }
 
 /** The back pill names where it goes when it can; a page about one thing says Back. */
-private fun backLabel(route: String?) = when (route) {
-    Routes.HOME -> "Home"
-    Routes.SEARCH -> "Search"
-    Routes.LIBRARY -> "Library"
-    Routes.SETTINGS -> "Settings"
-    Routes.REVIEW -> "Review"
-    Routes.ADD -> "Add"
+private fun backLabel(route: String?) = when {
+    route == Routes.HOME -> "Home"
+    route == Routes.SEARCH -> "Search"
+    route == Routes.LIBRARY -> "Library"
+    route == Routes.SETTINGS -> "Settings"
+    route == Routes.REVIEW -> "Review"
+    route != null && Routes.addOf(route) != null -> "Add"
     else -> "Back"
 }

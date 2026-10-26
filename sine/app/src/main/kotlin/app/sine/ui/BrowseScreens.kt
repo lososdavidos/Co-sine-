@@ -32,7 +32,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.sine.core.model.Album
@@ -73,7 +72,7 @@ fun playingId(): String? = LocalContext.current.graph.player.state.collectAsStat
  * outside the library (NG3).
  */
 @Composable
-fun HomeScreen(session: AccountSession, nav: NavController) {
+fun HomeScreen(session: AccountSession, nav: Pages) {
     val player = LocalContext.current.graph.player
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
     val load = rememberLoad(session) {
@@ -111,7 +110,7 @@ fun HomeScreen(session: AccountSession, nav: NavController) {
 }
 
 @Composable
-fun AlbumRow(session: AccountSession, album: Album, nav: NavController) {
+fun AlbumRow(session: AccountSession, album: Album, nav: Pages) {
     ItemRow(album.name, album.subtitle(), session.artwork(album.coverArt, 150)) {
         nav.navigate(Routes.album(album.id))
     }
@@ -125,7 +124,7 @@ fun AlbumRow(session: AccountSession, album: Album, nav: NavController) {
  * result's kind is a mono label, not a plane.
  */
 @Composable
-fun SearchScreen(session: AccountSession, nav: NavController) {
+fun SearchScreen(session: AccountSession, nav: Pages) {
     val player = LocalContext.current.graph.player
     val playing = playingId()
     var query by rememberSaveable { mutableStateOf("") }
@@ -199,7 +198,7 @@ private val segments = listOf("Artists", "Albums", "Playlists")
  * its title, only where the server can do them: compat mode has neither (§2.1).
  */
 @Composable
-fun LibraryScreen(session: AccountSession, nav: NavController) {
+fun LibraryScreen(session: AccountSession, nav: Pages) {
     val context = LocalContext.current
     var segment by rememberSaveable { mutableIntStateOf(0) }
     var downloadedOnly by rememberSaveable { mutableStateOf(false) }
@@ -259,7 +258,7 @@ private fun Artist.letter(): String {
 }
 
 @Composable
-private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
+private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: Pages) {
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
     val load = rememberLoad(session, downloadedOnly, refreshOn = mirrored) {
         if (downloadedOnly) Sourced(session.offline().artists(), true) else session.artists()
@@ -298,7 +297,7 @@ private fun LetterDivider(letter: String) {
 }
 
 @Composable
-private fun AlbumList(session: AccountSession, downloadedOnly: Boolean, nav: NavController) {
+private fun AlbumList(session: AccountSession, downloadedOnly: Boolean, nav: Pages) {
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
     val load = rememberLoad(session, downloadedOnly, refreshOn = mirrored) {
         if (downloadedOnly) Sourced(session.offline().albums(), true) else session.allAlbums()

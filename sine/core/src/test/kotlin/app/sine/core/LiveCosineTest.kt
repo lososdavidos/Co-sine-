@@ -5,6 +5,10 @@ import app.sine.core.cosine.CosineException
 import app.sine.core.cosine.ManualIdentity
 import app.sine.core.download.DownloadIndex
 import app.sine.core.download.DownloadPlanner
+import app.sine.core.home.HomeLayout
+import app.sine.core.home.Tile
+import app.sine.core.home.TileKind
+import app.sine.core.home.TileSize
 import app.sine.core.mirror.LibraryMirror
 import app.sine.core.mirror.PlaylistOps
 import app.sine.core.model.DownloadNode
@@ -209,6 +213,13 @@ class LiveCosineTest {
         assertTrue(Capability.SCROBBLING in kind.capabilities, "$kind")
         val scrobbling = cosine.scrobbling()
         assertTrue(scrobbling.connected.isEmpty() && !scrobbling.lastfmAvailable, "$scrobbling")
+
+        // Home's arrangement is kept per kind of device (§6.4), as it was sent.
+        assertTrue(Capability.HOME_LAYOUT in kind.capabilities, "$kind")
+        val arranged = HomeLayout(listOf(Tile(TileKind.NOW_PLAYING, size = TileSize.Wide)), updated = 42)
+        cosine.saveHome("phone", arranged)
+        assertEquals(arranged, cosine.home("phone"))
+        assertEquals(null, cosine.home("desktop"))
 
         // The native protocol: adding music from a link.
         val link = System.getenv("FETCH_URL")

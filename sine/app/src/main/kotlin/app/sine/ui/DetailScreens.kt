@@ -34,7 +34,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
 import app.sine.core.cosine.CosineException
 import app.sine.core.download.PinnedBudget
 import app.sine.core.model.ArtistEntry
@@ -74,7 +73,7 @@ import java.io.IOException
  * press selects, as on a release.
  */
 @Composable
-fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
+fun ArtistScreen(session: AccountSession, id: String, nav: Pages) {
     val context = LocalContext.current
     val player = context.graph.player
     val scope = rememberCoroutineScope()
@@ -90,14 +89,13 @@ fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
     LoadContent(load) { (detail, entries), fromDownloads ->
         val singles = entries.filterIsInstance<ArtistEntry.Single>().map { it.track }
         var selected by remember(singles) { mutableStateOf(setOf<String>()) }
-        var adding by remember { mutableStateOf<List<Track>?>(null) }
         ShowSelection(
             if (selected.isEmpty()) null else {
                 val chosen = singles.filter { it.id in selected }
                 trackSelection(
                     context, session, chosen, nav, scope, shelf,
                     canRemoveFromLibrary = session.can(Capability.REMOVE),
-                    onAddToPlaylist = { adding = chosen },
+                    onAddToPlaylist = { nav.form { AddToPlaylistForm(session, chosen) } },
                 ) { selected = emptySet() }
             },
         )
@@ -153,14 +151,11 @@ fun ArtistScreen(session: AccountSession, id: String, nav: NavController) {
                 }
             }
         }
-        adding?.let { chosen ->
-            AddToPlaylistDialog(session, chosen, onDismiss = { adding = null }) { selected = emptySet() }
-        }
     }
 }
 
 @Composable
-fun AlbumScreen(session: AccountSession, id: String, nav: NavController) {
+fun AlbumScreen(session: AccountSession, id: String, nav: Pages) {
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
     val load = rememberLoad(session, id, refreshOn = mirrored) { session.album(id) }
     LoadContent(load) { detail, fromDownloads ->
@@ -197,7 +192,7 @@ internal fun TrackListScreen(
     tracks: List<Track>,
     node: DownloadNode?,
     showTrackArtist: Boolean,
-    nav: NavController,
+    nav: Pages,
     byline: String? = null,
     onByline: (() -> Unit)? = null,
     meta: List<String> = emptyList(),
@@ -220,7 +215,6 @@ internal fun TrackListScreen(
     val playing = playingId()
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
     var selected by remember(tracks) { mutableStateOf(setOf<String>()) }
-    var adding by remember { mutableStateOf<List<Track>?>(null) }
     val canRemove = removable && session.can(Capability.REMOVE)
     val downloadedHere = tracks.count { it.id in downloads }
 
@@ -230,7 +224,7 @@ internal fun TrackListScreen(
             trackSelection(
                 context, session, chosen, nav, scope, shelf,
                 canRemoveFromLibrary = canRemove,
-                onAddToPlaylist = { adding = chosen },
+                onAddToPlaylist = { nav.form { AddToPlaylistForm(session, chosen) } },
                 onRemoveFromPlaylist = onRemoveFromPlaylist?.let { remove ->
                     { remove(PlaylistEdits.positionsOf(tracks, selected)); selected = emptySet() }
                 },
@@ -326,9 +320,6 @@ internal fun TrackListScreen(
             )
         }
     }
-    adding?.let { chosen ->
-        AddToPlaylistDialog(session, chosen, onDismiss = { adding = null }) { selected = emptySet() }
-    }
 }
 
 private fun durationWords(minutes: Int) = if (minutes >= 60) "${minutes / 60} h ${"%02d".format(minutes % 60)} min" else "$minutes min"
@@ -415,7 +406,7 @@ private fun trackSelection(
     context: Context,
     session: AccountSession,
     chosen: List<Track>,
-    nav: NavController,
+    nav: Pages,
     scope: CoroutineScope,
     shelf: ShelfController,
     canRemoveFromLibrary: Boolean,
@@ -500,14 +491,14 @@ fun startDownload(
     session: AccountSession,
     node: DownloadNode,
     tracks: List<Track>?,
-    nav: NavController,
+    nav: Pages,
     quiet: Boolean = false,
 ) {
     val graph = context.graph
     val settings = graph.settings.state.value
     if (settings.downloadTreeUri == null) {
         say(Voice.CHOOSE_DOWNLOAD_FOLDER)
-        nav.navigate(Routes.SETTINGS) { launchSingleTop = true }
+        nav.navigate(Routes.SETTINGS, singleTop = true)
         return
     }
     val accountSettings = settings.forAccount(session.account.id)

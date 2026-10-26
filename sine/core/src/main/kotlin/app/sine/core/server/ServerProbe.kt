@@ -53,6 +53,8 @@ object Capability {
     const val SHARED_PLAYLISTS = "shared-playlists"
     /** Plays are scrobbled to Last.fm and ListenBrainz by the server (§4A). */
     const val SCROBBLING = "scrobbling"
+    /** Home's arrangement is kept on the server, one per kind of device (§6.4). */
+    const val HOME_LAYOUT = "home-layout"
 }
 
 sealed interface ProbeResult {

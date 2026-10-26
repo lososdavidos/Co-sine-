@@ -6,6 +6,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -230,6 +233,10 @@ fun Shelf(
     onNavigate: (String) -> Unit,
     onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A drag up the player row, in pixels, bringing now playing up under the finger (§6.6). */
+    onPlayerDrag: (Float) -> Unit = {},
+    /** The finger let go of it, at this many pixels a second. */
+    onPlayerRelease: (Float) -> Unit = {},
 ) {
     val shelf = LocalShelf.current
     val density = LocalDensity.current
@@ -276,6 +283,8 @@ fun Shelf(
                 onOpen = onOpenPlayer,
                 onToggle = player::togglePlay,
                 onNext = player::next,
+                onDrag = onPlayerDrag,
+                onRelease = onPlayerRelease,
             )
             Seam(durationMs = state.durationMs, playing = state.isPlaying, key = item.mediaId) { player.positionMs() }
         }
@@ -304,9 +313,14 @@ private fun PlayerRow(
     onOpen: () -> Unit,
     onToggle: () -> Unit,
     onNext: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onRelease: (Float) -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 12.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+        Modifier
+            .fillMaxWidth()
+            .draggable(rememberDraggableState(onDrag), Orientation.Vertical, onDragStopped = { onRelease(it) })
+            .padding(start = 12.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

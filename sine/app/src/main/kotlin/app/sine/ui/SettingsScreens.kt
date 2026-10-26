@@ -41,7 +41,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
 import app.sine.core.account.Account
 import app.sine.core.server.Capability
 import app.sine.core.server.ProbeResult
@@ -75,7 +74,7 @@ private val budgets: List<Pair<String, Long?>> = listOf(
 )
 
 @Composable
-fun SettingsScreen(session: AccountSession, nav: NavController) {
+fun SettingsScreen(session: AccountSession, nav: Pages) {
     val context = LocalContext.current
     val graph = context.graph
     val scope = rememberCoroutineScope()

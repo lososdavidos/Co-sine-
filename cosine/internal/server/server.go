@@ -19,6 +19,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/deezer"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/discogs"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/homes"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/inbox"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
@@ -121,7 +122,7 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		Log: log.With("component", "scrobble")}
 	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, Stats: listening, OnInboxChange: s.startInbox, Log: log}
 	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Mirror: &mirror.Service{DB: d, Playlists: lists},
-		Ingester: s.ingester, Playlists: lists, Scrobbler: s.scrobbler, Version: cfg.Version, Log: log}
+		Ingester: s.ingester, Playlists: lists, Scrobbler: s.scrobbler, Homes: &homes.Service{DB: d}, Version: cfg.Version, Log: log}
 	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not
