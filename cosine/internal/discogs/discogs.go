@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -93,17 +92,13 @@ func (c *Client) Candidates(ctx context.Context, h resolve.Hint, n int) ([]resol
 		return nil, err
 	}
 
-	type candidate struct {
-		resolve.Result
-		rank int
-	}
-	var out []candidate
-	for i, path := range pick(found.Results) {
+	var out []resolve.Placed
+	for i, l := range pick(found.Results) {
 		if i == maxLookups {
 			break
 		}
 		var e entry
-		if err := c.get(ctx, "/"+path, &e); err != nil {
+		if err := c.get(ctx, "/"+l.path, &e); err != nil {
 			if errors.Is(err, webcache.ErrNotFound) {
 				continue
 			}
@@ -112,63 +107,51 @@ func (c *Client) Candidates(ctx context.Context, h resolve.Hint, n int) ([]resol
 			}
 			return nil, err
 		}
-		if r, ok := identity(h, path, e); ok {
-			rank := releaseRank(h, e)
-			out = append(out, candidate{r, rank})
-			if r.Confidence >= 0.9 && rank <= rankAlbum {
-				break // confident, on an album: the remaining lookups would only cost time
+		if r, length, ok := identity(h, l, e); ok {
+			home := home(h, e, l)
+			out = append(out, resolve.Placed{Result: r, Home: home, LengthSec: length})
+			if r.Confidence >= 0.9 && home.Kind <= rankAlbum && (home.Named || !wantAlbum(h)) {
+				// Confident, on an album: the rest came out no earlier and
+				// would only cost time.
+				break
 			}
 		}
 	}
-	// Between equals, the better home for the track: the album it has been
-	// on over its single (as MusicBrainz ranks them), then the earliest.
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if math.Abs(a.Confidence-b.Confidence) > 1e-9 {
-			return a.Confidence > b.Confidence
-		}
-		if a.rank != b.rank {
-			return a.rank < b.rank
-		}
-		return a.Year != 0 && (b.Year == 0 || a.Year < b.Year)
-	})
-	results := make([]resolve.Result, 0, min(n, len(out)))
-	for _, c := range out[:min(n, len(out))] {
-		results = append(results, c.Result)
-	}
-	return results, nil
+	// Copies of the song go in the order MusicBrainz's do: the album the
+	// file names, then the song's first releases (the album over its
+	// single), then later ones, a greatest hits years on last.
+	results := resolve.Order(out)
+	return results[:min(n, len(results))], nil
 }
 
 const rankAlbum = -30
 
-// releaseRank says how good a home a master or release is; lower is
-// better, on the same scale as MusicBrainz's: the album the file names,
-// else an album, an EP, a single, and a compilation last. Discogs gives
-// formats only on releases; a master is judged by its length.
-func releaseRank(h resolve.Hint, e entry) int {
+// home says how good a home a master or release is (resolve.Home), on the
+// same scale as MusicBrainz's: the album the file names, else an album, an
+// EP, a single, and a compilation last. A master carries no formats of its
+// own; its pressings' in the search results say what it is, and failing
+// those its length.
+func home(h resolve.Hint, e entry, l lookup) resolve.Home {
+	hm := resolve.Home{Named: named(h, e) && !e.compiled(l), Unofficial: e.unofficial(l), Year: e.Year}
+	if hm.Year == 0 {
+		hm.Year = l.year
+	}
 	n := 0
-	switch {
-	case named(h, e) && e.compiled():
+	if named(h, e) && e.compiled(l) {
 		n-- // ahead of other compilations, never of the artist's own (as MusicBrainz)
-	case named(h, e):
-		n -= 100
 	}
 	kind := ""
-	for _, f := range e.Formats {
-		for _, d := range f.Descriptions {
-			switch d {
-			case "Album", "LP", "Mini-Album":
-				kind = "album"
-			case "EP":
-				if kind == "" || kind == "single" {
-					kind = "ep"
-				}
-			case "Single", "Maxi-Single", "Single Sided":
-				if kind == "" {
-					kind = "single"
-				}
-			case "Compilation":
-				n += 25
+	for _, d := range e.descriptions(l) {
+		switch d {
+		case "Album", "LP", "Mini-Album":
+			kind = "album"
+		case "EP":
+			if kind == "" || kind == "single" {
+				kind = "ep"
+			}
+		case "Single", "Maxi-Single", "Single Sided":
+			if kind == "" {
+				kind = "single"
 			}
 		}
 	}
@@ -183,10 +166,16 @@ func releaseRank(h resolve.Hint, e entry) int {
 		}
 	}
 	n += map[string]int{"album": rankAlbum, "ep": -20, "single": -10}[kind]
-	if credit(e.Artists) == "Various Artists" {
+	if e.compiled(l) {
 		n += 25
 	}
-	return n
+	hm.Kind = n
+	return hm
+}
+
+// wantAlbum reports whether the file names an album of its own.
+func wantAlbum(h resolve.Hint) bool {
+	return h.Release != "" && !strings.EqualFold(h.Release, h.Title)
 }
 
 // named reports whether the file names this master or release as its album.
@@ -194,17 +183,50 @@ func named(h resolve.Hint, e entry) bool {
 	return h.Release != "" && !strings.EqualFold(h.Release, h.Title) && resolve.Similarity(h.Release, e.Title) >= 0.8
 }
 
-// compiled reports whether an entry gathers other releases' tracks.
-func (e entry) compiled() bool {
-	if credit(e.Artists) == "Various Artists" {
-		return true
+// compiled reports whether an entry gathers other releases' tracks: it is
+// credited to Various Artists, or it says Compilation (a master: each of its
+// pressings in the search results does).
+func (e entry) compiled(l lookup) bool {
+	return credit(e.Artists) == "Various Artists" || e.says(l, "Compilation")
+}
+
+// unofficial reports a bootleg: Discogs's "Unofficial Release", on the
+// entry, or on every pressing of a master the search listed.
+func (e entry) unofficial(l lookup) bool { return e.says(l, "Unofficial Release") }
+
+// says reports whether the entry's own formats name a description, or, for
+// a master, which has none, whether every pressing of it listed does.
+func (e entry) says(l lookup, d string) bool {
+	if len(e.Formats) > 0 {
+		for _, f := range e.Formats {
+			if slices.Contains(f.Descriptions, d) {
+				return true
+			}
+		}
+		return false
 	}
-	for _, f := range e.Formats {
-		if slices.Contains(f.Descriptions, "Compilation") {
-			return true
+	for _, p := range l.pressings {
+		if !slices.Contains(p, d) {
+			return false
 		}
 	}
-	return false
+	return len(l.pressings) > 0
+}
+
+// descriptions are the entry's format descriptions: its own, or for a
+// master its pressings'.
+func (e entry) descriptions(l lookup) []string {
+	var out []string
+	for _, f := range e.Formats {
+		out = append(out, f.Descriptions...)
+	}
+	if len(out) > 0 {
+		return out
+	}
+	for _, p := range l.pressings {
+		out = append(out, p...)
+	}
+	return out
 }
 
 func (e entry) tracks() int {
@@ -235,9 +257,11 @@ type searchResponse struct {
 }
 
 type searchResult struct {
-	ID       int64  `json:"id"`
-	Type     string `json:"type"` // master, release
-	MasterID int64  `json:"master_id"`
+	ID       int64    `json:"id"`
+	Type     string   `json:"type"` // master, release
+	MasterID int64    `json:"master_id"`
+	Year     string   `json:"year"`
+	Format   []string `json:"format"` // "CD", "Compilation"…: name and descriptions together
 }
 
 type artist struct {
@@ -270,36 +294,63 @@ type entry struct {
 	} `json:"images"`
 }
 
+// lookup is a master or release to look up, with what the search said
+// of it: its earliest year, and each listed pressing's formats.
+type lookup struct {
+	path      string
+	year      int
+	pressings [][]string
+}
+
 // pick orders what to look up: masters (one per release, across every
-// pressing) first, then releases that belong to no master in the results.
-// A release whose master wasn't returned is looked up as that master.
-func pick(results []searchResult) []string {
-	var masters, releases []string
-	seen := map[string]bool{}
-	add := func(list *[]string, path string) {
-		if !seen[path] {
-			seen[path] = true
-			*list = append(*list, path)
-		}
-	}
+// pressing) and releases that belong to no master in the results, the
+// earliest first, in the search's order within a year. A release whose
+// master wasn't returned is looked up as that master.
+func pick(results []searchResult) []lookup {
+	var out []*lookup
+	byPath := map[string]*lookup{}
 	for _, r := range results {
+		var path string
 		switch {
 		case r.Type == "master":
-			add(&masters, "masters/"+strconv.FormatInt(r.ID, 10))
+			path = "masters/" + strconv.FormatInt(r.ID, 10)
 		case r.Type == "release" && r.MasterID != 0:
-			add(&masters, "masters/"+strconv.FormatInt(r.MasterID, 10))
+			path = "masters/" + strconv.FormatInt(r.MasterID, 10)
 		case r.Type == "release":
-			add(&releases, "releases/"+strconv.FormatInt(r.ID, 10))
+			path = "releases/" + strconv.FormatInt(r.ID, 10)
+		default:
+			continue
+		}
+		l := byPath[path]
+		if l == nil {
+			l = &lookup{path: path}
+			byPath[path] = l
+			out = append(out, l)
+		}
+		if y, err := strconv.Atoi(r.Year); err == nil && y > 0 && (l.year == 0 || y < l.year) {
+			l.year = y
+		}
+		if r.Type == "release" && len(r.Format) > 0 {
+			l.pressings = append(l.pressings, r.Format)
 		}
 	}
-	return append(masters, releases...)
+	sort.SliceStable(out, func(i, j int) bool {
+		yi, yj := out[i].year, out[j].year
+		return yi != 0 && (yj == 0 || yi < yj)
+	})
+	looks := make([]lookup, len(out))
+	for i, l := range out {
+		looks[i] = *l
+	}
+	return looks
 }
 
 // identity finds the hinted track on a master or release and scores it.
-func identity(h resolve.Hint, path string, e entry) (resolve.Result, bool) {
+// It returns the track's length there too (0: Discogs doesn't say).
+func identity(h resolve.Hint, l lookup, e entry) (resolve.Result, int, bool) {
 	releaseArtist := credit(e.Artists)
 	if releaseArtist == "" {
-		return resolve.Result{}, false
+		return resolve.Result{}, 0, false
 	}
 	best, bestScore, number := -1, 0.0, 0
 	numbers := make([]int, len(e.Tracklist))
@@ -318,11 +369,11 @@ func identity(h resolve.Hint, path string, e entry) (resolve.Result, bool) {
 		}
 	}
 	if best < 0 {
-		return resolve.Result{}, false
+		return resolve.Result{}, 0, false
 	}
 	t := e.Tracklist[best]
 	conf := bestScore
-	if named(h, e) && !e.compiled() {
+	if named(h, e) && !e.compiled(l) {
 		conf += 0.05 // the album we were told about
 	}
 	if _, contradicted := resolve.DurationFit(h.DurationSec, seconds(t.Duration)); contradicted {
@@ -338,7 +389,7 @@ func identity(h resolve.Hint, path string, e entry) (resolve.Result, bool) {
 		Source:     "discogs",
 		Tier:       resolve.TierDiscogs,
 		Confidence: conf,
-		IDs:        resolve.IDs{Discogs: strings.Replace(path, "s/", "/", 1)}, // "masters/1" → "master/1", as on discogs.com
+		IDs:        resolve.IDs{Discogs: strings.Replace(l.path, "s/", "/", 1)}, // "masters/1" → "master/1", as on discogs.com
 	}
 	if a := credit(t.Artists); a != "" && a != releaseArtist {
 		r.TrackArtist = a // a compilation filed under Various Artists keeps each track's credit (Q74)
@@ -352,7 +403,7 @@ func identity(h resolve.Hint, path string, e entry) (resolve.Result, bool) {
 			break
 		}
 	}
-	return r, true
+	return r, seconds(t.Duration), true
 }
 
 var disambiguation = regexp.MustCompile(`\s+\(\d+\)$`)

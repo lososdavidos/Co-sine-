@@ -439,3 +439,31 @@ func TestTheAlbumsRecordingBeatsACompilationCopy(t *testing.T) {
 		}
 	}
 }
+
+func TestALaterReleaseLosesToTheFirst(t *testing.T) {
+	// "Timber": a greatest hits from 2017, entered as a plain album and a
+	// recording of its own, whose length is closer to the file's than the
+	// 2013 album's. The first release is the likeliest original.
+	body := `{"recordings":[
+ {"id":"rec-hits","score":100,"title":"Timber","length":204000,
+  "artist-credit":[{"name":"Pitbull","artist":{"id":"art-p","name":"Pitbull"}}],
+  "releases":[{"id":"rel-hits","title":"Greatest Hits","status":"Official","date":"2017-12-01",
+   "release-group":{"id":"rg-h","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"2"}]}]}]},
+ {"id":"rec-album","score":100,"title":"Timber","length":208000,
+  "artist-credit":[{"name":"Pitbull","artist":{"id":"art-p","name":"Pitbull"}}],
+  "releases":[
+   {"id":"rel-single","title":"Timber","status":"Official","date":"2013-10-07",
+    "release-group":{"id":"rg-s","primary-type":"Single"},"media":[{"position":1,"track":[{"number":"1"}]}]},
+   {"id":"rel-album","title":"Global Warming: Meltdown","status":"Official","date":"2013-11-22",
+    "release-group":{"id":"rg-a","primary-type":"Album"},"media":[{"position":1,"track":[{"number":"13"}]}]}]}
+]}`
+	c := client(t, newFake(t, body), false)
+	got, err := c.Candidates(context.Background(), Hint{Artist: "Pitbull", Title: "Timber", DurationSec: 204}, 3)
+	var order []string
+	for _, r := range got {
+		order = append(order, r.Release)
+	}
+	if err != nil || strings.Join(order, ", ") != "Global Warming: Meltdown, Timber, Greatest Hits" || got[0].Confidence < 0.8 {
+		t.Fatalf("%v %+v", err, got)
+	}
+}

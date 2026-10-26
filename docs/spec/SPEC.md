@@ -546,6 +546,17 @@ video to whichever release claimed it ("Hot Party Winter 2018") and a ripped
 "NOW" CD names one too, so it only goes ahead of other compilations. A song that
 was only ever on compilations is filed under Various Artists (Q74).
 
+`RESOLVED` **The first release is the original.** Between copies of one song on
+different releases (the same title, a length that agrees or isn't known, a close
+score), a release from the song's first year or the next comes before any
+later one, and the later the worse: a greatest hits or a reissue years on is the
+least likely original. Among the first releases the album still beats its
+single, so a lead single out the year before its album doesn't take its place.
+Every catalogue orders its answers this way, so a copy whose length a catalogue
+happens to give doesn't win on that alone. Discogs gives no formats for a
+master; its pressings in the search say whether it is a compilation, and the
+earliest are looked up first ("Timber" went to Pitbull's 2017 Greatest Hits).
+
 `RESOLVED` **A remix is another track.** A catalogue title that names a version
 — remix, rework, VIP, cover, live, acoustic, instrumental, karaoke, nightcore,
 slowed or sped up — only matches a file whose title or album asks for it. By
