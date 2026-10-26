@@ -49,6 +49,7 @@ import app.sine.ui.phase.Chip
 import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseField
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseType
 import app.sine.ui.phase.Pill
