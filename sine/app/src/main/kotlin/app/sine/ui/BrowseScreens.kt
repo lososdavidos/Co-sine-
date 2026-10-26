@@ -117,7 +117,9 @@ fun SearchScreen(session: AccountSession, nav: NavController) {
     val load = rememberLoad(session, if (local) Unit else query, refreshOn = query to mirrored) {
         if (query.isBlank()) return@rememberLoad Sourced(emptyList<SearchHit>(), false)
         // The mirror answers as you type (§6.8); the server gets a pause first.
-        session.searchMirror(query)?.let { return@rememberLoad Sourced(SearchRanking.rank(query, it), false) }
+        session.searchMirror(query)?.let {
+            return@rememberLoad Sourced(SearchRanking.rank(query, it, session.searchPlaylists(query)), false)
+        }
         delay(250) // debounce: a new keystroke cancels this and starts again
         session.fetch(
             offline = { lib -> SearchRanking.rank(query, lib.search(query)) },

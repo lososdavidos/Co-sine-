@@ -20,6 +20,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/scrobble"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 )
 
@@ -36,6 +37,8 @@ type API struct {
 	Ingester *ingest.Ingester
 	// Playlists: editable playlists and smart playlists; nil: neither.
 	Playlists *playlists.Service
+	// Scrobbler sends plays to Last.fm and ListenBrainz; nil: no scrobbling.
+	Scrobbler *scrobble.Service
 	Version   string
 	Log       *slog.Logger
 }
@@ -58,10 +61,16 @@ func (a *API) capabilities() []string {
 		caps = append(caps, CapRemove)
 	}
 	if a.Playlists != nil {
-		caps = append(caps, CapPlaylists)
+		caps = append(caps, CapPlaylists, CapShared)
 		if a.Playlists.Stats != nil {
 			caps = append(caps, CapSmart)
 		}
+		if a.Mirror != nil {
+			caps = append(caps, CapPlaylistSync)
+		}
+	}
+	if a.Scrobbler != nil {
+		caps = append(caps, CapScrobbling)
 	}
 	return caps
 }
@@ -90,6 +99,12 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Playlists != nil && a.Playlists.Stats != nil {
 		a.registerSmart(mux)
+	}
+	if a.Playlists != nil {
+		a.registerPlaylists(mux)
+	}
+	if a.Scrobbler != nil {
+		a.registerScrobbling(mux)
 	}
 }
 

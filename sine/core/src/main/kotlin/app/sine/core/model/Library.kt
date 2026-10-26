@@ -59,6 +59,12 @@ data class Playlist(
     val comment: String? = null,
     /** A rule picks its songs (a smart playlist, §2.4): they can't be chosen by hand. */
     val readonly: Boolean = false,
+    /** This account's own, rather than one [owner] shared with it (§2.3). */
+    val mine: Boolean = true,
+    /** The accounts it's shared with, that accepted. */
+    val sharedWith: List<String> = emptyList(),
+    /** Asked, not yet accepted; only its owner sees these. */
+    val invited: List<String> = emptyList(),
 ) {
     /** One of Cosine's smart playlists, whose rule Sine can edit. */
     val isCosineSmart get() = id.startsWith("sp-")

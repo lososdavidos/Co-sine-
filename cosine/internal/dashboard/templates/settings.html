@@ -23,6 +23,14 @@
 <p>Discogs answers without one, at 25 lookups a minute. With a token from discogs.com → Settings → Developers it allows 60.</p>
 <button>Save</button>
 </form>
+<h2>Scrobbling</h2>
+<p>Cosine sends every account's plays to Last.fm or ListenBrainz, whichever app played them, once the account connects in Sine (Settings → Scrobbling). ListenBrainz needs nothing here.</p>
+<form method="post" action="/settings/lastfm">
+<label>Last.fm API key<br><input name="key" value="{{.Data.LastFMKey}}" size="40" autocomplete="off"></label>
+<label>Last.fm shared secret<br><input name="secret" value="{{.Data.LastFMSecret}}" size="40" autocomplete="off" type="password"></label>
+<p>For Last.fm, make an API account once at <a href="https://www.last.fm/api/account/create">last.fm/api/account/create</a> (any name; the callback URL can be left empty) and paste its key and secret here.</p>
+<button>Save</button>
+</form>
 <h2>Inbox</h2>
 <form method="post" action="/settings/inbox">
 <label>Inbox path<br><input name="path" value="{{.Data.Inbox}}" size="50" required></label>

@@ -13,6 +13,7 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import app.sine.core.download.DownloadLayout
 import app.sine.core.download.DownloadPlanner
+import app.sine.core.model.DownloadNode
 import app.sine.core.download.DownloadedTrack
 import app.sine.core.model.Track
 import app.sine.data.AccountSession
@@ -41,7 +42,10 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         if (!root.canWrite()) return Result.failure()
 
         val tracks = try {
-            DownloadPlanner(session.client, session.downloads).missing(node)
+            val planner = DownloadPlanner(session.client, session.downloads)
+            // A playlist in the mirror is downloaded as it shows here, edits made offline included.
+            (node as? DownloadNode.OfPlaylist)?.let { session.mirroredPlaylistTracks(it.id) }?.let { planner.missing(it) }
+                ?: planner.missing(node)
         } catch (e: IOException) {
             return Result.retry()
         }

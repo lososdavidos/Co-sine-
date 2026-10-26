@@ -13,7 +13,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
@@ -71,20 +70,20 @@ func (s *Service) Create(ctx context.Context, user int64, name string, tracks []
 	if err := write(ctx, tx, id, tracks); err != nil {
 		return 0, err
 	}
-	if err := db.LogChange(ctx, tx, user, "playlist", strconv.FormatInt(id, 10), "add"); err != nil {
+	if err := db.LogPlaylist(ctx, tx, id, "add"); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit()
 }
 
-// Edit applies an Edit to one of user's playlists.
+// Edit applies an Edit to one of user's playlists, or one shared with them.
 func (s *Service) Edit(ctx context.Context, user, id int64, e Edit) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if err := owned(ctx, tx, user, id); err != nil {
+	if _, err := access(ctx, tx, user, id); err != nil {
 		return err
 	}
 	if e.Name != nil {
@@ -112,32 +111,40 @@ func (s *Service) Edit(ctx context.Context, user, id int64, e Edit) error {
 	for _, t := range e.Add {
 		entries = append(entries, entry{track: t, shown: true})
 	}
-	tracks := make([]int64, len(entries))
-	for i, en := range entries {
-		tracks[i] = en.track
-	}
-	if err := write(ctx, tx, id, tracks); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE playlists SET updated_at = ? WHERE id = ?", db.Now(), id); err != nil {
-		return err
-	}
-	if err := db.LogChange(ctx, tx, user, "playlist", strconv.FormatInt(id, 10), "update"); err != nil {
+	if err := save(ctx, tx, id, tracksOf(entries)); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 // Delete removes one of user's playlists. Its songs stay in the Library.
+// A playlist shared with user is left instead: it stays for the others.
 func (s *Service) Delete(ctx context.Context, user, id int64) error {
-	res, err := s.DB.ExecContext(ctx, "DELETE FROM playlists WHERE id = ? AND owner_id = ?", id, user)
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
+	defer tx.Rollback()
+	owner, err := access(ctx, tx, user, id)
+	if err != nil {
+		return err
 	}
-	return db.LogChange(ctx, s.DB, user, "playlist", strconv.FormatInt(id, 10), "remove")
+	if !owner {
+		if err := db.LogPlaylist(ctx, tx, id, "update"); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM playlist_members WHERE playlist_id = ? AND user_id = ?", id, user); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if err := db.LogPlaylist(ctx, tx, id, "remove"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM playlists WHERE id = ?", id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Place puts track into a playlist being filled from a source, keeping the
@@ -151,7 +158,7 @@ func (s *Service) Place(ctx context.Context, user, id, track int64, at int, plac
 		return err
 	}
 	defer tx.Rollback()
-	if err := owned(ctx, tx, user, id); err != nil {
+	if _, err := access(ctx, tx, user, id); err != nil {
 		return err
 	}
 	entries, err := load(ctx, tx, user, id)
@@ -168,17 +175,7 @@ func (s *Service) Place(ctx context.Context, user, id, track int64, at int, plac
 		}
 	}
 	entries = append(entries[:i], append([]entry{{track: track, shown: true}}, entries[i:]...)...)
-	tracks := make([]int64, len(entries))
-	for k, en := range entries {
-		tracks[k] = en.track
-	}
-	if err := write(ctx, tx, id, tracks); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE playlists SET updated_at = ? WHERE id = ?", db.Now(), id); err != nil {
-		return err
-	}
-	if err := db.LogChange(ctx, tx, user, "playlist", strconv.FormatInt(id, 10), "update"); err != nil {
+	if err := save(ctx, tx, id, tracksOf(entries)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -274,6 +271,30 @@ func removeAt(entries []entry, indexes []int) []entry {
 	return out
 }
 
+func tracksOf(entries []entry) []int64 {
+	tracks := make([]int64, len(entries))
+	for i, en := range entries {
+		tracks[i] = en.track
+	}
+	return tracks
+}
+
+// save stores a playlist's new entries and tells everyone who has it. A
+// shared playlist's songs are put in each of its members' Libraries, so it
+// plays in full for all of them (§2.3).
+func save(ctx context.Context, tx *sql.Tx, id int64, tracks []int64) error {
+	if err := write(ctx, tx, id, tracks); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE playlists SET updated_at = ? WHERE id = ?", db.Now(), id); err != nil {
+		return err
+	}
+	if _, err := spread(ctx, tx, id, 0); err != nil {
+		return err
+	}
+	return db.LogPlaylist(ctx, tx, id, "update")
+}
+
 func write(ctx context.Context, tx *sql.Tx, id int64, tracks []int64) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM playlist_entries WHERE playlist_id = ?", id); err != nil {
 		return err
@@ -287,15 +308,19 @@ func write(ctx context.Context, tx *sql.Tx, id int64, tracks []int64) error {
 	return nil
 }
 
-func owned(ctx context.Context, tx *sql.Tx, user, id int64) error {
+// access checks user may see and edit a playlist: theirs, or one shared
+// with them that they accepted. owner says which.
+func access(ctx context.Context, tx *sql.Tx, user, id int64) (owner bool, err error) {
 	var n int
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM playlists WHERE id = ? AND owner_id = ?", id, user).Scan(&n); err != nil {
-		return err
+	err = tx.QueryRowContext(ctx, `
+		SELECT CASE WHEN owner_id = ?2 THEN 2
+		            WHEN EXISTS (SELECT 1 FROM playlist_members m WHERE m.playlist_id = ?1 AND m.user_id = ?2
+		                         AND m.accepted_at IS NOT NULL) THEN 1 ELSE 0 END
+		FROM playlists WHERE id = ?1`, id, user).Scan(&n)
+	if err == sql.ErrNoRows || n == 0 {
+		return false, ErrNotFound
 	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return n == 2, err
 }
 
 // inLibrary checks every track is one the account has, with a file.

@@ -28,6 +28,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/portraits"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/resolve"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/scrobble"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/search"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/stats"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/subsonic"
@@ -47,6 +48,7 @@ type Server struct {
 	ingester  *ingest.Ingester
 	fetcher   *fetch.Fetcher // nil without yt-dlp
 	portraits *portraits.Service
+	scrobbler *scrobble.Service
 	handler   http.Handler
 
 	inboxMu     sync.Mutex
@@ -115,9 +117,11 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 
 	listening := &stats.Service{DB: d}
 	lists := &playlists.Service{DB: d, Stats: listening}
+	s.scrobbler = &scrobble.Service{DB: d, HTTP: &http.Client{Timeout: 30 * time.Second}, Version: cfg.Version,
+		Log: log.With("component", "scrobble")}
 	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, Stats: listening, OnInboxChange: s.startInbox, Log: log}
-	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Mirror: &mirror.Service{DB: d},
-		Ingester: s.ingester, Playlists: lists, Version: cfg.Version, Log: log}
+	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Mirror: &mirror.Service{DB: d, Playlists: lists},
+		Ingester: s.ingester, Playlists: lists, Scrobbler: s.scrobbler, Version: cfg.Version, Log: log}
 	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not
@@ -165,7 +169,8 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		log.Info("yt-dlp found", "path", runner.Bin, "version", dash.YtDlpVersion)
 	}
 
-	api := &subsonic.API{DB: d, Auth: as, DataDir: cfg.DataDir, Version: cfg.Version, Log: log, Playlists: lists}
+	api := &subsonic.API{DB: d, Auth: as, DataDir: cfg.DataDir, Version: cfg.Version, Log: log, Playlists: lists,
+		OnPlay: s.scrobbler.Nudge}
 	mux := http.NewServeMux()
 	mux.Handle("/rest/", api.Handler())
 	nativeAPI.Register(mux)
@@ -182,6 +187,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	go s.watchStore(ctx)
 	go s.findPortraits(ctx)
+	go s.scrobbler.Run(ctx)
 	if p, _ := s.db.Setting(ctx, db.SettingInboxPath); p != "" {
 		s.startInbox(p)
 	}

@@ -32,6 +32,7 @@ type env struct {
 	bob   auth.User
 	g     *ingest.Ingester
 	drop  string
+	api   *API
 }
 
 func setup(t *testing.T) *env {
@@ -60,7 +61,7 @@ func setup(t *testing.T) *env {
 	t.Cleanup(srv.Close)
 	drop := filepath.Join(dir, "drop")
 	os.MkdirAll(drop, 0o755)
-	return &env{srv, d, alice, bob, g, drop}
+	return &env{srv, d, alice, bob, g, drop, api}
 }
 
 func (e *env) add(t *testing.T, m testutil.MP3, users ...int64) ingest.Outcome {
@@ -241,10 +242,15 @@ func TestStreamServesOriginalBytesWithRanges(t *testing.T) {
 func TestScrobbleIsIdempotentAndFeedsRecent(t *testing.T) {
 	e := setup(t)
 	out := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "x"}, e.alice.ID)
+	heard := 0
+	e.api.OnPlay = func() { heard++ } // the scrobbler is told
 	params := url.Values{"id": {"tr-" + itoa(out.TrackID)}, "time": {"1700000000000"}, "submission": {"true"}}
 	ok(t, e.get(t, "alice", "sesame", "scrobble", params))
 	ok(t, e.get(t, "alice", "sesame", "scrobble", params)) // an offline resend
 	ok(t, e.get(t, "bob", "hunter2", "scrobble", params))  // no Pointer: nothing recorded
+	if heard != 1 {
+		t.Fatal("told of each new play, not of resends:", heard)
+	}
 
 	var n int
 	e.db.QueryRow("SELECT COUNT(*) FROM plays").Scan(&n)

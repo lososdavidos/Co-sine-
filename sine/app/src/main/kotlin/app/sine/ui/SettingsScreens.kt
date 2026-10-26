@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import app.sine.core.account.Account
+import app.sine.core.server.Capability
 import app.sine.core.server.ProbeResult
 import app.sine.core.subsonic.SubsonicClient
 import app.sine.core.subsonic.SubsonicCredentials
@@ -145,6 +146,11 @@ fun SettingsScreen(session: AccountSession, nav: NavController) {
             TextButton(onClick = { confirmRemoveAll = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text("Remove ${downloads.size} downloads")
             }
+        }
+
+        if (session.can(Capability.SCROBBLING)) {
+            item { SectionHeader("Scrobbling") }
+            item { ScrobblingSettings(session) }
         }
     }
 

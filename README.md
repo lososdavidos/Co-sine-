@@ -38,7 +38,9 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Listening statistics:** Cosine's dashboard has a Listening page with top artists, albums and tracks, listening over time and a year by year view, for everyone or one account. The same data is in the native API, ready for Sine's statistics screen and Home tiles, which aren't built yet.
 
-**Playlists:** make them in Sine (Library → Playlists → New playlist), add songs from any selection on a release, artist or playlist page ("Add to playlist"), and reorder, take songs out of, rename or delete them from the playlist's page. Any other Subsonic app can edit them too. Playlists need the server for now; they aren't in the phone's copy of the library yet.
+**Playlists:** make them in Sine (Library → Playlists → New playlist), add songs from any selection on a release, artist or playlist page ("Add to playlist"), and reorder, take songs out of, rename or delete them from the playlist's page. Any other Subsonic app can edit them too. On a Cosine account they're part of the phone's copy of the library: they open, play and download with no connection, and changes made offline show at once and reach Cosine when you're back. Cosine replays what you did (added this, moved that) rather than overwriting the list, so changes made on another device meanwhile stay.
+
+**Shared playlists:** share one of your playlists with another account on the server (the playlist's page → Share). They see it under "Shared with you" in their playlists; accepting puts its songs in their library, so it plays in full, and from then on you both see and change the same playlist. They can leave it; you can stop sharing or delete it for everyone. Smart playlists aren't shared: save one as a playlist first.
 
 **Smart playlists:** every account starts with Recently added, Most played this year, Recently played, Forgotten, Never played and This time last year, worked out from your own listening each time you open one. Make your own from the same rules ("New smart playlist"), change a rule, or save one as an ordinary playlist to choose its songs yourself. Other Subsonic apps list them as read-only playlists.
 
@@ -52,9 +54,11 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Artist pages:** an artist's albums and singles are one list by date, and a single shows as the song itself, not as an album holding one track.
 
+**Scrobbling:** Cosine sends your plays to Last.fm or ListenBrainz, whichever app played them, including plays made offline, with the time you played them. Connect in Sine (Settings → Scrobbling): ListenBrainz takes your user token; Last.fm needs an API key in Cosine's dashboard once (Settings → Scrobbling), then you approve Cosine on Last.fm.
+
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push and offline playlist edits, shared playlists, the cache tier, Android Auto browsing, the Home tile canvas and the statistics screen in Sine, Last.fm/ListenBrainz scrobbling, remote control, Jam, and the desktop client.
+**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, the Home tile canvas and the statistics screen in Sine, remote control, Jam, and the desktop client.
 
 ## Design
 

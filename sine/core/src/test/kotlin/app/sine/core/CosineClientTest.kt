@@ -5,6 +5,7 @@ import app.sine.core.cosine.CosineException
 import app.sine.core.cosine.PendingShare
 import app.sine.core.cosine.PendingShares
 import app.sine.core.cosine.ShareText
+import app.sine.core.mirror.PlaylistOps
 import app.sine.core.subsonic.SubsonicCredentials
 import app.sine.core.text.Voice
 import kotlinx.coroutines.test.runTest
@@ -71,6 +72,37 @@ class CosineClientTest {
                                     {"id":6,"url":"u","title":"One","status":"known","error":"Already in your library.","trackId":"tr-1"}]}"""
                     )
                     "/cosine/v1/ingest/jobs/6/retry" -> json("""{"job":{"id":6,"url":"u","title":"One","status":"queued"}}""", 202)
+                    "/cosine/v1/sync" -> {
+                        bodies += request.url.query ?: ""
+                        json("""{"cursor":5,"full":true,"smartTag":"t2","smart":[{"id":"sp-1","name":"Recently added","rule":"added","days":30,"tracks":["tr-1"]}],
+                                 "playlists":[{"id":"pl-4","name":"Ours","owner":"bob","mine":false,"sharedWith":["alice"],"tracks":["tr-1","tr-9"]}],
+                                 "invites":[{"id":"pl-5","name":"Theirs","owner":"carol","songs":3}],"removedPlaylists":[]}""")
+                    }
+                    "/cosine/v1/playlists/ops" -> {
+                        bodies += request.body?.utf8() ?: ""
+                        json("""{"results":[{"id":"o1","playlist":"pl-4"},{"id":"o2","playlist":"pl-4","skipped":"missing"}]}""")
+                    }
+                    "/cosine/v1/accounts" -> json("""{"accounts":["bob","carol"]}""")
+                    "/cosine/v1/playlists/pl-4/share" -> {
+                        bodies += request.body?.utf8() ?: ""
+                        json("""{"ok":true}""")
+                    }
+                    "/cosine/v1/playlists/pl-4/share/bob" -> json("""{"ok":true}""")
+                    "/cosine/v1/playlists/pl-5/accept" -> json("""{"added":12}""")
+                    "/cosine/v1/playlists/pl-5/decline" -> json("""{"error":"That invitation isn't open any more."}""", 404)
+                    "/cosine/v1/scrobbling" -> json(
+                        """{"connected":[{"service":"listenbrainz","username":"alice_lb","pending":2},
+                                         {"service":"lastfm","username":"AliceFM","error":"refused"}],"lastfmAvailable":true}"""
+                    )
+                    "/cosine/v1/scrobbling/lastfm/start" -> json("""{"url":"https://www.last.fm/api/auth/?api_key=k&token=t1","token":"t1"}""")
+                    "/cosine/v1/scrobbling/lastfm/finish" -> {
+                        bodies += request.body?.utf8() ?: ""
+                        json("""{"username":"AliceFM"}""")
+                    }
+                    "/cosine/v1/scrobbling/listenbrainz" ->
+                        if ((request.body?.utf8() ?: "").contains("bad")) json("""{"error":"ListenBrainz didn't accept that token."}""", 400)
+                        else json("""{"username":"alice_lb"}""")
+                    "/cosine/v1/scrobbling/lastfm" -> json("""{"ok":true}""")
                     else -> json("""{"error":"Only failed or refused jobs can be retried"}""", 409)
                 }
             }
@@ -131,6 +163,58 @@ class CosineClientTest {
         val changed = c.saveSmart(app.sine.core.model.SmartRules.withSetting(made.copy(name = "Dust", rule = "forgotten", span = null)))
         assertEquals(12, changed.months)
         assertTrue(bodies.last().startsWith("PUT ") && bodies.last().contains("\"months\":6"), bodies.last())
+    }
+
+    @Test
+    fun `playlists come with the sync, and edits go as ops`() = runTest {
+        val c = client()
+        val changes = c.sync(0, "t1")
+        assertEquals("after=0&smart=t1", bodies.last())
+        assertEquals("t2", changes.smartTag)
+        assertEquals(listOf("tr-1"), changes.smart!!.single().tracks)
+        val ours = changes.playlists.single()
+        assertEquals(false, ours.mine)
+        assertEquals("bob", ours.owner)
+        assertEquals(listOf("tr-1", "tr-9"), ours.tracks)
+        assertEquals("carol", changes.invites.single().owner)
+
+        val results = c.playlistOps(listOf(
+            PlaylistOps.create("o1", "Night drive", listOf("tr-1")),
+            PlaylistOps.on(PlaylistOps.localId("o1"), "o2", PlaylistOps.REMOVE).copy(track = "tr-1"),
+        ))
+        assertTrue(bodies.last().contains("\"op\":\"create\"") && bodies.last().contains("\"new\":\"o1\""), bodies.last())
+        assertEquals("pl-4", results[0].playlist)
+        assertEquals("missing", results[1].skipped)
+    }
+
+    @Test
+    fun `sharing playlists`() = runTest {
+        val c = client()
+        assertEquals(listOf("bob", "carol"), c.accounts())
+        c.share("pl-4", "bob")
+        assertEquals("""{"with":"bob"}""", bodies.last())
+        c.unshare("pl-4", "bob")
+        assertTrue("DELETE /cosine/v1/playlists/pl-4/share/bob" in requests)
+        assertEquals(12, c.accept("pl-5"))
+        val e = assertFailsWith<CosineException> { c.decline("pl-5") }
+        assertEquals("That invitation isn't open any more.", e.message)
+    }
+
+    @Test
+    fun `connecting scrobblers`() = runTest {
+        val c = client()
+        val state = c.scrobbling()
+        assertTrue(state.lastfmAvailable)
+        assertEquals(2, state.connected.first { it.service == "listenbrainz" }.pending)
+        assertEquals("refused", state.connected.first { it.service == "lastfm" }.error)
+        val approval = c.startLastFm()
+        assertEquals("t1", approval.token)
+        assertEquals("AliceFM", c.finishLastFm(approval.token))
+        assertEquals("""{"token":"t1"}""", bodies.last())
+        assertEquals("alice_lb", c.connectListenBrainz("good"))
+        assertEquals("ListenBrainz didn't accept that token.", assertFailsWith<CosineException> { c.connectListenBrainz("bad") }.message)
+        c.disconnectScrobbler("lastfm")
+        assertTrue("DELETE /cosine/v1/scrobbling/lastfm" in requests)
     }
 
     @Test

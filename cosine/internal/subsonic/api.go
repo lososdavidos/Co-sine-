@@ -30,6 +30,8 @@ type API struct {
 	Log     *slog.Logger
 	// Playlists makes and edits playlists; nil: playlists are read-only.
 	Playlists *playlists.Service
+	// OnPlay hears that plays were recorded (to scrobble them); may be nil.
+	OnPlay func()
 }
 
 type request struct {
@@ -332,6 +334,7 @@ func scrobble(r *request) (*Response, error) {
 		return nil, missing("id")
 	}
 	times := r.Form["time"]
+	played := false
 	for i, raw := range ids {
 		id, ok := parseID(raw, "tr-")
 		if !ok {
@@ -345,12 +348,19 @@ func scrobble(r *request) (*Response, error) {
 		}
 		// A play attaches to the account's Pointer; without one there is
 		// nothing to record (Q82).
-		if _, err := r.api.DB.ExecContext(r.ctx(), `
+		res, err := r.api.DB.ExecContext(r.ctx(), `
 			INSERT INTO plays(user_id, track_id, played_at)
 			SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM pointers WHERE user_id = ? AND track_id = ?)
-			ON CONFLICT DO NOTHING`, r.user.ID, id, at, r.user.ID, id); err != nil {
+			ON CONFLICT DO NOTHING`, r.user.ID, id, at, r.user.ID, id)
+		if err != nil {
 			return nil, err
 		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			played = true
+		}
+	}
+	if played && r.api.OnPlay != nil {
+		r.api.OnPlay()
 	}
 	return &Response{}, nil
 }

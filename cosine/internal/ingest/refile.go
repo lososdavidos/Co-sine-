@@ -235,6 +235,26 @@ func undoMoves(root string, moves []move) {
 // merge folds Track from into Track to: files become versions of it, and
 // each account's Pointer, plays, playlists and dismissals follow.
 func merge(ctx context.Context, tx *sql.Tx, from, to int64) error {
+	// Playlists holding it are told, so phones' copies follow it too.
+	rows, err := tx.QueryContext(ctx, "SELECT DISTINCT playlist_id FROM playlist_entries WHERE track_id = ?", from)
+	if err != nil {
+		return err
+	}
+	var lists []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		lists = append(lists, id)
+	}
+	rows.Close()
+	for _, id := range lists {
+		if err := db.LogPlaylist(ctx, tx, id, "update"); err != nil {
+			return err
+		}
+	}
 	for _, q := range []string{
 		"UPDATE objects SET track_id = ?2 WHERE track_id = ?1",
 		`INSERT OR IGNORE INTO pointers(user_id, track_id, added_at, starred_at, pin_hash)

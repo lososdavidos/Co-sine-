@@ -47,6 +47,12 @@ object Capability {
     const val PLAYLISTS = "playlists"
     /** Smart playlists' rules can be made and edited. */
     const val SMART_PLAYLISTS = "smart-playlists"
+    /** Playlists come with the library sync, and edits made offline are sent by operation (§5.2). */
+    const val PLAYLIST_SYNC = "playlist-sync"
+    /** Playlists can be shared with other accounts (§2.3). */
+    const val SHARED_PLAYLISTS = "shared-playlists"
+    /** Plays are scrobbled to Last.fm and ListenBrainz by the server (§4A). */
+    const val SCROBBLING = "scrobbling"
 }
 
 sealed interface ProbeResult {

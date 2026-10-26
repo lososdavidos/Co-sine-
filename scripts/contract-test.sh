@@ -15,6 +15,8 @@ PORT="${PORT:-4610}"
 FILE_PORT="${FILE_PORT:-4611}"
 USER_NAME="contract"
 USER_PASS="contract-pass"
+FRIEND_NAME="friend"
+FRIEND_PASS="friend-pass"
 pids=()
 cleanup() {
 	for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done
@@ -67,6 +69,10 @@ done
 	echo "Inbox ingest did not finish"
 	exit 1
 }
+# A second account, made after the Inbox filled the first's library (the
+# Inbox gives every account its songs), to share a playlist with.
+curl -fsS -o /dev/null -c "$WORK/cookies" -d "username=$USER_NAME&password=$USER_PASS" "127.0.0.1:$PORT/login"
+curl -fsS -o /dev/null -b "$WORK/cookies" -d "username=$FRIEND_NAME&password=$FRIEND_PASS" "127.0.0.1:$PORT/users"
 # A playlist made before Sine connects, as another client would have.
 sqlite3 "$WORK/data/cosine.db" <<'SQL'
 .timeout 5000
@@ -82,6 +88,7 @@ for _ in $(seq 1 50); do curl -fsS -o /dev/null "127.0.0.1:$FILE_PORT/fetched.mp
 
 echo "==> Running Sine's client against it"
 export COSINE_URL="http://127.0.0.1:$PORT" COSINE_USER="$USER_NAME" COSINE_PASS="$USER_PASS"
+export COSINE_FRIEND_USER="$FRIEND_NAME" COSINE_FRIEND_PASS="$FRIEND_PASS"
 export FETCH_URL="http://127.0.0.1:$FILE_PORT/fetched.mp3"
 if ! (cd "$ROOT/sine" && ${GRADLE:-./gradlew} :core:test --tests 'app.sine.core.LiveCosineTest' --rerun); then
 	echo "---- cosine log ----"

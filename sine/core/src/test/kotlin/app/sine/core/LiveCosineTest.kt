@@ -6,6 +6,7 @@ import app.sine.core.cosine.ManualIdentity
 import app.sine.core.download.DownloadIndex
 import app.sine.core.download.DownloadPlanner
 import app.sine.core.mirror.LibraryMirror
+import app.sine.core.mirror.PlaylistOps
 import app.sine.core.model.DownloadNode
 import app.sine.core.server.Capability
 import app.sine.core.server.ProbeResult
@@ -160,8 +161,54 @@ class LiveCosineTest {
         assertEquals(sub.artists().map { it.id to it.name }.toSet(), mirrored.artists().map { it.id to it.name }.toSet())
         assertEquals(2, mirrored.artist(fixture.id)!!.albums.single { it.id == ep.id }.trackCount)
         assertTrue(mirrored.search("surge").tracks.any { it.title == "Surge (VIP)" })
-        val unchanged = cosine.sync(mirror.cursor)
+        val unchanged = cosine.sync(mirror.cursor, mirror.smartTag)
         assertTrue(!unchanged.full && unchanged.tracks.isEmpty() && unchanged.removedTracks.isEmpty(), "$unchanged")
+        assertEquals(null, unchanged.smart, "smart playlists unchanged: not sent again")
+
+        // Playlists come with the mirror, and edits made here go as ops (§5.2).
+        assertTrue(Capability.PLAYLIST_SYNC in kind.capabilities, "$kind")
+        assertEquals(listOf("Surge (VIP)", "Tides"), mirror.library.value.playlist(playlist.id)!!.tracks.map { it.title })
+        assertEquals(6, mirror.library.value.playlists().count { it.readonly })
+        var opNo = 0
+        val newOp = { "contract-op-${++opNo}" }
+        val create = PlaylistOps.create(newOp(), "Contract offline", listOf(tides.id))
+        val local = PlaylistOps.localId(create.id)
+        mirror.edit(listOf(create, PlaylistOps.on(local, newOp(), PlaylistOps.ADD).copy(tracks = listOf(surgeId))))
+        val entries = mirror.library.value.entries(local)!!
+        mirror.edit(PlaylistOps.reorder(local, entries, entries.indices.toList(), listOf(1, 0), newOp))
+        assertEquals(listOf("Surge (VIP)", "Tides"), mirror.library.value.playlist(local)!!.tracks.map { it.title })
+        val results = cosine.playlistOps(mirror.pending)
+        assertEquals(results, cosine.playlistOps(mirror.pending), "a resend changes nothing")
+        mirror.sent(results)
+        mirror.apply(cosine.sync(mirror.cursor, mirror.smartTag))
+        val offline = mirror.library.value.playlist(local)!!
+        assertTrue(offline.playlist.id.startsWith("pl-"), offline.playlist.id)
+        assertEquals(listOf("Surge (VIP)", "Tides"), offline.tracks.map { it.title })
+        assertEquals(listOf("Surge (VIP)", "Tides"), sub.playlist(offline.playlist.id).tracks.map { it.title })
+        assertTrue(mirror.pending.isEmpty())
+
+        // Shared with a second account (§2.3), who accepts it and gets its songs.
+        assertTrue(Capability.SHARED_PLAYLISTS in kind.capabilities, "$kind")
+        val friendCreds = SubsonicCredentials.fromPassword(System.getenv("COSINE_FRIEND_USER"), System.getenv("COSINE_FRIEND_PASS"))
+        val friend = CosineClient(found.baseUrl, friendCreds, http)
+        assertEquals(listOf(friendCreds.username), cosine.accounts())
+        cosine.share(offline.playlist.id, friendCreds.username)
+        val invited = friend.sync(0)
+        assertEquals(offline.playlist.id, invited.invites.single().id)
+        assertEquals(2, friend.accept(offline.playlist.id))
+        val theirs = friend.sync(0)
+        assertEquals(false, theirs.playlists.single { it.id == offline.playlist.id }.mine)
+        assertEquals(2, theirs.tracks.size, "the shared playlist's songs are in their library")
+        mirror.apply(cosine.sync(mirror.cursor, mirror.smartTag))
+        assertEquals(listOf(friendCreds.username), mirror.library.value.playlist(offline.playlist.id)!!.playlist.sharedWith)
+        friend.playlistOps(listOf(PlaylistOps.on(offline.playlist.id, "friend-1", PlaylistOps.DELETE)))
+        assertTrue(friend.sync(0).playlists.none { it.id == offline.playlist.id }, "left")
+        assertTrue(sub.playlists().any { it.id == offline.playlist.id }, "still the owner's")
+
+        // Scrobbling is the server's (§4A); nothing connected yet.
+        assertTrue(Capability.SCROBBLING in kind.capabilities, "$kind")
+        val scrobbling = cosine.scrobbling()
+        assertTrue(scrobbling.connected.isEmpty() && !scrobbling.lastfmAvailable, "$scrobbling")
 
         // The native protocol: adding music from a link.
         val link = System.getenv("FETCH_URL")
@@ -185,7 +232,7 @@ class LiveCosineTest {
         assertFailsWith<CosineException> { cosine.retry(status.id) } // a finished job can't be retried
 
         // What was just added reaches the mirror as a change, not a full copy.
-        val delta = cosine.sync(mirror.cursor)
+        val delta = cosine.sync(mirror.cursor, mirror.smartTag)
         assertTrue(!delta.full && delta.tracks.any { it.id == status.trackId }, "$delta")
         mirror.apply(delta)
         assertEquals(fetched, mirror.library.value.track(status.trackId!!))
@@ -194,7 +241,7 @@ class LiveCosineTest {
         assertTrue(Capability.REMOVE in kind.capabilities, "$kind")
         assertEquals(1, cosine.remove(listOf(status.trackId!!)))
         assertTrue(sub.search("fetched").tracks.none { it.id == status.trackId }, "removed, but still offered")
-        val gone = cosine.sync(mirror.cursor)
+        val gone = cosine.sync(mirror.cursor, mirror.smartTag)
         assertEquals(listOf(status.trackId), gone.removedTracks)
         mirror.apply(gone)
         assertEquals(null, mirror.library.value.track(status.trackId!!))

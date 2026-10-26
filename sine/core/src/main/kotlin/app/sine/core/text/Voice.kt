@@ -44,6 +44,44 @@ object Voice {
 
     const val DELETE_PLAYLIST_EXPLAINED = "Its songs stay in your library."
 
+    /** Edits made with no connection (§5.2). */
+    const val PLAYLIST_SAVED_OFFLINE = "Saved on this phone. Cosine gets it when you're back online."
+
+    /** Shared playlists (§2.3). */
+    fun sharedBy(owner: String) = "Shared by $owner"
+
+    fun sharedWith(names: List<String>) = "Shared with " + names.joinToString(", ")
+
+    fun leavePlaylistQuestion(name: String) = "Leave the playlist \"$name\"?"
+
+    fun leavePlaylistExplained(owner: String?) =
+        (if (owner != null) "It stays $owner's. " else "") + "The songs it brought stay in your library."
+
+    fun invitation(owner: String, songs: Int) =
+        "From $owner · " + if (songs == 1) "1 song" else "$songs songs"
+
+    const val ACCEPT_EXPLAINED = "Accepting puts its songs in your library, so it plays in full. You can both change it."
+
+    fun accepted(added: Int) = when (added) {
+        0 -> "You had all its songs already."
+        1 -> "Added 1 song to your library."
+        else -> "Added $added songs to your library."
+    }
+
+    fun invited(name: String) = "Shared with $name. It shows for them once they accept."
+
+    /** Scrobbling (§4A). */
+    fun scrobblingAs(username: String) = "Scrobbling as $username"
+
+    fun scrobblesWaiting(count: Int) =
+        if (count == 1) "1 play waiting to be sent." else "$count plays waiting to be sent."
+
+    const val SCROBBLING_STOPPED = "Stopped: the service no longer accepts Cosine's access. Connect again."
+    const val LASTFM_NOT_SET_UP = "Last.fm needs an API key in Cosine's dashboard (Settings → Scrobbling) first."
+    const val LASTFM_APPROVE = "Approve Cosine on the Last.fm page that opened, then come back and finish."
+    const val LISTENBRAINZ_TOKEN = "Your user token is on listenbrainz.org, under Settings."
+    const val SCROBBLING_EXPLAINED = "Cosine sends your plays, including those played offline, with the time you played them."
+
     /** Adding an album or playlist from a source (§3.1a). */
     const val PLAYLIST_FILED = "Each song is filed under its own artist and release, never under the playlist's name."
 
