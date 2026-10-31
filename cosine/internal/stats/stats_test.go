@@ -230,6 +230,38 @@ func TestViews(t *testing.T) {
 	}
 }
 
+// Current favourites (§2.4): the last three months of plays, this week
+// counting most; one play isn't a favourite.
+func TestFavourites(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	play := func(track, at int64) {
+		e.db.Exec("INSERT INTO plays(user_id, track_id, played_at) VALUES(?, ?, ?)", e.alice, track, at)
+	}
+	// glass: five plays two months ago, 5. Old: twice this week, 8.
+	// Tides: twice this week and once this month, 10. Hollow: once, yesterday.
+	for d := 1; d <= 5; d++ {
+		play(e.glass, day(2026, 8, 20+d))
+	}
+	play(e.old, day(2026, 10, 21))
+	play(e.old, day(2026, 10, 23))
+	play(e.hollow, day(2026, 10, 24))
+	ts, err := e.s.View(ctx, e.alice, ViewFavourites, ViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, tr := range ts {
+		got = append(got, tr.Title)
+	}
+	if join(got) != "Tides Old glass" {
+		t.Fatal(got)
+	}
+	if ts[0].Plays != 3 {
+		t.Fatalf("plays are the three months': %+v", ts[0])
+	}
+}
+
 // A play recorded this very millisecond counts, so a sync straight after
 // it sees it.
 func TestAPlayThisMillisecondCounts(t *testing.T) {

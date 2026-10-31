@@ -151,7 +151,7 @@ fun Pill(
                 },
             )
             .clip(PhaseShape.Pill)
-            .background(background)
+            .then(if (kind == PillKind.Primary) Modifier.background(PhaseColor.SineBrush) else Modifier.background(background))
             .then(if (kind == PillKind.Outline) Modifier.border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill) else Modifier)
             .combinedClickable(
                 enabled = enabled, role = Role.Button, onClick = onClick, onDoubleClick = onDoubleClick,
@@ -377,7 +377,7 @@ fun Tick(checked: Boolean, modifier: Modifier = Modifier) {
         modifier
             .size(22.dp)
             .clip(PhaseShape.Square)
-            .background(if (checked) PhaseColor.Sine else Color.Transparent)
+            .then(if (checked) Modifier.background(PhaseColor.SineBrush) else Modifier)
             .border(1.5.dp, if (checked) PhaseColor.Sine else PhaseColor.LineStrong, PhaseShape.Square),
         contentAlignment = Alignment.Center,
     ) {
@@ -527,8 +527,12 @@ fun Ambience(
     fadeTo: Color = PhaseColor.Ground,
     fadeFrom: Float? = 0.55f,
     scrim: Color = PhaseColor.Scrim,
+    // Its art colours the screen (Ambient, #39): weakly, from the shelf.
+    tints: Boolean = true,
+    weakTint: Boolean = false,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
+    if (tints) AmbientSource(model, weak = weakTint)
     Box(modifier) {
         if (model != null) {
             AsyncImage(
@@ -570,7 +574,7 @@ fun Modifier.rowSurface(selected: Boolean): Modifier =
         .fillMaxWidth()
         .padding(horizontal = 8.dp)
         .clip(PhaseShape.Square)
-        .background(if (selected) PhaseColor.Sine else Color.Transparent)
+        .then(if (selected) Modifier.background(PhaseColor.SineBrush) else Modifier)
 
 /** The colour of a row's text: ink when selected, dimmed when it can't play. */
 fun rowInk(selected: Boolean, dimmed: Boolean, secondary: Boolean = false): Color = when {

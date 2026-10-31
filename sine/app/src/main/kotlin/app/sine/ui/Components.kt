@@ -1,5 +1,17 @@
 package app.sine.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import app.sine.ui.phase.PhaseIcons
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -29,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,7 +55,9 @@ import app.sine.core.model.Track
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.data.Sourced
+import app.sine.ui.phase.IconTone
 import app.sine.ui.phase.OnPhoneMark
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseShape
@@ -151,9 +166,11 @@ fun ListMessage(text: String) {
  * square, never a generated colour.
  */
 @Composable
-fun Art(model: Any?, size: Dp, modifier: Modifier = Modifier, round: Boolean = false) {
+fun Art(model: Any?, size: Dp, modifier: Modifier = Modifier, round: Boolean = false, mark: ImageVector? = null) {
     val shape = if (round) CircleShape else PhaseShape.Square
-    Box(modifier.size(size).clip(shape).background(PhaseColor.Raised)) {
+    Box(modifier.size(size).clip(shape).background(PhaseColor.Raised), contentAlignment = Alignment.Center) {
+        // No cover, and what it is says it instead: Liked songs' heart.
+        if (model == null && mark != null) PhaseIcon(mark, null, size = size * 0.55f, tone = IconTone.Sine)
         if (model != null) {
             AsyncImage(
                 model = model,
@@ -168,7 +185,9 @@ fun Art(model: Any?, size: Dp, modifier: Modifier = Modifier, round: Boolean = f
 /**
  * The row every list is made of. Quiet by default: a name, a second line,
  * the length in mono. Something true of the row adds one mark (playing, on
- * this phone, a tag). Selected, the whole row is Sine with black ink (§6.8).
+ * this phone, liked, a tag). Selected, the whole row is Sine with black ink
+ * (§6.8). A song's row likes it with two taps, or stops liking it, and a
+ * heart says so ([onLike], #26); a screen reader gets that as an action.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -187,40 +206,114 @@ fun ItemRow(
     label: String? = null,
     leading: (@Composable () -> Unit)? = null,
     end: (@Composable RowScope.() -> Unit)? = null,
+    liked: Boolean = false,
+    onLike: ((Boolean) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    Row(
+    // Each double tap's heart: what it said, and a count to start it again.
+    var hearts by remember { mutableIntStateOf(0) }
+    var heartSays by remember { mutableStateOf(true) }
+    val like = onLike?.let { { heartSays = !liked; hearts++; it(!liked) } }
+    Box(
         modifier
             .rowSurface(selected)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .heightIn(min = if (showArt) 64.dp else 52.dp)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onDoubleClick = like)
+            .then(
+                if (like == null) Modifier else Modifier.semantics {
+                    customActions = listOf(CustomAccessibilityAction(if (liked) "Stop liking" else "Like") { like(); true })
+                },
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        leading?.invoke()
-        if (showArt) Art(art, 44.dp, round = roundArt)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                title, color = rowInk(selected, dimmed),
-                style = PhaseType.Name.copy(fontWeight = if (playing || selected) FontWeight.SemiBold else FontWeight.Medium),
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            if (!subtitle.isNullOrBlank()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = if (showArt) 64.dp else 52.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            leading?.invoke()
+            if (showArt) Art(art, 44.dp, round = roundArt)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    subtitle, color = rowInk(selected, dimmed, secondary = true),
-                    style = PhaseType.Small, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    title, color = rowInk(selected, dimmed),
+                    style = PhaseType.Name.copy(fontWeight = if (playing || selected) FontWeight.SemiBold else FontWeight.Medium),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        subtitle, color = rowInk(selected, dimmed, secondary = true),
+                        style = PhaseType.Small, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+            if (label != null) PhaseLabel(label, color = rowInk(selected, dimmed, secondary = true))
+            if (playing && leading == null) PlayingBars(color = if (selected) PhaseColor.Ink else PhaseColor.Sine)
+            if (liked) PhaseIcon(PhaseIcons.Liked, "Liked", size = 16.dp, tone = if (selected) IconTone.OnSine else IconTone.Sine)
+            if (onPhone) OnPhoneMark()
+            if (trailing != null) {
+                Text(trailing, color = rowInk(selected, dimmed, secondary = true), style = PhaseType.Data, maxLines = 1)
+            }
+            end?.invoke(this)
         }
-        if (label != null) PhaseLabel(label, color = rowInk(selected, dimmed, secondary = true))
-        if (playing && leading == null) PlayingBars(color = if (selected) PhaseColor.Ink else PhaseColor.Sine)
-        if (onPhone) OnPhoneMark()
-        if (trailing != null) {
-            Text(trailing, color = rowInk(selected, dimmed, secondary = true), style = PhaseType.Data, maxLines = 1)
+        if (hearts > 0) LikeBurst(hearts, heartSays)
+    }
+}
+
+/**
+ * The heart a double tap leaves (#26): liking, it springs up in Sine and
+ * floats off; no longer liking, a dim one sinks away. [key] starts it again.
+ */
+@Composable
+fun LikeBurst(key: Int, liked: Boolean, size: Dp = 40.dp) {
+    val t = remember { Animatable(1f) }
+    LaunchedEffect(key) {
+        t.snapTo(0f)
+        t.animateTo(1f, tween(BURST_MS, easing = LinearEasing))
+    }
+    val p = t.value
+    if (p >= 1f) return
+    val scale = if (liked) {
+        // Overshoots, settles, then lifts a little as it goes.
+        when {
+            p < 0.25f -> 0.3f + 0.95f * FastOutSlowInEasing.transform(p / 0.25f)
+            p < 0.4f -> 1.25f - 0.25f * ((p - 0.25f) / 0.15f)
+            else -> 1f
         }
-        end?.invoke(this)
+    } else {
+        1f - 0.5f * FastOutSlowInEasing.transform(p)
+    }
+    val alpha = if (p < 0.6f) 1f else 1f - (p - 0.6f) / 0.4f
+    val rise = if (liked && p > 0.6f) (p - 0.6f) / 0.4f else 0f
+    PhaseIcon(
+        PhaseIcons.Liked, null,
+        Modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            this.alpha = alpha
+            translationY = -rise * size.toPx() * 0.4f
+        },
+        size = size,
+        tone = if (liked) IconTone.Sine else IconTone.Dim,
+    )
+}
+
+private const val BURST_MS = 800
+
+/**
+ * Liking or no longer liking a song from a list (#26): sent to the server,
+ * and said. The row shows it at once ([AccountSession.liking]).
+ */
+@Composable
+internal fun rememberLike(session: AccountSession): (id: String, title: String, liked: Boolean) -> Unit {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    return remember(session) {
+        { id, title, liked ->
+            scope.launch { attemptChange(context, session) { session.like(id, liked); Voice.liked(title, liked) } }
+        }
     }
 }
 

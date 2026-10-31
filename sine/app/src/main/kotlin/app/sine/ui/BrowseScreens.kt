@@ -95,6 +95,8 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
     val playing = playingId()
     val scope = rememberCoroutineScope()
     val shelf = LocalShelf.current
+    val liking by session.liking.collectAsStateWithLifecycle()
+    val like = rememberLike(session)
     var query by rememberSaveable { mutableStateOf("") }
     // + : the field looks in the sources instead of the library.
     var finding by rememberSaveable { mutableStateOf(false) }
@@ -210,6 +212,8 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
                                 hit.name, t.artist, session.artwork(t.coverArt, 150),
                                 label = "Song", playing = t.id == playing, selected = t.id in selected,
                                 dimmed = session.playSource(t) == PlaySource.Unavailable,
+                                liked = liking[t.id] ?: t.liked,
+                                onLike = { like(t.id, t.title, it) },
                                 onLongClick = { selected = selected.toggle(t.id) },
                             ) {
                                 when {

@@ -219,11 +219,16 @@ class MirrorLibrary private constructor(
         )
     }
 
-    /** Your playlists and those shared with you, by name, then the smart ones. */
+    /** The songs you liked, the latest first: Liked songs (§2.4). */
+    fun liked(): List<Track> = tracks.filter { it.liked }.sortedWith(Playlist.likedOrder)
+
+    /** Liked songs, then your playlists and those shared with you, by name, then the smart ones. */
     fun playlists(): List<Playlist> =
-        manual.values.map { describe(it) }.sortedBy { it.name.lowercase() } + smart.map { describe(it) }
+        listOf(Playlist.liked(liked())) +
+            manual.values.map { describe(it) }.sortedBy { it.name.lowercase() } + smart.map { describe(it) }
 
     fun playlist(id: String): PlaylistDetail? {
+        if (id == Playlist.LIKED) return liked().let { PlaylistDetail(Playlist.liked(it), it) }
         val key = resolve(id)
         manual[key]?.let { return PlaylistDetail(describe(it), shown(it.tracks)) }
         return smart.firstOrNull { it.id == key }?.let { PlaylistDetail(describe(it), shown(it.tracks)) }

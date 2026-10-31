@@ -133,13 +133,12 @@ class PlayerConnection(private val context: Context) {
         playingFor = session.account.id
         prefs.edit().putString("account", session.account.id).apply()
         withController { c ->
-            c.shuffleModeEnabled = shuffle
-            // Shuffled, the queue starts at the first song of its shuffled
-            // order, from the top. (C.INDEX_UNSET would keep the song before's
+            // Shuffled, it starts from the top of a song picked at random, and
+            // the rest follow it. (C.INDEX_UNSET would keep the song before's
             // place and position: the new one started 0:52 in, and midway
-            // through the order, so shuffle stopped early.)
-            if (shuffle) c.setMediaItems(items.map { it.second }, /* resetPosition = */ true)
-            else c.setMediaItems(items.map { it.second }, index, startMs)
+            // through the order, so shuffle stopped early.) Songs added to the
+            // queue stay next either way (#37).
+            c.replaceWith(items.map { it.second }, index, startMs, shuffle)
             c.prepare()
             c.play()
         }
@@ -150,7 +149,7 @@ class PlayerConnection(private val context: Context) {
     fun previous() = withController { it.seekToPrevious() }
     fun seekTo(ms: Long) = withController { it.seekTo(ms) }
     /** Plays the queue's song at [at], its place in the player's list ([Queued.at]). */
-    fun skipTo(at: Int) = withController { it.seekToDefaultPosition(at) }
+    fun skipTo(at: Int) = withController { it.skipTo(at) }
     fun toggleShuffle() = withController { it.shuffleModeEnabled = !it.shuffleModeEnabled }
 
     /** Repeat off, then the whole queue, then the one song. */
@@ -164,18 +163,18 @@ class PlayerConnection(private val context: Context) {
     }
 
     /**
-     * Puts [tracks] at the end of the queue, after what's already there; with
-     * nothing queued, plays them. Returns how many could be queued: a song
-     * that can't play right now is left out, as in [play].
+     * Adds [tracks] to the queue (#37): they play next, after any added
+     * before them; with nothing playing, they play. Returns how many could
+     * be queued: a song that can't play right now is left out, as in [play].
      */
     fun addToQueue(session: AccountSession, tracks: List<Track>): Int {
         val items = tracks.mapNotNull { mediaItem(session, it) }
         if (items.isEmpty()) return 0
         withController { c ->
-            if (c.mediaItemCount > 0) return@withController c.addMediaItems(items)
+            if (c.mediaItemCount > 0) return@withController c.queue(items)
             playingFor = session.account.id
             prefs.edit().putString("account", session.account.id).apply()
-            c.setMediaItems(items)
+            c.setMediaItems(items.map { it.asQueued() })
             c.prepare()
             c.play()
         }

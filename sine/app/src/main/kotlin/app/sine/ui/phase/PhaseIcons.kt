@@ -152,11 +152,12 @@ class IconTone(val top: Color, val bottom: Color, val edge: Color, val rim: Colo
         val Dim = IconTone(Color(0xFFCDD0D3), Color(0xFF8C9094), Color(0xFF303336))
         /** Marks beside a row: a chevron, a local copy. */
         val Faint = IconTone(Color(0xFFA9ACB0), Color(0xFF777B7F), Color(0xFF282B2E))
-        val Sine = IconTone(Color(0xFFB2D6FF), Color(0xFF3F8FF0), Color(0xFF0E4683), Color(0xD9F2F8FF))
+        /** The accent, lit: it follows the artwork on screen with Sine (Ambient). */
+        val Sine: IconTone get() = IconTone(Ambient.light.value, Ambient.far.value, Ambient.deep.value, Color(0xD9F2F8FF))
         val Cosine = IconTone(Color(0xFF63A8EE), Color(0xFF0F63AF), Color(0xFF062F57), Color(0xB3B5D7F7))
         val Fault = IconTone(Color(0xFFFFA59B), Color(0xFFE5483B), Color(0xFF6E1C16), Color(0xCCFFE1DC))
         /** Ink on a Sine pill: dark, its shadow a deeper blue. */
-        val OnSine = IconTone(Color(0xFF26313E), Color(0xFF0A0B0C), Color(0xFF2A74C8), Color(0x99B9DAFF))
+        val OnSine: IconTone get() = IconTone(Color(0xFF26313E), Color(0xFF0A0B0C), Ambient.far.value, Color(0x99FFFFFF))
         /** Ink on a red pill. */
         val OnFault = IconTone(Color(0xFF36201E), Color(0xFF0A0B0C), Color(0xFFB13A2F), Color(0x80FFC4BD))
         /** Light on a Cosine pill. */

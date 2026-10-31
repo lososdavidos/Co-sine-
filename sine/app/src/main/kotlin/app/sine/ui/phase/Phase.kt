@@ -54,8 +54,13 @@ object PhaseColor {
     /** Secondary text over a scrimmed cover. */
     val OnScrim = Color(0xFFD7DADC)
 
-    /** You, now: blue. oklch(0.71 0.155 253). */
-    val Sine = Color(0xFF53A4FF)
+    /**
+     * You, now: blue, oklch(0.71 0.155 253), until the artwork on screen
+     * gives it its own colour, as bright (Ambient, #39).
+     */
+    val Sine: Color get() = Ambient.fill.value
+    /** The far end of the accent's gradient. */
+    val SineFar: Color get() = Ambient.far.value
     /** The server at work: the same blue, deep. oklch(0.54 0.155 252); 3.9:1 on the ground. */
     val Cosine = Color(0xFF1070C5)
     /** Broken or missing, and the button that removes or deletes. */
@@ -172,5 +177,11 @@ private val shapes = Shapes(
  */
 @Composable
 fun PhaseTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, typography = typography, shapes = shapes, content = content)
+    // The accent moves with the artwork (Ambient); Material's parts follow it.
+    val sine = PhaseColor.Sine
+    val scheme = colors.copy(primary = sine, primaryContainer = sine, inversePrimary = sine)
+    MaterialTheme(colorScheme = scheme, typography = typography, shapes = shapes) {
+        AmbientHost()
+        content()
+    }
 }

@@ -90,6 +90,7 @@ internal data class SongDto(
         bitRate = bitRate,
         coverArt = coverArt,
         liked = starred != null,
+        likedAt = starred,
     )
 }
 
@@ -117,6 +118,9 @@ internal data class SearchResult3Dto(
     val album: List<AlbumDto> = emptyList(),
     val song: List<SongDto> = emptyList(),
 )
+
+@Serializable
+internal data class Starred2Dto(val song: List<SongDto> = emptyList())
 
 @Serializable
 internal data class ErrorDto(val code: Int = 0, val message: String = "")

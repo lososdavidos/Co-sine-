@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -219,15 +220,37 @@ class AccountSession(
         return n
     }
 
+    private val _liking = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+
     /**
-     * Likes a song or stops liking it (#34): Subsonic's star, so other
-     * clients see it too. The mirror is caught up, so it shows as liked and
+     * Likes asked for here and not yet back from the server, by song: shown
+     * at once, so a double tap's heart and the row's mark agree straight away.
+     */
+    val liking: StateFlow<Map<String, Boolean>> = _liking.asStateFlow()
+
+    /** Whether a song is liked: as asked here, else as the library has it. */
+    fun isLiked(track: Track): Boolean = _liking.value[track.id] ?: track.liked
+
+    /** The same for a song known only by its id, as in the queue. */
+    fun isLiked(trackId: String): Boolean = _liking.value[trackId] ?: library()?.track(trackId)?.liked ?: false
+
+    /**
+     * Likes songs or stops liking them (#26, #34): Subsonic's star, so other
+     * clients see it too. The mirror is caught up, so they show as liked and
      * in Liked songs.
      */
-    suspend fun like(trackId: String, liked: Boolean) {
-        client.like(trackId, liked)
-        sync(wait = true)
+    suspend fun like(trackIds: List<String>, liked: Boolean) {
+        _liking.update { it + trackIds.associateWith { liked } }
+        try {
+            for (id in trackIds) client.like(id, liked)
+            sync(wait = true)
+            if (library() == null) _playlistsChanged.value++
+        } finally {
+            _liking.update { it - trackIds.toSet() }
+        }
     }
+
+    suspend fun like(trackId: String, liked: Boolean) = like(listOf(trackId), liked)
 
     /** Every song in the library, when the mirror has them; null means only the server knows. */
     fun libraryTracks(): List<Track>? = library()?.tracks()
@@ -311,12 +334,18 @@ class AccountSession(
     /** Whether playlists can be changed with no connection: they're edited here and sent later. */
     val editsPlaylistsOffline: Boolean get() = playlistLibrary() != null
 
+    /** Liked songs first (§2.4), then the playlists. */
     suspend fun playlists(): Sourced<List<Playlist>> =
         playlistLibrary()?.let { Sourced(it.playlists(), false) }
-            ?: fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlists() })
+            ?: fetch(offline = { throw NotAvailableOffline() }, remote = { listOf(Playlist.liked(it.liked())) + it.playlists() })
 
     suspend fun playlist(id: String): Sourced<PlaylistDetail> {
         playlistLibrary()?.let { lib -> return Sourced(lib.playlist(id) ?: throw PlaylistGone(), false) }
+        if (id == Playlist.LIKED) {
+            // Without the mirror's, the server's: Subsonic's starred songs.
+            library()?.let { lib -> return Sourced(lib.playlist(id)!!, false) }
+            return fetch(offline = { throw NotAvailableOffline() }, remote = { c -> c.liked().let { PlaylistDetail(Playlist.liked(it), it) } })
+        }
         return fetch(offline = { throw NotAvailableOffline() }, remote = { it.playlist(id) })
     }
 

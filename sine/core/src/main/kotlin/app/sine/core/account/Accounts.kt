@@ -43,11 +43,12 @@ data class AccountsState(
     val active: Account? get() = accounts.firstOrNull { it.id == activeId } ?: accounts.firstOrNull()
 
     /**
-     * The account a share-sheet URL goes to (§6.10): compat accounts cannot
-     * ingest, so they are never candidates; among Cosine accounts the most
-     * recently added wins. No setting, no picker.
+     * The account a share-sheet URL goes to (§6.10): the one you're in, so a
+     * share never switches accounts under you (#38). Compat accounts cannot
+     * ingest, so from one of those it's the most recently added Cosine
+     * account. No setting, no picker.
      */
-    val shareTarget: Account? get() = accounts.filter { it.isCosine }.maxByOrNull { it.addedAt }
+    val shareTarget: Account? get() = active?.takeIf { it.isCosine } ?: accounts.filter { it.isCosine }.maxByOrNull { it.addedAt }
 }
 
 class AccountStore(file: File) {

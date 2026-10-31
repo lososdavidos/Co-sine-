@@ -320,7 +320,7 @@ fun Shelf(
             Box {
                 // The cover, blurred behind the row (§6.7), under Float at the
                 // strength that keeps the row's text readable over any cover.
-                Ambience(art, Modifier.matchParentSize(), fadeFrom = null, scrim = PhaseColor.Float.copy(alpha = BAR_SCRIM))
+                Ambience(art, Modifier.matchParentSize(), fadeFrom = null, scrim = PhaseColor.Float.copy(alpha = BAR_SCRIM), weakTint = true)
                 Column {
                     PlayerRow(
                         title = item.mediaMetadata.title?.toString().orEmpty(),

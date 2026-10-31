@@ -97,6 +97,10 @@ class SubsonicClient(
         call("getPlaylists", "playlists", PlaylistsDto.serializer())
             .playlist.map { it.toModel() }
 
+    /** The songs this account liked (Subsonic's starred), the latest first. */
+    suspend fun liked(): List<Track> =
+        call("getStarred2", "starred2", Starred2Dto.serializer()).song.map { it.toModel() }.sortedWith(Playlist.likedOrder)
+
     suspend fun playlist(id: String): PlaylistDetail {
         val dto = call("getPlaylist", "playlist", PlaylistDto.serializer(), "id" to id)
         return PlaylistDetail(dto.toModel(), dto.entry.map { it.toModel() })

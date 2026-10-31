@@ -47,6 +47,8 @@ data class Track(
     val coverArt: String? = null,
     /** Liked by this account (Subsonic's star): it's in Liked songs. */
     val liked: Boolean = false,
+    /** When it was liked, ISO 8601: Liked songs lists the latest first. */
+    val likedAt: String? = null,
 )
 
 @Serializable
@@ -70,6 +72,26 @@ data class Playlist(
 ) {
     /** One of Cosine's smart playlists, whose rule Sine can edit. */
     val isCosineSmart get() = id.startsWith("sp-")
+
+    /**
+     * Liked songs (§2.4): every song you liked, the latest first. A playlist
+     * of its own, not a smart one: there's no rule to edit, and taking a
+     * song out of it stops liking it.
+     */
+    val isLiked get() = id == LIKED
+
+    companion object {
+        const val LIKED = "liked"
+        const val LIKED_NAME = "Liked songs"
+
+        /** Liked songs, holding [tracks]. */
+        fun liked(tracks: List<Track>) = Playlist(
+            id = LIKED, name = LIKED_NAME, trackCount = tracks.size, durationSec = tracks.sumOf { it.durationSec },
+        )
+
+        /** The latest liked first. */
+        val likedOrder: Comparator<Track> = compareByDescending<Track> { it.likedAt.orEmpty() }.thenBy { it.title.lowercase() }
+    }
 }
 
 data class ArtistDetail(val artist: Artist, val albums: List<Album>)

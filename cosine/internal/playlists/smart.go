@@ -46,9 +46,9 @@ var defaults = [][]Smart{
 		{Name: "This time last year", Rule: stats.ViewLastYear},
 	},
 	{
-		{Name: "Liked songs", Rule: stats.ViewLiked},
-		// Current favourites: what you keep coming back to lately.
-		{Name: "Favourites", Rule: stats.ViewMostPlayed, Span: "30d"},
+		// Current favourites: what you keep coming back to lately. (Liked
+		// songs was here once; it's a playlist of its own now, §2.4.)
+		{Name: "Favourites", Rule: stats.ViewFavourites, Size: 50},
 	},
 }
 
@@ -78,8 +78,8 @@ func (s Smart) Describe() string {
 		return "Never played, newest first"
 	case stats.ViewLastYear:
 		return "Played around this day a year ago"
-	case stats.ViewLiked:
-		return "Songs you liked, the latest first"
+	case stats.ViewFavourites:
+		return "What you've played most lately"
 	}
 	return s.Rule
 }

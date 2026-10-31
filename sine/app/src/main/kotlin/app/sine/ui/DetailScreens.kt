@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -86,6 +87,8 @@ fun ArtistScreen(session: AccountSession, id: String, nav: Pages) {
     val playing = playingId()
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
+    val liking by session.liking.collectAsStateWithLifecycle()
+    val like = rememberLike(session)
     val load = rememberLoad(session, id, refreshOn = mirrored) {
         session.artist(id).let { s ->
             Sourced(s.value to ArtistPage.entries(s.value.albums) { session.knownTracks(it, s.fromDownloads) }, s.fromDownloads)
@@ -145,6 +148,8 @@ fun ArtistScreen(session: AccountSession, id: String, nav: Pages) {
                             playing = track.id == playing,
                             selected = on,
                             dimmed = !playable,
+                            liked = liking[track.id] ?: track.liked,
+                            onLike = { like(track.id, track.title, it) },
                             onLongClick = { selected = selected.toggle(track.id) },
                         ) {
                             when {
@@ -212,6 +217,10 @@ internal fun TrackListScreen(
     empty: String? = null,
     onRemoveFromPlaylist: ((List<Int>) -> Unit)? = null,
     onMove: ((from: Int, to: Int) -> Unit)? = null,
+    // What stands in for a cover it doesn't have: Liked songs' heart.
+    mark: ImageVector? = null,
+    // Taking songs out is called this here: Liked songs' is "Stop liking".
+    removeLabel: String = "Remove from playlist",
     quietActions: @Composable RowScope.() -> Unit = {},
     extraActions: @Composable RowScope.() -> Unit = {},
 ) {
@@ -221,6 +230,8 @@ internal fun TrackListScreen(
     val shelf = LocalShelf.current
     val playing = playingId()
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
+    val liking by session.liking.collectAsStateWithLifecycle()
+    val like = rememberLike(session)
     var selected by remember(tracks) { mutableStateOf(setOf<String>()) }
     val canRemove = removable && session.can(Capability.REMOVE)
     val downloadedHere = tracks.count { it.id in downloads }
@@ -236,6 +247,7 @@ internal fun TrackListScreen(
                 onRemoveFromPlaylist = onRemoveFromPlaylist?.let { remove ->
                     { remove(PlaylistEdits.positionsOf(tracks, selected)); selected = emptySet() }
                 },
+                removeLabel = removeLabel,
                 onRemovedFromLibrary = { removed -> if (removed.size == tracks.size) nav.popBackStack() },
             ) { selected = emptySet() }
         },
@@ -248,6 +260,7 @@ internal fun TrackListScreen(
                 art = session.artwork(coverArt),
                 title = title,
                 kind = kind,
+                mark = mark,
                 meta = meta + listOfNotNull(
                     Voice.songs(tracks.size) + if (minutes > 0) " · ${durationWords(minutes)}" else "",
                     downloadedHere.takeIf { it > 0 }?.let { "$it on this phone" },
@@ -310,6 +323,8 @@ internal fun TrackListScreen(
                 trailing = track.durationText(),
                 selected = on,
                 dimmed = !playable,
+                liked = liking[track.id] ?: track.liked,
+                onLike = { like(track.id, track.title, it) },
                 onLongClick = { selected = selected.toggle(track.id) },
             ) {
                 when {
@@ -343,6 +358,7 @@ internal fun DetailHeader(
     title: String,
     round: Boolean = false,
     kind: String? = null,
+    mark: ImageVector? = null,
     meta: List<String> = emptyList(),
     byline: String? = null,
     onByline: (() -> Unit)? = null,
@@ -357,7 +373,7 @@ internal fun DetailHeader(
                 Art(art, 112.dp, round = true)
             } else {
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Art(art, 148.dp)
+                    Art(art, 148.dp, mark = mark)
                     Column(Modifier.padding(bottom = 2.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (kind != null) Tag(kind)
                         for (m in meta) PhaseLabel(m, color = PhaseColor.OnScrim)
@@ -425,6 +441,7 @@ internal fun trackSelection(
     canRemoveFromLibrary: Boolean,
     onAddToPlaylist: (() -> Unit)? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
+    removeLabel: String = "Remove from playlist",
     onRemovedFromLibrary: (List<Track>) -> Unit = {},
     onClear: () -> Unit,
 ): ShelfSelection {
@@ -449,7 +466,7 @@ internal fun trackSelection(
         })
         if (onAddToPlaylist != null && session.canEditPlaylists) add(ShelfAction("Add to playlist", icon = PhaseIcons.PlaylistAdd, onClick = onAddToPlaylist))
         // Last, apart from Play (§6.18).
-        if (onRemoveFromPlaylist != null) add(ShelfAction("Remove from playlist", PillKind.SecondaryFault, PhaseIcons.PlaylistRemove, onRemoveFromPlaylist))
+        if (onRemoveFromPlaylist != null) add(ShelfAction(removeLabel, PillKind.SecondaryFault, PhaseIcons.PlaylistRemove, onRemoveFromPlaylist))
         if (canRemoveFromLibrary) add(ShelfAction("Remove from library", PillKind.SecondaryFault, PhaseIcons.Trash) {
             askRemove(context, session, chosen, scope, shelf) { done -> onRemovedFromLibrary(chosen); done() }
             onClear()

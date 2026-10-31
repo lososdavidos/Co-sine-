@@ -81,6 +81,7 @@ import app.sine.core.home.Tile
 import app.sine.core.home.TileGrid
 import app.sine.core.home.TileKind
 import app.sine.core.home.TileSize
+import app.sine.core.model.Playlist
 import app.sine.core.model.Track
 import app.sine.core.server.Capability
 import app.sine.core.text.Voice
@@ -682,7 +683,9 @@ internal fun AddTileForm(session: AccountSession) {
         Tile(TileKind.REVIEW, size = TileSize.Small).takeIf { session.cosine != null && Capability.REVIEW in caps },
         Tile(TileKind.INGEST).takeIf { session.cosine != null && Capability.INGEST in caps },
     ).filter { t -> tiles.none { it.id == t.id } }
-    val smart = session.mirroredSmart().map { Tile(TileKind.PLAYLIST, it.id, name = it.name) }.filter { t -> tiles.none { it.id == t.id } }
+    // Liked songs first: a playlist of its own, not a smart one, but made the same way, from what you do.
+    val smart = (listOf(Tile(TileKind.PLAYLIST, Playlist.LIKED, name = Playlist.LIKED_NAME)) +
+        session.mirroredSmart().map { Tile(TileKind.PLAYLIST, it.id, name = it.name) }).filter { t -> tiles.none { it.id == t.id } }
     fun add(tile: Tile) {
         session.editHome(HomeEdits.add(tiles, tile))
         say("${tileLabel(tile)} is on Home.")
@@ -694,7 +697,7 @@ internal fun AddTileForm(session: AccountSession) {
         }
         if (made.isNotEmpty()) PhaseLabel("Made by Sine", Modifier.padding(top = 8.dp))
         for (t in made) AddTileRow(tileLabel(t)) { add(t) }
-        if (smart.isNotEmpty()) PhaseLabel("Your smart playlists", Modifier.padding(top = 8.dp))
+        if (smart.isNotEmpty()) PhaseLabel("Liked songs and smart playlists", Modifier.padding(top = 8.dp))
         for (t in smart) AddTileRow(t.name.orEmpty()) { add(t) }
         Text("To pin an artist, album or playlist, use Pin to Home on its page.", color = PhaseColor.Text3, style = PhaseType.Small)
     }
