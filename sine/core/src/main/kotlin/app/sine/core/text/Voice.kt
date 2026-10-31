@@ -12,6 +12,7 @@ object Voice {
         else "Server unreachable. Showing downloaded music."
 
     const val EMPTY_PLAYLIST = "No songs in this playlist."
+    const val NO_LIKED_SONGS = "Nothing liked yet. Tap a song twice to like it."
     const val TRACK_UNAVAILABLE = "Not downloaded. Reconnect to play."
     const val NO_SEARCH_RESULTS = "No matches in your library."
     const val NO_DOWNLOADS = "Nothing downloaded yet."

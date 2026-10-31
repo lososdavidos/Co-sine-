@@ -114,7 +114,7 @@ func TestSmartPlaylistsAreListedReadOnly(t *testing.T) {
 		byName[m["name"].(string)] = m
 	}
 	added, played := byName["Recently added"], byName["Recently played"]
-	if len(lists) != 8 || added == nil || played == nil || byName["Never played"] == nil {
+	if len(lists) != 7 || added == nil || played == nil || byName["Never played"] == nil {
 		t.Fatalf("the default smart playlists: %v", lists)
 	}
 	if added["readonly"] != true || added["songCount"] != float64(2) || !strings.HasPrefix(added["id"].(string), "sp-") {
@@ -137,7 +137,7 @@ func TestSmartPlaylistsAreListedReadOnly(t *testing.T) {
 	for _, l := range lists {
 		names = append(names, l.(map[string]any)["name"].(string))
 	}
-	if got := strings.Join(names, ","); got != "Recently added,Most played this year,Lately,Never played,This time last year,Liked songs,Favourites" {
+	if got := strings.Join(names, ","); got != "Recently added,Most played this year,Lately,Never played,This time last year,Favourites" {
 		t.Fatal("renamed and deleted, not brought back:", got)
 	}
 	// Bob's are his own.

@@ -12,7 +12,6 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import app.sine.MainActivity
@@ -28,7 +27,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 /**
  * Owns the player. MediaSessionService gives the media notification, lockscreen
@@ -58,14 +56,18 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+        // Songs added to the queue go next, shuffled or not (QueueOrder, #37).
+        player.setShuffleOrder(QueueOrder(IntArray(0)))
         // Shuffle turned on mid-queue starts its order with what's playing,
-        // so everything else still plays after it (shuffledFrom).
+        // then the songs added to the queue, so everything else still plays
+        // after them (shuffledFrom).
         player.addListener(object : Player.Listener {
             override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
                 if (shuffleModeEnabled && player.mediaItemCount > 1) {
-                    player.setShuffleOrder(
-                        ShuffleOrder.DefaultShuffleOrder(shuffledFrom(player.currentMediaItemIndex, player.mediaItemCount), Random.nextLong())
-                    )
+                    val current = player.currentMediaItemIndex
+                    // Off until now, so the list is the order they played in.
+                    val queued = (current + 1 until player.mediaItemCount).takeWhile { player.getMediaItemAt(it).isQueued }
+                    player.setShuffleOrder(QueueOrder(shuffledFrom(current, player.mediaItemCount, queued)))
                 }
             }
         })

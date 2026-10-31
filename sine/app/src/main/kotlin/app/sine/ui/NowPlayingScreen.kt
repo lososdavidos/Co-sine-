@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,8 @@ import app.sine.core.model.Track
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.graph
+import app.sine.playback.Queued
+import app.sine.playback.isQueued
 import app.sine.ui.phase.Ambience
 import app.sine.ui.phase.Chip
 import app.sine.ui.phase.PhaseColor
@@ -78,6 +81,11 @@ fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
     // Songs held in the queue, by their place in the player's list
     // ([app.sine.playback.Queued.at]); a change to the queue lets go of them.
     var selected by remember(state.queue) { mutableStateOf(setOf<Int>()) }
+    val liking by session.liking.collectAsStateWithLifecycle()
+    val likeFromQueue = rememberLike(session)
+    // A like from here: its heart over the cover, started again each time.
+    var hearts by remember { mutableIntStateOf(0) }
+    var heartSays by remember { mutableStateOf(true) }
 
     LaunchedEffect(state.current, state.isPlaying) {
         while (true) {
@@ -149,7 +157,10 @@ fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
                             // The Device marker (§6.6): where this is playing.
                             Tag(null, icon = PhaseIcons.Device, contentDescription = "Playing on this phone")
                         }
-                        Art(meta.artworkUri, 350.dp, Modifier.fillMaxWidth().aspectRatio(1f))
+                        Box(contentAlignment = Alignment.Center) {
+                            Art(meta.artworkUri, 350.dp, Modifier.fillMaxWidth().aspectRatio(1f))
+                            if (hearts > 0) LikeBurst(hearts, heartSays, size = 120.dp)
+                        }
                     }
                 }
                 item {
@@ -218,6 +229,8 @@ fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
                         val like = {
                             if (song != null) scope.launch {
                                 val liked = !song.liked
+                                heartSays = liked
+                                hearts++
                                 attemptChange(context.applicationContext, session) {
                                     session.like(song.id, liked)
                                     track = song.copy(liked = liked)
@@ -240,6 +253,13 @@ fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
                     }
                     Spacer(Modifier.height(20.dp))
                 }
+                // What plays after this (#37): the songs you added, all of them,
+                // then the next of what's playing, ten at most. Played ones aren't shown.
+                val after = state.queue.drop(state.index + 1)
+                val queued = after.takeWhile { it.item.isQueued }
+                val rest = after.drop(queued.size)
+                val upNext = rest.take(UP_NEXT)
+                val shown = queued.size + upNext.size
                 item {
                     Column(
                         Modifier
@@ -249,35 +269,44 @@ fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
                             .background(PhaseColor.Raised)
                             .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 4.dp),
                     ) {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text("Up next", Modifier.weight(1f), color = PhaseColor.Text1, style = PhaseType.Name.copy(fontWeight = FontWeight.SemiBold))
-                            val after = (state.queue.size - state.index - 1).coerceAtLeast(0)
-                            PhaseLabel(if (after == 1) "1 more" else "$after more")
-                        }
+                        QueueHeading(
+                            if (queued.isEmpty()) "Up next" else "Queued",
+                            if (queued.isEmpty()) upNextCount(upNext.size, rest.size) else Voice.songs(queued.size),
+                        )
                     }
                 }
-                itemsIndexed(state.queue) { i, queued ->
-                    val q = queued.item
-                    val now = i == state.index
-                    val on = queued.at in selected
-                    val numbers = numberColumn(state.queue.size)
+                @Composable
+                fun QueueRow(position: Int, queuedSong: Queued) {
+                    val q = queuedSong.item
+                    val on = queuedSong.at in selected
+                    val numbers = numberColumn(shown)
                     Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).background(PhaseColor.Raised)) {
                         ItemRow(
                             title = q.mediaMetadata.title?.toString().orEmpty(),
                             subtitle = q.mediaMetadata.artist?.toString(),
                             art = null,
                             showArt = false,
-                            playing = now,
                             selected = on,
-                            leading = {
-                                if (now) PlayingBars(Modifier.width(numbers), color = if (on) PhaseColor.Ink else PhaseColor.Sine)
-                                else RowNumber(i + 1, numbers, color = if (on) PhaseColor.Ink else PhaseColor.Text3)
-                            },
+                            leading = { RowNumber(position, numbers, color = if (on) PhaseColor.Ink else PhaseColor.Text3) },
                             modifier = Modifier.padding(horizontal = 0.dp),
-                            onLongClick = { selected = selected.toggle(queued.at) },
+                            liked = liking[q.mediaId] ?: session.isLiked(q.mediaId),
+                            onLike = { likeFromQueue(q.mediaId, q.mediaMetadata.title?.toString().orEmpty(), it) },
+                            onLongClick = { selected = selected.toggle(queuedSong.at) },
                         ) {
-                            if (selected.isNotEmpty()) selected = selected.toggle(queued.at) else player.skipTo(queued.at)
+                            if (selected.isNotEmpty()) selected = selected.toggle(queuedSong.at) else player.skipTo(queuedSong.at)
                         }
+                    }
+                }
+                itemsIndexed(queued, key = { _, it -> "q" + it.at }) { i, it -> QueueRow(i + 1, it) }
+                if (queued.isNotEmpty() && upNext.isNotEmpty()) item {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).background(PhaseColor.Raised).padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 4.dp)) {
+                        QueueHeading("Up next", upNextCount(upNext.size, rest.size))
+                    }
+                }
+                itemsIndexed(upNext, key = { _, it -> "n" + it.at }) { i, it -> QueueRow(queued.size + i + 1, it) }
+                if (after.isEmpty()) item {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).background(PhaseColor.Raised).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        Text("Nothing after this.", color = PhaseColor.Text2, style = PhaseType.Small)
                     }
                 }
                 item {
@@ -318,3 +347,16 @@ fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
 }
 
 private fun Set<Int>.toggle(i: Int) = if (i in this) this - i else this + i
+
+/** Next up shows this many of what's playing; the songs added to the queue all show (#37). */
+private const val UP_NEXT = 10
+
+private fun upNextCount(shown: Int, of: Int) = if (of > shown) "$shown of $of" else Voice.songs(of)
+
+@Composable
+private fun QueueHeading(title: String, count: String) {
+    Row(verticalAlignment = Alignment.Bottom) {
+        Text(title, Modifier.weight(1f), color = PhaseColor.Text1, style = PhaseType.Name.copy(fontWeight = FontWeight.SemiBold))
+        PhaseLabel(count)
+    }
+}

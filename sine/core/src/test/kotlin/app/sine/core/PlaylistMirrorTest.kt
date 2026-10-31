@@ -9,6 +9,7 @@ import app.sine.core.mirror.PlaylistOps
 import app.sine.core.mirror.SyncChanges
 import app.sine.core.model.Album
 import app.sine.core.model.Artist
+import app.sine.core.model.Playlist
 import app.sine.core.model.Track
 import java.io.File
 import java.nio.file.Files
@@ -119,7 +120,7 @@ class PlaylistMirrorTest {
             MirrorPlaylist("pl-2", "Ours", owner = "bob", mine = false, sharedWith = listOf("alice"), tracks = listOf("tr-3")),
         ))
         val lib = m.library.value
-        assertEquals(listOf("Night drive", "Ours", "Recently added"), lib.playlists().map { it.name })
+        assertEquals(listOf("Liked songs", "Night drive", "Ours", "Recently added"), lib.playlists().map { it.name })
         val night = lib.playlist("pl-1")!!
         assertEquals(listOf("tr-1", "tr-2"), night.tracks.map { it.id }) // tr-9 isn't in this library
         assertEquals(2, night.playlist.trackCount)
@@ -142,11 +143,35 @@ class PlaylistMirrorTest {
         // Left, accepted, removed.
         m.apply(SyncChanges(cursor = 12, removedPlaylists = listOf("pl-2"),
             playlists = listOf(MirrorPlaylist("pl-7", "Theirs", owner = "carol", mine = false, tracks = listOf("tr-4")))))
-        assertEquals(listOf("Night drive", "Theirs", "Recently added"), m.library.value.playlists().map { it.name })
+        assertEquals(listOf("Liked songs", "Night drive", "Theirs", "Recently added"), m.library.value.playlists().map { it.name })
         assertTrue(m.library.value.invites().isEmpty(), "accepted: no longer an invitation")
 
         // Kept on disk.
-        assertEquals(3, LibraryMirror(file).library.value.playlists().size)
+        assertEquals(4, LibraryMirror(file).library.value.playlists().size)
+    }
+
+    @Test
+    fun `liked songs is a playlist of its own, the latest liked first`() {
+        val m = LibraryMirror(file)
+        m.apply(SyncChanges(
+            cursor = 1, full = true, artists = listOf(skeler), albums = listOf(ep),
+            tracks = listOf(
+                track(1).copy(liked = true, likedAt = "2026-10-01T10:00:00.000Z"),
+                track(2),
+                track(3).copy(liked = true, likedAt = "2026-10-20T10:00:00.000Z"),
+                // From a server that doesn't say when: last.
+                track(4).copy(liked = true),
+            ),
+        ))
+        val lib = m.library.value
+        val liked = lib.playlists().first()
+        assertTrue(liked.isLiked)
+        assertEquals(false, liked.readonly, "not a smart playlist")
+        assertEquals(3, liked.trackCount)
+        assertEquals(listOf("tr-3", "tr-1", "tr-4"), lib.playlist(Playlist.LIKED)!!.tracks.map { it.id })
+        // Nothing liked: still there, empty.
+        m.apply(SyncChanges(cursor = 2, tracks = listOf(track(1), track(3), track(4))))
+        assertEquals(emptyList(), m.library.value.playlist(Playlist.LIKED)!!.tracks)
     }
 
     @Test

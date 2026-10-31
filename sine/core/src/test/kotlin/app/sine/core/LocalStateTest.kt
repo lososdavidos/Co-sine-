@@ -57,12 +57,19 @@ class LocalStateTest {
     }
 
     @Test
-    fun `share target is the newest Cosine account, never a compat one`() {
+    fun `share target is the account you're in, else the newest Cosine one, never a compat one`() {
         val store = AccountStore(File(dir, "a.json"))
-        store.add(account("http://c1", ServerKind.Cosine("0.1", emptySet()), 1))
+        val older = account("http://c1", ServerKind.Cosine("0.1", emptySet()), 1)
+        store.add(older)
         val newer = account("http://c2", ServerKind.Cosine("0.1", emptySet()), 5)
         store.add(newer)
-        store.add(account("http://nav", ServerKind.Subsonic("1.16.1"), 9))
+        val nav = account("http://nav", ServerKind.Subsonic("1.16.1"), 9)
+        store.add(nav)
+        // In the older Cosine account: it stays there (#38).
+        store.setActive(older.id)
+        assertEquals(older.id, store.state.value.shareTarget?.id)
+        // In a compat account, which can't add music: the newest Cosine one.
+        store.setActive(nav.id)
         assertEquals(newer.id, store.state.value.shareTarget?.id)
 
         val compatOnly = AccountStore(File(dir, "b.json"))

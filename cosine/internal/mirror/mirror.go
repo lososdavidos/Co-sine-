@@ -49,7 +49,8 @@ type Track struct {
 	Suffix      string `json:"suffix"`
 	BitRate     int    `json:"bitRate,omitempty"`
 	CoverArt    string `json:"coverArt,omitempty"`
-	Liked       bool   `json:"liked,omitempty"` // starred by this account
+	Liked       bool   `json:"liked,omitempty"`   // starred by this account
+	LikedAt     string `json:"likedAt,omitempty"` // when: Liked songs lists the latest first
 }
 
 // Changes is one answer: with Full, the whole library, to replace the
@@ -210,7 +211,7 @@ SELECT t.id, t.title, COALESCE(t.track_no, 0), COALESCE(t.disc_no, 0),
        r.id, r.title, COALESCE(r.year, 0), r.art_path IS NOT NULL,
        ra.id, ra.name, ta.name, p.added_at,
        COALESCE(o.size, 0), COALESCE(o.suffix, ''), COALESCE(o.duration_sec, 0), COALESCE(o.bitrate, 0),
-       p.starred_at IS NOT NULL
+       COALESCE(p.starred_at, 0)
 FROM pointers p
 JOIN tracks t ON t.id = p.track_id
 JOIN releases r ON r.id = t.release_id
@@ -233,14 +234,18 @@ ORDER BY t.id`, user)
 			tid, rid, raid int64
 			hasArt         bool
 			raName         string
-			added          int64
+			added, liked   int64
 		)
 		if err := rows.Scan(&tid, &t.Title, &t.TrackNumber, &t.DiscNumber, &rid, &t.Album, &t.Year, &hasArt,
-			&raid, &raName, &t.Artist, &added, &t.SizeBytes, &t.Suffix, &t.DurationSec, &t.BitRate, &t.Liked); err != nil {
+			&raid, &raName, &t.Artist, &added, &t.SizeBytes, &t.Suffix, &t.DurationSec, &t.BitRate, &liked); err != nil {
 			rows.Close()
 			return err
 		}
 		t.ID, t.AlbumID, t.ArtistID = trackID(tid), albumID(rid), artistID(raid)
+		if liked > 0 {
+			// To the millisecond, so two liked a moment apart keep their order.
+			t.Liked, t.LikedAt = true, time.UnixMilli(liked).UTC().Format("2006-01-02T15:04:05.000Z")
+		}
 		if hasArt {
 			t.CoverArt = albumID(rid)
 		}

@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -19,11 +20,11 @@ const (
 	ViewNeverPlayed = "never-played"        // in the Library, never played, newest first
 	ViewLastYear    = "this-time-last-year" // played in the fortnight around this day a year ago
 	ViewAdded       = "added"               // added in the last N days, newest first
-	ViewLiked       = "liked"               // starred, the latest first
+	ViewFavourites  = "favourites"          // played most lately, the last week counting most
 )
 
 // Views lists the view names, for clients to discover.
-var Views = []string{ViewMostPlayed, ViewRecent, ViewForgotten, ViewNeverPlayed, ViewLastYear, ViewAdded, ViewLiked}
+var Views = []string{ViewMostPlayed, ViewRecent, ViewForgotten, ViewNeverPlayed, ViewLastYear, ViewAdded, ViewFavourites}
 
 var ErrView = errors.New("unknown view")
 
@@ -56,6 +57,7 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 	// to is exclusive: a play recorded this very millisecond counts.
 	from, to := int64(0), now.UnixMilli()+1
 	var where, order string
+	score := "0"
 	switch name {
 	case ViewMostPlayed:
 		if !opt.Window.To.IsZero() {
@@ -80,8 +82,15 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 		}
 		cutoff := now.AddDate(0, 0, -days).UnixMilli()
 		where, order = "added >= "+strconv.FormatInt(cutoff, 10), "added DESC"
-	case ViewLiked:
-		where, order = "liked > 0", "liked DESC"
+	case ViewFavourites:
+		// Current favourites: the last three months of plays, a play this
+		// week counting four, this month two, before that one. Played
+		// once is a listen, not a favourite.
+		from = now.AddDate(0, 0, -90).UnixMilli()
+		week, month := now.AddDate(0, 0, -7).UnixMilli(), now.AddDate(0, 0, -30).UnixMilli()
+		score = fmt.Sprintf(`(SELECT COALESCE(SUM(CASE WHEN pl.played_at >= %d THEN 4 WHEN pl.played_at >= %d THEN 2 ELSE 1 END), 0)
+			FROM plays pl WHERE pl.user_id = p.user_id AND pl.track_id = t.id AND pl.played_at >= ?2 AND pl.played_at < ?3)`, week, month)
+		where, order = "plays >= 2", "score DESC, last_played DESC"
 	case ViewLastYear:
 		ago := now.AddDate(-1, 0, 0)
 		from, to = ago.AddDate(0, 0, -7).UnixMilli(), ago.AddDate(0, 0, 7).UnixMilli()
@@ -91,7 +100,7 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 	}
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT * FROM (
-			SELECT t.id, t.title, ta.name, r.title, p.added_at AS added, COALESCE(p.starred_at, 0) AS liked,
+			SELECT t.id, t.title, ta.name, r.title, p.added_at AS added, `+score+` AS score,
 			       (SELECT COUNT(*) FROM plays pl WHERE pl.user_id = p.user_id AND pl.track_id = t.id
 			          AND pl.played_at >= ?2 AND pl.played_at < ?3) AS plays,
 			       COALESCE((SELECT MAX(pl.played_at) FROM plays pl WHERE pl.user_id = p.user_id AND pl.track_id = t.id), 0) AS last_played
@@ -108,8 +117,8 @@ func (s *Service) View(ctx context.Context, user int64, name string, opt ViewOpt
 	out := []Track{}
 	for rows.Next() {
 		var t Track
-		var id, added, liked, last int64
-		if err := rows.Scan(&id, &t.Title, &t.Artist, &t.Album, &added, &liked, &t.Plays, &last); err != nil {
+		var id, added, score, last int64
+		if err := rows.Scan(&id, &t.Title, &t.Artist, &t.Album, &added, &score, &t.Plays, &last); err != nil {
 			return nil, err
 		}
 		t.ID, t.Added = "tr-"+strconv.FormatInt(id, 10), time.UnixMilli(added)

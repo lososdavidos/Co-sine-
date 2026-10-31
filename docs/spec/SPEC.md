@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 175 resolved decisions · last updated 2026-10-26 (the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 181 resolved decisions · last updated 2026-10-31 (Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -330,14 +330,28 @@ song it followed.
 
 `NOTE` Built: a smart playlist is a saved rule — one of the statistics views
 (most played in a period, recently played, not played in N months, never
-played, this time last year, added in the last N days, liked) with its one
-setting. Every account starts with one of each, and Favourites (most played in
-the last 30 days: your current favourites), and can make, change, rename or
-delete them; a deleted one does not come back. Defaults added later reach older
+played, this time last year, added in the last N days, current favourites)
+with its one setting. Every account starts with one of each, Favourites
+among them, and can make, change, rename or delete them; a deleted one does
+not come back. Defaults added later reach older
 accounts once. Over the Subsonic API they are listed
 beside manual playlists as read-only (OpenSubsonic's `readonly`), with the
 rule in words as their comment, and their songs are worked out each time one
 is opened. Sine's "Save as playlist" is the conversion to a manual playlist.
+
+`RESOLVED` **Favourites is worked out from your listening.** `REVISED` (was:
+the most played in the last 30 days, which with little listening is just what
+played lately.) Three months of plays count, a play this week four times, this
+month twice, before that once; a song played once is a listen, not a favourite.
+Fifty songs, the strongest first.
+
+`RESOLVED` **Liked songs is a playlist of its own, not a smart one.** `REVISED`
+(was: a smart playlist with a "liked" rule.) It holds every song you liked —
+two taps on any song in Sine, or a star from any Subsonic app — the latest
+first, and leads the playlists. It has no rule to edit and can't be renamed,
+shared or deleted; taking a song out of it stops liking it. The sync feed says
+when each song was liked, so it's there offline in its order; over plain
+Subsonic it's the server's starred songs.
 "Downloaded only" is the phone's to answer and is not a server rule.
 
 ### 2.5 Caching and network policy
@@ -1099,11 +1113,11 @@ These are not open. They arrive with the system and shape every screen below.
 | **Icons are slightly 3D** | Each is lit from above: its face fades from light to a shade darker; the same shape sits a little lower (6% of its size) in a darker tone, which is its depth; and on a coloured face a hairline of light runs along its upper edges. A millimetre of relief, never a render: no blur, no perspective, no second light. Solid where it's a thing (a pin, a disc, a person, a bin), heavy round lines where it's a gesture (download, reorder, shuffle). The depth is picked for the surface: ink on a blue or red pill casts a deeper blue or red, ink on the light pill a grey. The dashboard draws the same icons the same way. |
 | **Monochrome, with two blues** | **Sine** (blue, `#53A4FF`, oklch 0.71 0.155 253) is you, now: what's playing, what's selected, the one action a screen is for. **Cosine** (deep blue, `#1070C5`, oklch 0.54 0.155 252: the same wave, shifted, as the names say) is the server at work: fetching, matching, syncing, waiting for your review. Both sit at hue 252, short of the 260s where blue starts to read violet, and the greys carry a trace of the same hue rather than none. Sine takes black ink; Cosine, too deep for it, takes Text 1. `REVISED` (was: lime and sky, a quarter turn apart). |
 | **Red is for faults** | `#F75E51`: broken or missing, a fetch that failed, and the button that removes or deletes. Never decoration. Everything that isn't a signal is grey or artwork. |
-| **Artwork is the only colour that varies** | Covers are shown whole, and blurred into headers behind a scrim that never changes. Never sampled into a palette, so the signals mean the same beside any cover. |
+| **Sine takes the artwork's colour** | The artwork on screen gives Sine its hue: the page's cover, else the song playing, else the blue. Where Sine fills (the primary pill, a selection) it's a gradient of the cover's two strongest hues, the second at most 40° from the first, since opposite hues blend through grey. Every hue is set to the blue's brightness, so black ink reads on it at 7:1 or better, and a black-and-white cover keeps the blue. Cosine, red and the scrim never change: what has a fixed meaning keeps its colour beside any cover. Changes ease over 0.7s. `REVISED` (was: artwork is the only colour that varies, never sampled). |
 | **Shape says what a thing is** | Square (3dp corners): something you read — a cover, a tag. Circle: a person — an artist's picture, an account. Pill: something you press, transport included, wider than tall so it never reads as a person. Slab (16dp; 24dp when floating): a surface that holds things. |
 | **Depth by light, not glass** | No glass, and nothing rests blurred. Ground `#0A0B0C` — not pure black, because fully-off pixels smear when a list scrolls on OLED — then Raised `#151618`, Float `#1F2123` and Lift `#2C2F32`. A floating surface is Float with a hairline edge. The one blur is movement: a page blurs as something slides over it and comes back into focus as it's uncovered (§6.16). `REVISED` (was: no blur anywhere). Android below API 31, the widget and the web look identical: one code path. |
 | **An overlay never opens another overlay** | See §6.5. This is the single hardest constraint for a music app. |
-| **Selection is Sine** | The whole row fills blue and its text turns black. Where you are — the current destination, segment or filter — is the light pill instead: location, not selection, so never a signal. |
+| **Selection is Sine** | The whole row fills Sine and its text turns black. Where you are — the current destination, segment or filter — is the light pill instead: location, not selection, so never a signal. |
 | **A tag or a dot** | A tag is one filled word on a row and asks you to look: UNSURE in Cosine, MISSING in red; an outlined tag only describes. A dot starts a sentence of status: Cosine for work in progress or waiting on the server, red for something that has stopped. |
 | **One Sine pill per screen** | The primary action is blue; everything else you press is Lift or quiet text. A destructive pill is red, names the verb and the count, and never sits beside the primary. |
 | **Long-form prose uses Text 2** | `#A4A7AA`: pure white blooms at paragraph length on OLED. Names and titles are Text 1 (`#F1F3F5`); labels, and what can't play right now, are Text 3 (`#888B8F`, 5.8:1 on the ground, 4.7:1 on Float). |
@@ -1214,7 +1228,7 @@ Three places the two systems disagree, where Phase wins:
 | Metro did | Phase requires |
 |---|---|
 | White text on the accent colour | **Ink by lightness.** Sine and red take black ink; Cosine, the deep blue, takes Text 1. No other pairings. `REVISED` (was: black ink on all three). |
-| An accent colour per user, any hue | **Signals only where they mean something.** A tile is artwork, a Raised slab, or a signal: Cosine for the review queue's count, Sine only for what's playing. Nothing else. |
+| An accent colour per user, any hue | **Signals only where they mean something.** A tile is artwork, a Raised slab, or a signal: Cosine for the review queue's count, Sine only for what's playing. Nothing else. Sine's hue comes from the artwork on screen (§6.7), never from a setting. |
 | Tiles bleed to the screen edge, gap-separated | **4px grid, 16dp slabs.** Tiles keep their gaps — a grid is not a list — and every dimension is a multiple of 4. |
 
 `RESOLVED` **Home is a canvas, not a designed screen.** The user pins, resizes
@@ -1264,8 +1278,8 @@ same long-press selection used everywhere else:
 | **Forgotten** | In your Library, not played in N months |
 | **Never played** | Ingested and never once opened |
 | **Downloaded** | What is available offline right now |
-| **Liked songs** | Songs you liked, the latest first: two taps on Add to playlist in Now playing, or a star from any Subsonic app |
-| **Favourites** | Your current favourites: what you've played most in the last 30 days |
+| **Liked songs** | Songs you liked, the latest first: two taps on any song, or a star from any Subsonic app. A playlist of its own (§2.4) |
+| **Favourites** | Your current favourites, worked out from three months of plays, the latest counting most (§2.4) |
 | **Review queue** | Live count of Tracks awaiting a resolver correction; tapping opens it |
 | **Ingest activity** | What Cosine is fetching, with progress and failures |
 | **Jam** | Active session, or an invite to start one |
@@ -1419,8 +1433,14 @@ shelf's contents swap to the available actions for that
 selection. No overlay is opened, so nothing conflicts, and multi-select comes
 free: long-press one row, tap others, act on all of them. Every song row works
 this way, search results and the queue included. For songs the actions are
-Play, Add to queue (to the end of what's playing, or play them if nothing is),
-Download, Add to playlist and, where it applies, Remove.
+Play, Add to queue (next, after any added before them, §6.6; or play them if
+nothing is), Download, Add to playlist and, where it applies, Remove.
+
+`RESOLVED` **Two taps on a song like it; two more stop liking it.** Every song
+row, the queue and search results included. A heart springs up over the row
+in Sine and floats off; no longer liked, a dim one sinks away. A liked song
+carries a small heart in its row. A single tap waits a moment to be sure it
+isn't the first of two. A screen reader has Like as an action of its own.
 
 This also means the shelf has three states, not two:
 
@@ -1478,6 +1498,13 @@ cover itself sits on that ambience, square and whole. Text on it is Text 1 or
 On-scrim, never Text 2, so it reads over any cover. The queue sits on its own
 Raised panel, where its contrast is known.
 
+`RESOLVED` **Songs you add to the queue play next.** `REVISED` (was: at the
+end of what's playing.) After the song playing and any you added before, in
+the order you added them, shuffled or not; they stay next when you jump ahead
+in Up next or play something else. The panel shows them all, under Queued,
+then Up next: the next ten of what's playing ("10 of 42"). Played songs
+aren't listed.
+
 `RESOLVED` **The queue's songs are held to select them,** as anywhere (§6.5).
 Now playing has no shelf, so their actions float at the foot of the sheet, in
 the shelf's own surface: Play, Take out of the queue, Add to playlist. Back
@@ -1497,11 +1524,13 @@ Repeat goes from off to the whole queue to the one song, and is remembered. A
 tap on Add to playlist picks a playlist for the song; two taps like it, or stop
 liking it (Subsonic's star, which every client shares), and a heart by the
 artist says it's liked. A screen reader has Like as an action of its own.
+Liking from here, the heart springs up over the cover.
 
 `RESOLVED` **Shuffle plays everything once.** A queue started shuffled begins
-at the top of its shuffled order, from the start of its first song; shuffle
-turned on mid-queue starts its order with the song playing, so nothing before it
-in the order is skipped. Up next lists the queue in the order it will play.
+with a song picked at random, from its start, and the rest follow it in a
+random order; shuffle turned on mid-queue starts its order with the song
+playing and the songs added to the queue, so nothing before it in the order is
+skipped. Up next lists the queue in the order it will play.
 
 - Growth is continuous: motion here is feedback about a real process, not
   atmosphere.
@@ -1551,6 +1580,11 @@ is the blur: it costs nothing per frame and looks the same on every Android
 version. From API 31 a blur smooths it further. It's drawn 1.35× saturated,
 always, so a cover's colour carries through the scrim; never adapted to the
 image.
+
+`RESOLVED` **The artwork on screen colours Sine.** `REVISED` (was: never
+sampled.) The cover a page is about — or with none, the song playing in the
+shelf — gives Sine its hues (§6.1): picked from a 48px copy, weighted by how
+colourful each pixel is, cached per cover. The scrim still never adapts.
 
 ### 6.8 Library and search
 
@@ -1692,10 +1726,12 @@ Consequences worth building for rather than discovering:
 - **Sharing while offline queues locally.** The URL is stored and submitted on
   reconnect, with the sheet saying so. Failing a share because the phone is on
   the underground is the exact moment this feature matters.
-- **The share target is chosen by construction, not configured.** Compat
-  accounts cannot ingest at all, so they are never candidates; among Cosine
-  accounts the most recently added wins. No setting, and no picker in the way of
-  a two-second action.
+- **The share target is chosen by construction, not configured.** It's the
+  account you're in, so a share never switches accounts under you. `REVISED`
+  (was: always the most recently added Cosine account, which switched to it.)
+  Compat accounts cannot ingest at all, so from one of those it's the most
+  recently added Cosine account. No setting, and no picker in the way of a
+  two-second action.
 - Long-pressing Add offers uploading a local file — the rare path, kept out of
   the common one.
 
@@ -2107,7 +2143,7 @@ not silently keep gigabytes.
 | — | First run | Type the address; mDNS suggests; mode shown explicitly |
 | — | Account control | Persistent circle, top corner, all screens but now-playing |
 | — | Correction screen | All sources ranked and labelled, plus manual entry |
-| — | Share target | Native accounts only, most recently added wins |
+| — | Share target | The account you're in; from a compat account, the most recently added Cosine one |
 | — | Desktop | Sidebar, docked player, queue panel; panels not overlays |
 | — | Artist page | Ambient header, then releases; single-track releases collapse to track rows |
 | — | Timecode | Sits off the wave, mono, always Text 2 |
@@ -2175,6 +2211,12 @@ not silently keep gigabytes.
 | — | Tiles not yet possible | Resume and Jam aren't offered until their features exist |
 | — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; with animations removed, content changes without moving |
 | — | Tile motion | Home is the one place motion is for liveliness; Phase's colour and scrim rules still hold inside a tile |
+| — | Liked songs | A playlist of its own, first among playlists, latest liked first; taking a song out stops liking it; not a smart playlist |
+| — | Favourites | Three months of plays, this week ×4, this month ×2; two plays at least; fifty songs |
+| — | Two taps on a song | Like it, or stop liking it, in every song list; a heart says which |
+| — | Adding to the queue | Plays next, after earlier additions, shuffled or not; stays next through a jump or a new play |
+| — | The queue panel | Queued in full, then the next ten of Up next; played songs hidden |
+| — | Accent colour | Sine takes the on-screen artwork's hues at the blue's brightness; Cosine, red and the scrim stay fixed |
 
 ---
 

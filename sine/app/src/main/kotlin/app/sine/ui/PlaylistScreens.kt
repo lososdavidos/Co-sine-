@@ -187,8 +187,12 @@ internal fun PlaylistList(session: AccountSession, nav: Pages) {
                 val members = members(session, p)
                 ItemRow(
                     p.name, p.subtitle(), session.artwork(p.coverArt, 150),
-                    showArt = !(p.readonly && p.coverArt == null),
-                    leading = if (p.readonly && p.coverArt == null) ({ SmartMark() }) else null,
+                    showArt = !(p.readonly && p.coverArt == null) && !p.isLiked,
+                    leading = when {
+                        p.isLiked -> ({ Art(null, 44.dp, mark = PhaseIcons.Liked) })
+                        p.readonly && p.coverArt == null -> ({ SmartMark() })
+                        else -> null
+                    },
                     end = if (members.size > 1) ({ People(members) }) else null,
                 ) { nav.navigate(Routes.playlist(p.id)) }
             }
@@ -248,6 +252,10 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: Pages) {
             )
         }
 
+        if (p.isLiked) {
+            LikedScreen(session, detail.tracks, nav)
+            return@LoadContent
+        }
         TrackListScreen(
             session = session,
             title = p.name,
@@ -338,6 +346,41 @@ fun PlaylistScreen(session: AccountSession, id: String, nav: Pages) {
         }
 
     }
+}
+
+/**
+ * Liked songs (§2.4): every song you liked, the latest first. Yours alone,
+ * with nothing to rename, share or delete; taking a song out of it stops
+ * liking it, as a double tap on it anywhere does.
+ */
+@Composable
+private fun LikedScreen(session: AccountSession, tracks: List<Track>, nav: Pages) {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    TrackListScreen(
+        session = session,
+        title = Playlist.LIKED_NAME,
+        kind = "Playlist",
+        coverArt = null,
+        mark = PhaseIcons.Liked,
+        tracks = tracks,
+        node = null,
+        showTrackArtist = true,
+        nav = nav,
+        meta = listOf("Latest first"),
+        empty = Voice.NO_LIKED_SONGS,
+        removeLabel = "Stop liking",
+        onRemoveFromPlaylist = { positions ->
+            val ids = positions.mapNotNull { tracks.getOrNull(it)?.id }
+            scope.launch {
+                attemptChange(context, session) {
+                    session.like(ids, false)
+                    if (ids.size == 1) "No longer liked." else "${ids.size} songs no longer liked."
+                }
+            }
+        },
+        quietActions = { PinToHome(session, TileKind.PLAYLIST, Playlist.LIKED, Playlist.LIKED_NAME) },
+    )
 }
 
 /**

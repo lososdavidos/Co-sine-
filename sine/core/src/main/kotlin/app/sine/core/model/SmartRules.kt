@@ -17,7 +17,7 @@ object SmartRules {
         Rule("forgotten", "Forgotten"),
         Rule("never-played", "Never played"),
         Rule("this-time-last-year", "This time last year"),
-        Rule("liked", "Liked songs"),
+        Rule("favourites", "Favourites"),
     )
 
     /** most-played's periods. */
