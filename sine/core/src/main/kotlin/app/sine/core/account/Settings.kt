@@ -25,6 +25,8 @@ data class SettingsState(
      * name of one of Accents.fixed, kept whatever is on screen.
      */
     val fixedColour: String? = null,
+    /** Songs streamed are kept on the phone up to this many bytes, the least recently played going first; 0 keeps none. */
+    val streamCacheBytes: Long = 2L shl 30,
 ) {
     fun forAccount(id: String) = perAccount[id] ?: AccountSettings()
 }
@@ -40,6 +42,9 @@ class SettingsStore(file: File) {
     @Synchronized
     fun updateAccount(id: String, f: (AccountSettings) -> AccountSettings) =
         update { it.copy(perAccount = it.perAccount + (id to f(it.forAccount(id)))) }
+
+    @Synchronized
+    fun setStreamCache(bytes: Long) = update { it.copy(streamCacheBytes = bytes.coerceAtLeast(0)) }
 
     @Synchronized
     fun setFixedColour(name: String?) = update { it.copy(fixedColour = name) }

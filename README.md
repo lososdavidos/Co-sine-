@@ -35,6 +35,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Songs you add to the queue play next, in the order you added them, shuffled or not, and stay next if you skip ahead or play something else. The queue shows them all, then the next ten of what's playing
 - Pinned downloads of a track, album, artist or playlist into a folder you choose (SAF). A `.nomedia` file is written there, the folders follow `Artist/Album/Track`, and downloads wait for an unmetered connection unless you allow mobile data. The download budget is soft: it warns but never refuses.
 - Offline: downloaded music browses, plays and shows artwork with the server gone
+- Keep what you stream: songs you play stay on the phone up to a size you choose (Settings, 2 GB by default), so they play offline and never download twice; the least recently played go first
 - Plays are recorded locally as timestamped events and scrobbled with their real time when the server is reachable
 
 **Cosine** has its core: first-run setup in a dashboard, Inbox ingest into a content-hashed Store, a tags/filename resolver, and the Subsonic API Sine uses. Sine can log in to it in place of Navidrome. Details in [`cosine/README.md`](cosine/README.md).
@@ -75,7 +76,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, Jam's multi-room mode, and the desktop client.
+**Not yet built:** audio fingerprinting, the mirror's live push, the cache's WiFi prefetch, Android Auto browsing, Jam's multi-room mode, and the desktop client.
 
 ## Design
 

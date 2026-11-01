@@ -5,6 +5,7 @@ import java.util.UUID
 import app.sine.playback.JamFollower
 import app.sine.playback.RemoteListener
 import app.sine.playback.SessionReporter
+import app.sine.playback.StreamCache
 import app.sine.core.cosine.DeviceInfo
 import android.os.Build
 import app.sine.core.account.Account
@@ -106,6 +107,8 @@ class AppGraph(private val context: Context) {
     val jam = JamFollower(this)
 
     init {
+        StreamCache.init(context, settings.state.value.streamCacheBytes)
+        scope.launch { settings.state.collect { StreamCache.setMax(it.streamCacheBytes) } }
         reporter.start(scope)
         jam.start(scope)
         RemoteListener(this).start(scope)

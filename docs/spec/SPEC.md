@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 194 resolved decisions · last updated 2026-11-01 (Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 195 resolved decisions · last updated 2026-11-01 (keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -409,6 +409,15 @@ costs nothing and makes the visible folder mean something.
 |---|---|
 | **Pinned** | Explicit downloads. Never evicted. Own budget. Visible folder. Guarantees G1. |
 | **Cache** | Filled by the WiFi prefetch policy. Evictable under pressure, own cap. |
+
+`NOTE` Built (0.8.0), the cache tier's first part: every song streamed is
+kept in app-private storage as it plays, under its own id (so a stream
+address that changes still finds it), up to a size set in Settings → Keep
+what you stream (Off, 1, 2 or 8 GB; 2 by default), the least recently
+played going first, and a smaller size trims at once. A song kept whole
+plays offline and is never fetched twice; a pinned download isn't kept a
+second time. Not built yet: the WiFi prefetch that fills it ahead of
+listening, and skipped songs going first.
 
 `RESOLVED` **Metered detection follows Android's metered flag,** not "is it
 WiFi". A tethered hotspot is correctly treated as expensive — which is exactly
@@ -2126,6 +2135,7 @@ not silently keep gigabytes.
 | — | Shared playlists | Auto-add Pointers for missing Tracks on accept |
 | — | Multiple qualities | Linked as versions of one Track |
 | — | Device storage | Two tiers: pinned (never evicted) + cache (evictable) |
+| — | The cache, first | What's streamed is kept, by song, least recently played going first; its size in Settings, 2 GB by default |
 | — | Transcoding | None. Originals only |
 | — | Pointer target | Track, with optional version pin |
 | — | Version matching | Resolved identity only; no fingerprinting |
