@@ -35,7 +35,10 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Songs you add to the queue play next, in the order you added them, shuffled or not, and stay next if you skip ahead or play something else. The queue shows them all, then the next ten of what's playing
 - Pinned downloads of a track, album, artist or playlist into a folder you choose (SAF). A `.nomedia` file is written there, the folders follow `Artist/Album/Track`, and downloads wait for an unmetered connection unless you allow mobile data. The download budget is soft: it warns but never refuses.
 - Offline: downloaded music browses, plays and shows artwork with the server gone
-- Keep what you stream: songs you play stay on the phone up to a size you choose (Settings, 2 GB by default), so they play offline and never download twice; the least recently played go first
+- Keep what you stream: songs you play stay on the phone up to a size you choose (Settings, 2 GB by default), so they play offline and never download twice; the least recently played go first. On Wi-Fi, the next three songs are kept before they play, so a tunnel doesn't stop the music (Settings → Keep what's coming up)
+- Crossfade, off by default: 3, 6 or 12 seconds (Settings → Playback). Songs from one album still run into each other gapless, as they were made
+- Android Auto: browse what's on the phone (the first tab, so it works without signal), your playlists, artists and albums; a song plays with its album or playlist around it; "play …" by voice works too
+- A home screen widget: the cover, the song, previous, play/pause and next, in the cover's colour. With nothing playing, play picks up what played last, Sine running or not, as a headset's play button does
 - Plays are recorded locally as timestamped events and scrobbled with their real time when the server is reachable
 
 **Cosine** has its core: first-run setup in a dashboard, Inbox ingest into a content-hashed Store, a tags/filename resolver, and the Subsonic API Sine uses. Sine can log in to it in place of Navidrome. Details in [`cosine/README.md`](cosine/README.md).
@@ -44,9 +47,9 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Resume anywhere:** every phone with Sine, and every Subsonic app, keeps its queue and where it got to on Cosine. Sine's Resume tile on Home shows what your other device was playing; tap it to carry on here from that moment. Other apps pick it up through Subsonic's play queue.
 
-**Remote control:** Settings → Devices (or the device mark in Now playing) lists your phones and Subsonic apps with what each is playing. Tap one that's listening to control it from here: play, pause, skip, seek, jump to a song. Play here moves its music to this phone; Play there sends this phone's music to it. It goes through Cosine, so it works anywhere you can reach the server.
+**Remote control:** Settings → Devices (or the device mark in Now playing) lists your phones and Subsonic apps with what each is playing. Tap one that's listening to control it from here: play, pause, skip, seek, jump to a song, set its volume. Play here moves its music to this phone; Play there sends this phone's music to it. It goes through Cosine, so it works anywhere you can reach the server.
 
-**Jam:** listen together with other accounts on your server, wherever they are. Start one from the people mark in Now playing (or Settings → Jam) and pick who to ask; they join from their Jam page. Anyone adds songs (hold a song anywhere, then Add to jam); the host plays, pauses and skips, and everyone hears the same moment within about a second. A song you don't have plays anyway, and Keep it adds it to your library.
+**Jam:** listen together with other accounts on your server, wherever they are. Start one from the people mark in Now playing (or Settings → Jam) and pick who to ask; they join from their Jam page. A Jam tile on Home shows the jam you're in, or an invitation. Anyone adds songs (hold a song anywhere, then Add to jam); the host plays, pauses and skips, and everyone hears the same moment within about a second. A song you don't have plays anyway, and Keep it adds it to your library.
 
 **Uploading from the phone:** hold the Library's + and choose Upload, then pick audio files. Each goes up to Cosine, is identified and filed like anything else, and lands in your library only (the Inbox folder is the way to give everyone something).
 
@@ -76,7 +79,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push, the cache's WiFi prefetch, Android Auto browsing, Jam's multi-room mode, and the desktop client.
+**Not yet built:** audio fingerprinting, the mirror's live push, Jam's multi-room mode, the desktop client, and iOS.
 
 ## Design
 

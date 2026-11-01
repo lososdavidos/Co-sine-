@@ -13,10 +13,16 @@ import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheEvictor
 import androidx.media3.datasource.cache.CacheSpan
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.datasource.cache.SimpleCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.util.TreeSet
+import kotlin.coroutines.coroutineContext
 
 /**
  * Keeping what you stream (the cache tier, §2.5): songs streamed are kept
@@ -29,6 +35,7 @@ import java.util.TreeSet
 object StreamCache {
     private var cache: SimpleCache? = null
     private val evictor = Evictor()
+    private var cached: CacheDataSource.Factory? = null
 
     fun init(context: Context, maxBytes: Long) {
         if (cache != null) return
@@ -47,6 +54,31 @@ object StreamCache {
         val c = cache ?: return false
         val length = ContentMetadata.getContentLength(c.getContentMetadata(trackId))
         return length > 0 && c.isCached(trackId, 0, length)
+    }
+
+    /** How much can be kept, in bytes; 0 keeps nothing. */
+    val max: Long get() = evictor.max
+
+    /**
+     * Keeps a song ahead of playing it (the prefetch, §2.5), through the
+     * same cache the player streams through, under its id. Stops between
+     * pieces as soon as [keepGoing] says so, or the caller is cancelled,
+     * and what it got so far stays. False when it didn't get all of it.
+     */
+    suspend fun prefetch(uri: Uri, key: String, keepGoing: () -> Boolean): Boolean = withContext(Dispatchers.IO) {
+        val factory = cached ?: return@withContext false
+        val spec = DataSpec.Builder().setUri(uri).setKey(key).build()
+        lateinit var writer: CacheWriter
+        writer = CacheWriter(factory.createDataSource(), spec, null) { _, _, _ -> if (!keepGoing()) writer.cancel() }
+        val stop = coroutineContext[Job]?.invokeOnCompletion { writer.cancel() }
+        try {
+            writer.cache()
+            true
+        } catch (e: IOException) {
+            false
+        } finally {
+            stop?.dispose()
+        }
     }
 
     /** How much is kept, in bytes. */
@@ -69,6 +101,7 @@ object StreamCache {
             .setUpstreamDataSourceFactory(upstream)
             .setCacheKeyFactory { spec -> spec.key ?: spec.uri.toString() }
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        this.cached = cached
         return DataSource.Factory { BySchemeDataSource(cached.createDataSource(), upstream.createDataSource()) }
     }
 

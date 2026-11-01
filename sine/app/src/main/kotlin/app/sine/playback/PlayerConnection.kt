@@ -2,17 +2,14 @@ package app.sine.playback
 
 import android.content.ComponentName
 import android.content.Context
-import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import app.sine.core.model.Track
-import app.sine.core.play.PlaySource
 import app.sine.data.AccountSession
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -150,8 +147,6 @@ class PlayerConnection(private val context: Context) {
     fun togglePlay() = withController { if (it.isPlaying) it.pause() else it.play() }
     fun resume() = withController { it.play() }
     fun pause() = withController { it.pause() }
-    /** The player's own volume, 0 to 1, under the phone's. */
-    fun setVolume(v: Float) = withController { it.volume = v.coerceIn(0f, 1f) }
     fun next() = withController { it.seekToNextMediaItem() }
     fun previous() = withController { it.seekToPrevious() }
     fun seekTo(ms: Long) = withController { it.seekTo(ms) }
@@ -278,24 +273,11 @@ class PlayerConnection(private val context: Context) {
     /** Moves to the song at [index] of the list, at [ms]. */
     fun seekTo(index: Int, ms: Long) = withController { if (index in 0 until it.mediaItemCount) it.seekTo(index, ms) }
 
-    private fun mediaItem(session: AccountSession, track: Track, jam: Long? = null): MediaItem? {
-        val uri = when (val source = if (jam == null) session.playSource(track) else session.jamSource(track, jam)) {
-            is PlaySource.Local -> source.location
-            is PlaySource.Remote -> source.url
-            PlaySource.Unavailable -> return null
-        }
-        return MediaItem.Builder()
-            .setMediaId(track.id)
-            .setUri(uri)
-            .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(uri)).build())
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(track.title)
-                    .setArtist(track.artist)
-                    .setAlbumTitle(track.album)
-                    .setArtworkUri(session.artworkUri(track.coverArt))
-                    .build()
-            )
-            .build()
+    private fun mediaItem(session: AccountSession, track: Track, jam: Long? = null): MediaItem? = session.mediaItem(track, jam)
+
+    /** A song played from outside the app (the car, §5.2a) belongs to [account]. */
+    fun playingFrom(account: String) {
+        playingFor = account
+        prefs.edit().putString("account", account).apply()
     }
 }

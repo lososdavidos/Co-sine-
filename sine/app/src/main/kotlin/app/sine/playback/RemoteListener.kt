@@ -66,7 +66,7 @@ class RemoteListener(private val graph: AppGraph) {
             "previous" -> player.previous()
             "seek" -> player.seekTo(c.positionMs)
             "skip" -> player.state.value.queue.getOrNull(c.index)?.let { player.skipTo(it.at) }
-            "volume" -> player.setVolume(c.volume.toFloat())
+            "volume" -> graph.setMediaVolume(c.volume.toFloat())
             "queue" -> {
                 // Another device's music, sent here: its songs as this library knows them.
                 val tracks = withContext(Dispatchers.IO) {

@@ -38,11 +38,13 @@ type Device struct {
 // Session is what a Device is playing: its queue as track ids in the order
 // they play, where it is in it, and how far into that song.
 type Session struct {
-	Queue      []string  `json:"queue"`
-	Current    int       `json:"current"`
-	PositionMs int64     `json:"positionMs"`
-	Playing    bool      `json:"playing"`
-	UpdatedAt  time.Time `json:"updatedAt,omitzero"`
+	Queue      []string `json:"queue"`
+	Current    int      `json:"current"`
+	PositionMs int64    `json:"positionMs"`
+	Playing    bool     `json:"playing"`
+	// Volume is the Device's media volume, 0 to 1; nil when it doesn't say.
+	Volume    *float64  `json:"volume,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt,omitzero"`
 }
 
 // Now is a Device and what it last played: for picking up where it left off.
@@ -55,6 +57,7 @@ type Now struct {
 	PositionMs int64     `json:"positionMs"`
 	Playing    bool      `json:"playing"`
 	Songs      int       `json:"songs"` // in its queue
+	Volume     *float64  `json:"volume,omitempty"`
 	UpdatedAt  time.Time `json:"updatedAt,omitzero"`
 	// Listening: it's there now, and can be controlled (§4B).
 	Listening bool `json:"listening"`
@@ -127,10 +130,11 @@ func (s *Service) Save(ctx context.Context, user int64, d Device, sess Session) 
 	}
 	queue, _ := json.Marshal(ids)
 	_, err = s.DB.ExecContext(ctx, `
-		INSERT INTO play_sessions(device_id, queue, current, position_ms, playing, updated_at) VALUES(?, ?, ?, ?, ?, ?)
+		INSERT INTO play_sessions(device_id, queue, current, position_ms, playing, updated_at, volume) VALUES(?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(device_id) DO UPDATE SET queue = excluded.queue, current = excluded.current,
-			position_ms = excluded.position_ms, playing = excluded.playing, updated_at = excluded.updated_at`,
-		id, string(queue), cur, max(sess.PositionMs, 0), sess.Playing, s.now().UnixMilli())
+			position_ms = excluded.position_ms, playing = excluded.playing, updated_at = excluded.updated_at,
+			volume = COALESCE(excluded.volume, play_sessions.volume)`,
+		id, string(queue), cur, max(sess.PositionMs, 0), sess.Playing, s.now().UnixMilli(), volume(sess.Volume))
 	return err
 }
 
@@ -159,10 +163,11 @@ func (s *Service) session(ctx context.Context, where string, args ...any) (Sessi
 	var queue string
 	var sess Session
 	var updated int64
+	var vol sql.NullFloat64
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT p.queue, p.current, p.position_ms, p.playing, p.updated_at
+		SELECT p.queue, p.current, p.position_ms, p.playing, p.updated_at, p.volume
 		FROM play_sessions p JOIN devices d ON d.id = p.device_id WHERE `+where, args...).
-		Scan(&queue, &sess.Current, &sess.PositionMs, &sess.Playing, &updated)
+		Scan(&queue, &sess.Current, &sess.PositionMs, &sess.Playing, &updated, &vol)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
@@ -178,6 +183,9 @@ func (s *Service) session(ctx context.Context, where string, args ...any) (Sessi
 		sess.Queue[i] = "tr-" + strconv.FormatInt(id, 10)
 	}
 	sess.UpdatedAt = time.UnixMilli(updated)
+	if vol.Valid {
+		sess.Volume = &vol.Float64
+	}
 	return sess, nil
 }
 
@@ -188,7 +196,7 @@ func (s *Service) Playing(ctx context.Context, user int64) ([]Now, error) {
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT d.id, d.client_id, d.name, d.kind, d.last_seen,
 		       COALESCE(p.queue, '[]'), COALESCE(p.current, 0), COALESCE(p.position_ms, 0), COALESCE(p.playing, 0),
-		       COALESCE(p.updated_at, 0), p.device_id IS NOT NULL
+		       COALESCE(p.updated_at, 0), p.device_id IS NOT NULL, p.volume
 		FROM devices d LEFT JOIN play_sessions p ON p.device_id = d.id
 		WHERE d.user_id = ? ORDER BY COALESCE(p.updated_at, d.last_seen) DESC`, user)
 	if err != nil {
@@ -202,8 +210,12 @@ func (s *Service) Playing(ctx context.Context, user int64) ([]Now, error) {
 		var queue string
 		var cur int
 		var played bool
-		if err := rows.Scan(&row, &n.Device.ID, &n.Device.Name, &n.Device.Kind, &seen, &queue, &cur, &n.PositionMs, &n.Playing, &updated, &played); err != nil {
+		var vol sql.NullFloat64
+		if err := rows.Scan(&row, &n.Device.ID, &n.Device.Name, &n.Device.Kind, &seen, &queue, &cur, &n.PositionMs, &n.Playing, &updated, &played, &vol); err != nil {
 			return nil, err
+		}
+		if vol.Valid {
+			n.Volume = &vol.Float64
 		}
 		n.Listening = s.hub().listening(row)
 		if !played && !n.Listening {
@@ -258,4 +270,12 @@ func (s *Service) Forget(ctx context.Context, user int64, clientID string) error
 func trackID(s string) (int64, bool) {
 	n, err := strconv.ParseInt(strings.TrimPrefix(s, "tr-"), 10, 64)
 	return n, err == nil && strings.HasPrefix(s, "tr-") && n > 0
+}
+
+// volume is a session's volume as stored: kept between 0 and 1, NULL when unsaid.
+func volume(v *float64) any {
+	if v == nil {
+		return nil
+	}
+	return min(max(*v, 0), 1)
 }

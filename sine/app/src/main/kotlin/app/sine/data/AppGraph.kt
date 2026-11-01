@@ -97,6 +97,23 @@ class AppGraph(private val context: Context) {
         }
     }
 
+    /**
+     * The phone's media volume, 0 to 1, as another device sets it (§4B):
+     * the volume the phone's own buttons change, so the two agree.
+     */
+    fun setMediaVolume(fraction: Float) {
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val max = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, Math.round(fraction.coerceIn(0f, 1f) * max), 0)
+    }
+
+    /** The phone's media volume, 0 to 1. */
+    fun mediaVolume(): Float {
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val max = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        return audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat() / max
+    }
+
     /** Whether Sine is on screen: with it, or playing, this phone can be controlled from another (§4B). */
     val visible = MutableStateFlow(false)
 

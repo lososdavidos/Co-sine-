@@ -35,6 +35,8 @@ object TileKind {
     const val RESUME = "resume"
     /** Listening statistics (§6.13). */
     const val STATS = "stats"
+    /** The jam you're in, or an invitation to one, or a start (§4C). */
+    const val JAM = "jam"
 
     /** Something of yours pinned from its own page, rather than made by Sine. */
     fun pinned(kind: String) = kind == ARTIST || kind == ALBUM || kind == PLAYLIST

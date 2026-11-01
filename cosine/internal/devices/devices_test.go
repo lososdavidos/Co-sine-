@@ -50,6 +50,16 @@ func TestSessions(t *testing.T) {
 	if err := s.Save(ctx, alice, Device{ID: "x", Name: "x", Kind: "toaster"}, Session{}); err != ErrDevice {
 		t.Fatal(err)
 	}
+	// A volume is kept, held between 0 and 1, and outlives a save that doesn't say one.
+	loud := 1.4
+	s.Save(ctx, alice, phone, Session{Queue: []string{"tr-1"}, Volume: &loud})
+	s.Save(ctx, alice, phone, Session{Queue: []string{"tr-2"}})
+	if got, _ := s.Session(ctx, alice, "sine-a"); got.Volume == nil || *got.Volume != 1 {
+		t.Fatal(got.Volume)
+	}
+	if now, _ := s.Playing(ctx, alice); now[0].Volume == nil || *now[0].Volume != 1 {
+		t.Fatalf("%+v", now[0])
+	}
 	if err := s.Forget(ctx, alice, "sine-b"); err != nil {
 		t.Fatal(err)
 	}

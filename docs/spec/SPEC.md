@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 195 resolved decisions · last updated 2026-11-01 (keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 197 resolved decisions · last updated 2026-11-01 (Android Auto, §5.2a; the widget, §6.19; crossfade, Q69; the prefetch, §2.5; a device's volume, §4B; the Jam tile, §6.4.1; keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -416,8 +416,14 @@ address that changes still finds it), up to a size set in Settings → Keep
 what you stream (Off, 1, 2 or 8 GB; 2 by default), the least recently
 played going first, and a smaller size trims at once. A song kept whole
 plays offline and is never fetched twice; a pinned download isn't kept a
-second time. Not built yet: the WiFi prefetch that fills it ahead of
-listening, and skipped songs going first.
+second time.
+
+`NOTE` Built (0.9.0), the prefetch: on a network that isn't metered, while
+something plays, the next three songs in the order they'll play are kept
+ahead, through the same cache, under their ids, and the cache's size
+still holds. It stops between pieces the moment the network turns metered,
+and is off with Settings → Keep what's coming up. Not built yet: skipped
+songs going first.
 
 `RESOLVED` **Metered detection follows Android's metered flag,** not "is it
 WiFi". A tethered hotspot is correctly treated as expensive — which is exactly
@@ -838,6 +844,12 @@ wave to seek, what's next to skip to — with Play here (its music on this
 phone, from its moment, and it paused) and Play there (this phone's
 music sent to it, and this phone paused).
 
+`NOTE` Built (0.9.0): volume. A command sets the phone's media volume, the
+one its own buttons change, not a level under it, so the two always agree.
+Each Device says its volume with its session (`volume`, 0 to 1, absent from
+a Subsonic app); the controlling phone shows it as a straight level and
+sends the new one when the finger lifts.
+
 This makes **Device** a first-class concept the model did not previously have:
 
 - Each running client registers as a Device with a name and capabilities.
@@ -1127,6 +1139,17 @@ local mirror (G2) and pinned downloads (G1) are what make this possible, so Auto
 should browse the offline-available subset by default rather than the full
 library.
 
+`NOTE` Built (0.9.0): the player's service is a `MediaLibraryService`. Four
+tabs, the first the default: On this phone (Shuffle all, then the albums
+downloaded), Playlists, Artists and Albums, all from the mirror, asking the
+server only without one. A song plays with its album or playlist around it,
+from where it was picked; one that can't play now (offline, not on the
+phone) is left out, as in the app. A voice "play …" plays the song found
+with its album, else an album, else an artist's songs shuffled. Covers go
+through a content provider, the only kind of address the car reads, given
+to the car asking. A headset's play button, or the car starting, with Sine
+not running picks up what played last, where it got to.
+
 ### 5.3 Server dashboard
 
 `RESOLVED` **Admin plus library correction.** Store path, accounts, ingest queue,
@@ -1352,7 +1375,7 @@ same long-press selection used everywhere else:
 | **Favourites** | Your current favourites, worked out from three months of plays, the latest counting most (§2.4) |
 | **Review queue** | Live count of Tracks awaiting a resolver correction; tapping opens it |
 | **Ingest activity** | What Cosine is fetching, with progress and failures |
-| **Jam** | Active session, or an invite to start one |
+| **Jam** | Active session, or an invite to start one. Built (0.9.0): what the jam plays and how many are in it; else the invitation waiting, and from whom; else a start |
 
 `REVISED` **Now playing never leaves Home.** (Was: absent when nothing is
 playing, which contradicted §6.4.5: a tile keeps its place.)
@@ -2084,6 +2107,12 @@ Two practical notes:
   pill. The widget needs no fallback, because there is nothing to fall back
   from.
 
+`NOTE` Built (0.9.0), with plain RemoteViews rather than Glance: one small
+layout isn't worth a library. The pill takes the cover's colour, as the app
+does (or the fixed colour; tinting needs Android 12, before it it's white).
+With nothing playing it shows what played last; its buttons are media
+buttons, so play starts Sine and picks up from there.
+
 ### 6.20 First run
 
 `RESOLVED` **Typing the address is the primary path.** It works identically on
@@ -2289,7 +2318,9 @@ not silently keep gigabytes.
 | — | Home layout storage | On Cosine, per account and per kind of device; offline changes go with the next sync |
 | — | Adding tiles | Generated tiles and smart playlists from Home's Add tile action |
 | — | Tile sizes | 1×1 the cover or count; 2×2 adds the name; 4×2 a second line |
-| — | Tiles not yet possible | Resume and Jam aren't offered until their features exist |
+| — | Tiles not yet possible | Resume and Jam aren't offered until their features exist; both are now |
+| — | Crossfade and albums | Songs from one album are never faded into each other: a live record or a mix plays as made |
+| — | Remote volume | The device's media volume, the one its own buttons change; each Device says it with its session |
 | — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; with animations removed, content changes without moving |
 | — | Tile motion | Home is the one place motion is for liveliness; Phase's colour and scrim rules still hold inside a tile |
 | — | Liked songs | A playlist of its own, first among playlists, latest liked first; taking a song out stops liking it; not a smart playlist |
@@ -2359,7 +2390,7 @@ decided.
 | Q75 | SD card downloads | Yes. The visible download folder is chosen through SAF, so an SD card is just another location the picker offers. No extra mechanism. |
 | Q37 | Merging plays across devices | Plays are append-only events with timestamps, not a counter that gets overwritten. Merging is a union; the play count is derived. This also makes offline plays trivially correct. |
 | Q70 | Timestamps on late offline plays | Sine records the real time of play and sends it with the event. Cosine trusts it. Clock skew on your own phone is not worth defending against. |
-| Q69 | Crossfade | Offered, off by default, with a configurable duration. Gapless remains the behaviour when crossfade is off — they are alternatives, not layers. |
+| Q69 | Crossfade | Offered, off by default, with a configurable duration. Gapless remains the behaviour when crossfade is off — they are alternatives, not layers. Built (0.9.0): 3, 6 or 12 s, equal-power, the end of the song going on in a second player; never between two songs of one album, never in a jam (held to its clock), never on repeat-one. |
 
 ---
 
