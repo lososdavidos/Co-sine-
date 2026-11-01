@@ -134,7 +134,7 @@ private fun NoJam(session: AccountSession, invitations: List<Pair<Long, String>>
                 Pill(if (chosen.isEmpty()) "Start a jam" else "Start, and ask ${chosen.size}", {
                     busy = true
                     scope.launch {
-                        attempt { session.cosine?.startJam(chosen.toList()); graph.jam.refresh(); "Jam started. Add songs from anywhere: hold one, then Add to jam." }
+                        attempt { session.cosine?.startJam(chosen.toList()); graph.jam.refresh(); "Jam started. Its queue is your queue now: swipe a song left, or hold it and Add to queue." }
                         busy = false
                     }
                 }, kind = PillKind.Primary, icon = PhaseIcons.Jam, height = 48.dp, enabled = !busy)
@@ -236,7 +236,7 @@ private fun InJam(session: AccountSession, j: Jam) {
         }
         if (inviting) item { Invite(session, j) { inviting = false } }
         if (!host) item {
-            Text("${j.host} plays, pauses and skips. Add songs from anywhere: hold one, then Add to jam.", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = PhaseColor.Text3, style = PhaseType.Small)
+            Text("${j.host} plays, pauses and skips. Anyone adds: the queue is the jam's, so swipe a song left, or hold it and Add to queue.", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = PhaseColor.Text3, style = PhaseType.Small)
         }
         val next = j.queue.drop(index + 1)
         item { SectionLabel("Up next", end = if (next.isEmpty()) "Nothing yet" else Voice.songs(next.size)) }

@@ -118,6 +118,7 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
     val shelf = LocalShelf.current
     val liking by session.liking.collectAsStateWithLifecycle()
     val like = rememberLike(session)
+    val queue = rememberQueue(session)
     var query by rememberSaveable { mutableStateOf("") }
     // + : the field looks in the sources instead of the library.
     var finding by rememberSaveable { mutableStateOf(false) }
@@ -235,6 +236,7 @@ fun SearchScreen(session: AccountSession, nav: Pages) {
                                 dimmed = session.playSource(t) == PlaySource.Unavailable,
                                 liked = liking[t.id] ?: t.liked,
                                 onLike = { like(t.id, t.title, it) },
+                                onQueue = if (selected.isEmpty()) ({ queue(t) }) else null,
                                 onLongClick = { selected = selected.toggle(t.id) },
                             ) {
                                 when {

@@ -1,5 +1,19 @@
 package app.sine.ui
 
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlin.math.abs
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -209,21 +223,25 @@ fun ItemRow(
     liked: Boolean = false,
     onLike: ((Boolean) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    /** A song's row: swiped from right to left, it goes in the queue. */
+    onQueue: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     // Each double tap's heart: what it said, and a count to start it again.
     var hearts by remember { mutableIntStateOf(0) }
     var heartSays by remember { mutableStateOf(true) }
     val like = onLike?.let { { heartSays = !liked; hearts++; it(!liked) } }
+    val actions = listOfNotNull(
+        like?.let { l -> CustomAccessibilityAction(if (liked) "Stop liking" else "Like") { l(); true } },
+        // A swipe can't be made with a screen reader: adding to the queue is an action of its own there.
+        onQueue?.let { q -> CustomAccessibilityAction("Add to queue") { q(); true } },
+    )
+    SwipeToQueue(onQueue, modifier) {
     Box(
-        modifier
+        Modifier
             .rowSurface(selected)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick, onDoubleClick = like)
-            .then(
-                if (like == null) Modifier else Modifier.semantics {
-                    customActions = listOf(CustomAccessibilityAction(if (liked) "Stop liking" else "Like") { like(); true })
-                },
-            ),
+            .then(if (actions.isEmpty()) Modifier else Modifier.semantics { customActions = actions }),
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -260,7 +278,88 @@ fun ItemRow(
         }
         if (hearts > 0) LikeBurst(hearts, heartSays)
     }
+    }
 }
+
+/**
+ * Swiping a song's row from right to left adds it to the queue (in a jam,
+ * the jam's). The row follows the finger, uncovering the queue mark on
+ * Sine; past [SWIPE_AT] the mark grows, and letting go there adds it, with
+ * a tick of the phone. The row always springs back: it's still there.
+ * Left to right is left alone, for going back; up and down, for scrolling.
+ */
+@Composable
+private fun SwipeToQueue(onQueue: (() -> Unit)?, modifier: Modifier, content: @Composable () -> Unit) {
+    if (onQueue == null) {
+        Box(modifier) { content() }
+        return
+    }
+    val queue by rememberUpdatedState(onQueue)
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(0f) }
+    var width by remember { mutableIntStateOf(1) }
+    val threshold = with(LocalDensity.current) { SWIPE_AT.toPx() }
+    val past = -offset.value >= threshold
+    LaunchedEffect(past) { if (past) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick) }
+    Box(
+        modifier
+            .onSizeChanged { width = it.width }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var dragging = false
+                    // Only a drag that starts leftward, and more sideways than up or down, is this one's.
+                    val start = awaitTouchSlopOrCancellation(down.id) { change, over ->
+                        if (over.x < 0 && abs(over.x) > abs(over.y)) {
+                            change.consume()
+                            dragging = true
+                        }
+                    }
+                    if (start == null || !dragging) return@awaitEachGesture
+                    horizontalDrag(start.id) { change ->
+                        val dx = change.positionChange().x
+                        change.consume()
+                        // Leftward only; past the mark it gives, as if pulled against a spring.
+                        val raw = offset.value + dx
+                        val next = when {
+                            raw > 0f -> 0f
+                            -raw > threshold -> -(threshold + (-raw - threshold) * 0.4f)
+                            else -> raw
+                        }.coerceAtLeast(-width * 0.6f)
+                        scope.launch { offset.snapTo(next) }
+                    }
+                    val added = -offset.value >= threshold
+                    scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 500f)) }
+                    if (added) queue()
+                }
+            },
+    ) {
+        // What the row uncovers: the queue mark, on Sine, growing past the mark.
+        if (offset.value < 0f) {
+            val reveal = (-offset.value / threshold).coerceIn(0f, 1f)
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .drawBehind { drawRect(PhaseColor.Sine.copy(alpha = 0.25f + 0.75f * reveal)) },
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                PhaseIcon(
+                    PhaseIcons.QueueAdd, null,
+                    Modifier
+                        .padding(end = 20.dp)
+                        .graphicsLayer { val k = if (past) 1.15f else 0.7f + 0.3f * reveal; scaleX = k; scaleY = k },
+                    size = 24.dp, tone = IconTone.OnSine,
+                )
+            }
+        }
+        // Moving, it's solid, so the mark shows only where it's uncovered.
+        Box(Modifier.graphicsLayer { translationX = offset.value }.then(if (offset.value < 0f) Modifier.background(PhaseColor.Ground) else Modifier)) { content() }
+    }
+}
+
+/** How far a row is swiped before letting go adds it to the queue. */
+private val SWIPE_AT = 96.dp
 
 /**
  * The heart a double tap leaves (#26): liking, it springs up in Sine and
