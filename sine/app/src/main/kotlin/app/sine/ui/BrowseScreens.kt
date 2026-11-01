@@ -49,10 +49,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.sine.core.model.Album
-import app.sine.core.model.Artist
 import app.sine.core.model.Recent
 import app.sine.core.model.SearchHit
 import app.sine.core.model.SearchRanking
+import app.sine.core.model.Shelving
 import app.sine.core.play.PlaySource
 import app.sine.core.server.Capability
 import app.sine.core.text.Voice
@@ -379,13 +379,6 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
     }
 }
 
-/** The letter an artist files under, as a record shop's dividers do: articles ignored. */
-private fun Artist.letter(): String {
-    val name = name.trim().removePrefix("The ").removePrefix("the ")
-    val c = name.firstOrNull()?.uppercaseChar() ?: return "#"
-    return if (c.isLetter()) c.toString() else "#"
-}
-
 @Composable
 private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: Pages) {
     val mirrored by session.mirrored.collectAsStateWithLifecycle()
@@ -395,12 +388,12 @@ private fun ArtistList(session: AccountSession, downloadedOnly: Boolean, nav: Pa
     LoadContent(load) { artists, _ ->
         if (artists.isEmpty()) ListMessage(if (downloadedOnly) Voice.NO_DOWNLOADS else "No artists.")
         else {
-            val letters = artists.map { it.letter() }
-            // Dividers only when the list really is in alphabetical order.
-            val divided = letters.zipWithNext().all { (a, b) -> a == b || a == "#" || (b != "#" && a < b) }
+            // Filed as the dividers file them, so the two always agree (Shelving).
+            val shelved = remember(artists) { artists.sortedWith(Shelving.artists) }
+            val letters = remember(shelved) { shelved.map { Shelving.letter(it.name) } }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding(top = 4.dp)) {
-                artists.forEachIndexed { i, a ->
-                    if (divided && (i == 0 || letters[i] != letters[i - 1])) {
+                shelved.forEachIndexed { i, a ->
+                    if (i == 0 || letters[i] != letters[i - 1]) {
                         item(key = "letter:${letters[i]}") { LetterDivider(letters[i]) }
                     }
                     item(key = a.id) {

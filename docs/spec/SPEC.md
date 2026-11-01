@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 185 resolved decisions · last updated 2026-11-01 (holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 186 resolved decisions · last updated 2026-11-01 (holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -2222,6 +2222,7 @@ not silently keep gigabytes.
 | — | Icon buttons | The lit icon is the button, no pill or outline; words and navigation keep pills; switches show a dot when on |
 | — | The shelf's colour | The accent near black; the place you're in a pill of its gradient |
 | — | Fixed colour | Settings → Appearance: from the artwork (default), or one of seven fixed colours |
+| — | Artist dividers | Filed without a leading "The", accents aside, # first; the list sorts by the same rule, so its letters always show |
 | — | Library's + | A tap adds music; held, a pill rolls out of it to choose Add music or New playlist, and it turns to a × that rolls it back |
 
 ---
