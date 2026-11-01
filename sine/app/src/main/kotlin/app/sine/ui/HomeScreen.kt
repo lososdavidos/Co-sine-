@@ -173,6 +173,7 @@ private fun tileLabel(tile: Tile) = when (tile.kind) {
     TileKind.DOWNLOADED -> "On this phone"
     TileKind.REVIEW -> "Review"
     TileKind.INGEST -> "Adding"
+    TileKind.STATS -> "Listening"
     else -> tile.name ?: "Tile"
 }
 
@@ -325,6 +326,7 @@ private suspend fun tap(context: Context, session: AccountSession, nav: Pages, t
         TileKind.DOWNLOADED -> nav.navigate(Routes.DOWNLOADED)
         TileKind.REVIEW -> nav.navigate(Routes.REVIEW)
         TileKind.INGEST -> nav.navigate(Routes.add())
+        TileKind.STATS -> nav.navigate(Routes.STATS)
         TileKind.SHUFFLE_ALL -> {
             val all = session.libraryTracks() ?: session.offline().all()
             if (all.isEmpty()) say(Voice.NO_DOWNLOADS) else player.play(session, all, shuffle = true)
@@ -368,6 +370,7 @@ private fun TileFace(session: AccountSession, tile: Tile, order: Int) {
         TileKind.DOWNLOADED -> DownloadedFace(session, tile.size, order)
         TileKind.REVIEW -> ReviewFace(session, tile.size)
         TileKind.INGEST -> IngestFace(session, tile.size)
+        TileKind.STATS -> StatsFace(session, tile.size)
         else -> {
             val mirrored by session.mirrored.collectAsStateWithLifecycle()
             val changed by session.playlistsChanged.collectAsStateWithLifecycle()
@@ -620,6 +623,26 @@ private fun ReviewFace(session: AccountSession, size: TileSize) {
     )
 }
 
+/** Listening (§6.13): the last 30 days' plays, rolling over as they change, and how long. */
+@Composable
+private fun StatsFace(session: AccountSession, size: TileSize) {
+    val mirrored by session.mirrored.collectAsStateWithLifecycle()
+    var month by remember { mutableStateOf<app.sine.core.cosine.StatsSummary?>(null) }
+    LaunchedEffect(mirrored) {
+        runCatching { session.cosine?.stats("30d", limit = 1)?.report?.summary }.getOrNull()?.let { month = it }
+    }
+    val s = month
+    QuietFace(
+        size, null, "Listening",
+        line = s?.let { "${hours(it.seconds)} in the last 30 days." },
+        corner = {
+            Box(Modifier.clip(PhaseShape.Pill).background(PhaseColor.Lift).padding(horizontal = 10.dp, vertical = 2.dp)) {
+                RollingCount(s?.plays ?: 0, PhaseType.Data.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), PhaseColor.Text2)
+            }
+        },
+    )
+}
+
 /** What Cosine is fetching (§6.10): its progress in Cosine, a failure in red, nothing doing at rest. */
 @Composable
 private fun IngestFace(session: AccountSession, size: TileSize) {
@@ -682,6 +705,7 @@ internal fun AddTileForm(session: AccountSession) {
         Tile(TileKind.DOWNLOADED),
         Tile(TileKind.REVIEW, size = TileSize.Small).takeIf { session.cosine != null && Capability.REVIEW in caps },
         Tile(TileKind.INGEST).takeIf { session.cosine != null && Capability.INGEST in caps },
+        Tile(TileKind.STATS).takeIf { session.cosine != null && Capability.STATS in caps },
     ).filter { t -> tiles.none { it.id == t.id } }
     // Liked songs first: a playlist of its own, not a smart one, but made the same way, from what you do.
     val smart = (listOf(Tile(TileKind.PLAYLIST, Playlist.LIKED, name = Playlist.LIKED_NAME)) +

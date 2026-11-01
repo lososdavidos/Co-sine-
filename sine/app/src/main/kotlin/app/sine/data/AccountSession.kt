@@ -252,6 +252,13 @@ class AccountSession(
 
     suspend fun like(trackId: String, liked: Boolean) = like(listOf(trackId), liked)
 
+    /** An artist's or album's cover by its id, as the library has it: an artist without a picture shows an album's. */
+    fun coverOf(id: String): String? = when {
+        id.startsWith("ar-") -> library()?.artist(id)?.artist?.coverArt ?: id
+        id.startsWith("al-") -> library()?.album(id)?.album?.coverArt ?: id
+        else -> library()?.track(id)?.coverArt
+    }
+
     /** Every song in the library, when the mirror has them; null means only the server knows. */
     fun libraryTracks(): List<Track>? = library()?.tracks()
 

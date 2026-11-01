@@ -57,6 +57,8 @@ object Capability {
     const val LOOKUP_STREAM = "lookup-stream"
     /** Home's arrangement is kept on the server, one per kind of device (§6.4). */
     const val HOME_LAYOUT = "home-layout"
+    /** Listening statistics, one's own (§6.13). */
+    const val STATS = "stats"
 }
 
 sealed interface ProbeResult {

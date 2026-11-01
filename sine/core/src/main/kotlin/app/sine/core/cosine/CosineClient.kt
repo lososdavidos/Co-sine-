@@ -143,6 +143,7 @@ data class IngestJob(
     val from: String? = null,
     val playlist: Boolean? = null,
 )
+@Serializable private data class YearsResponse(val years: List<StatsYear> = emptyList())
 @Serializable private data class SmartResponse(val playlists: List<SmartPlaylist> = emptyList())
 @Serializable private data class RetryRequest(val force: Boolean)
 @Serializable private data class JobsResponse(val jobs: List<IngestJob>)
@@ -263,6 +264,13 @@ class CosineClient(
 
     suspend fun retry(jobId: Long, force: Boolean = false): IngestJob =
         send(post("ingest/jobs/$jobId/retry", RetryRequest.serializer(), RetryRequest(force)), JobResponse.serializer()).job
+
+    /** Listening in [window] (30d, year, a year such as 2025, or all), the top [limit] of each kind (§6.13). */
+    suspend fun stats(window: String = "30d", limit: Int = 10): Stats =
+        send(get("stats", "window" to window, "limit" to limit.toString()), Stats.serializer())
+
+    /** Every year with plays, newest first. */
+    suspend fun statsYears(): List<StatsYear> = send(get("stats/years"), YearsResponse.serializer()).years
 
     suspend fun reviewQueue(limit: Int = 200, offset: Int = 0): ReviewPage =
         send(get("review", "limit" to limit.toString(), "offset" to offset.toString()), ReviewPage.serializer())

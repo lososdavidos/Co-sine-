@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -419,17 +420,23 @@ fun PageHost(pages: Pages, shelf: @Composable BoxScope.() -> Unit, content: @Com
     pages.flingPx = with(LocalDensity.current) { FLING.toPx() }
     val m = pages.move
     val underLayer = rememberGraphicsLayer()
+    // The page beneath, drawn an eighth of its size once as the move starts:
+    // caught at full size, its first frame stuttered, and the blur only
+    // wants a few dozen pixels of it.
+    val snapLayer = rememberGraphicsLayer()
+    val snap = remember { BooleanArray(1) }
     var blur by remember { mutableStateOf<ImageBitmap?>(null) }
     // The page beneath is caught once, when the move starts, and blurred off the main thread (§6.16).
     LaunchedEffect(m) {
         blur = null
+        snap[0] = m != null
         if (m == null) return@LaunchedEffect
-        // Once the page beneath has been drawn into the layer at least once.
+        // Once the page beneath has been drawn into the small layer.
         var frames = 0
-        while (underLayer.size.width == 0 && frames++ < 10) withFrameNanos {}
-        if (underLayer.size.width == 0) return@LaunchedEffect
+        while (snap[0] && frames++ < 10) withFrameNanos {}
+        if (snap[0] || snapLayer.size.width == 0) return@LaunchedEffect
         blur = try {
-            blurred(underLayer.toImageBitmap())
+            blurred(snapLayer.toImageBitmap())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -496,6 +503,11 @@ fun PageHost(pages: Pages, shelf: @Composable BoxScope.() -> Unit, content: @Com
                         if (under) {
                             underLayer.record { this@drawWithContent.drawContent() }
                             drawLayer(underLayer)
+                            if (snap[0]) {
+                                snap[0] = false
+                                val small = IntSize((size.width / SNAP).roundToInt().coerceAtLeast(1), (size.height / SNAP).roundToInt().coerceAtLeast(1))
+                                snapLayer.record(small) { scale(1f / SNAP, 1f / SNAP, pivot = Offset.Zero) { drawLayer(underLayer) } }
+                            }
                         } else drawContent()
                     }
                     .nestedScroll(sheetScroll.takeIf { page.isSheet } ?: NoScroll),
@@ -607,5 +619,7 @@ private suspend fun blurred(image: ImageBitmap): ImageBitmap = withContext(Dispa
 }
 
 private val FLING = 400.dp
+/** The page beneath is caught this many times smaller for its blur. */
+private const val SNAP = 8f
 /** How dark the page beneath gets when it's fully covered. */
 private const val DIM = 0.4f

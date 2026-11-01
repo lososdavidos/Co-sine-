@@ -31,6 +31,8 @@ object TileKind {
     const val DOWNLOADED = "downloaded"
     const val REVIEW = "review"
     const val INGEST = "ingest"
+    /** Listening statistics (§6.13). */
+    const val STATS = "stats"
 
     /** Something of yours pinned from its own page, rather than made by Sine. */
     fun pinned(kind: String) = kind == ARTIST || kind == ALBUM || kind == PLAYLIST

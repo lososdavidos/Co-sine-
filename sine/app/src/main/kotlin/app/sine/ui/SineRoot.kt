@@ -43,6 +43,7 @@ object Routes {
     const val ADD_ACCOUNT = "add-account"
     const val REVIEW = "review"
     const val DOWNLOADED = "downloaded"
+    const val STATS = "stats"
     private const val ARTIST = "artist/"
     private const val ALBUM = "album/"
     private const val PLAYLIST = "playlist/"
@@ -206,6 +207,7 @@ private fun Screen(session: AccountSession, pages: Pages, page: Page) {
         Routes.NOW_PLAYING -> NowPlayingScreen(session, pages, onClose = { pages.popBackStack() })
         Routes.SETTINGS -> SettingsScreen(session, pages)
         Routes.REVIEW -> ReviewScreen(session, onOpen = { pages.navigate(Routes.correct(it)) })
+        Routes.STATS -> StatsScreen(session, pages)
         Routes.DOWNLOADED -> DownloadedScreen(session, pages)
         Routes.ADD_ACCOUNT -> AddAccountScreen(onDone = { pages.popBackStack() }, onCancel = { pages.popBackStack() })
         else -> {
