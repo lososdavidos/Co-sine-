@@ -77,6 +77,8 @@ object PhaseIcons {
     // What you do
     /** Download, and the mark for a local copy: on this phone. */
     val OnPhone = icon("on-phone", line("M12 4v10.5M7.5 10l4.5 4.5 4.5-4.5M5 19.5h14", 2.4f))
+    /** From the phone up to the server: the opposite of [OnPhone]. */
+    val Upload = icon("upload", line("M12 19V8.5M7.5 13l4.5-4.5 4.5 4.5M5 4.5h14", 2.4f))
     val OffPhone = icon("off-phone", line("M12 4v6.5M7.5 10l4.5 4.5 1.2-1.2M5 19.5h14M4.5 4.5l15 15", 2.4f))
     val PlaylistAdd = icon("playlist-add", line("M4.5 6.5h11M4.5 11.5h11M4.5 16.5h6M17.5 13v7M14 16.5h7", 2.4f))
     /** Add to the end of what's playing. */

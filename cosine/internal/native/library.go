@@ -1,17 +1,77 @@
 package native
 
 import (
+	"context"
+	"errors"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
 )
 
 // CapRemove: taking tracks out of your Library (§4.1).
 const CapRemove = "remove"
 
+// CapUpload: a file from the phone, filed like any other (§4).
+const CapUpload = "upload"
+
+// maxUpload: a long live set in lossless is well under this.
+const maxUpload = 2 << 30
+
 func (a *API) registerLibrary(mux *http.ServeMux) {
 	mux.HandleFunc("POST /cosine/v1/library/remove", a.authed(a.remove))
+	mux.HandleFunc("POST /cosine/v1/library/upload", a.authed(a.upload))
+}
+
+// upload takes one audio file, its bytes as the body and its name in
+// ?name=, and ingests it like any other source (§4): resolved, filed into
+// the canonical tree byte for byte, and put in the uploader's Library only,
+// not everyone's as an Inbox drop is. It finishes even if the phone stops
+// listening, and answers with the song's id.
+func (a *API) upload(w http.ResponseWriter, r *http.Request, u auth.User) {
+	name := filepath.Base(strings.TrimSpace(r.URL.Query().Get("name")))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		writeError(w, http.StatusBadRequest, "An upload needs its file's name.")
+		return
+	}
+	dir := filepath.Join(a.Ingester.DataDir, "uploads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		a.fail(w, err)
+		return
+	}
+	f, err := os.CreateTemp(dir, "upload-*"+filepath.Ext(name))
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	// Filed, the file has moved into the Store; anything left is a failure's.
+	defer os.Remove(f.Name())
+	_, err = io.Copy(f, http.MaxBytesReader(w, r.Body, maxUpload))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "The upload didn't arrive whole.")
+		return
+	}
+	out, err := a.Ingester.Ingest(context.WithoutCancel(r.Context()), ingest.Request{
+		Path: f.Name(), OriginalName: name, Source: "upload", ForUsers: []int64{u.ID}, Explicit: true,
+	})
+	if errors.Is(err, ingest.ErrNotAudio) {
+		writeError(w, http.StatusUnsupportedMediaType, "Not an audio file Cosine can keep.")
+		return
+	}
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"track": "tr-" + strconv.FormatInt(out.TrackID, 10), "duplicate": out.Duplicate})
 }
 
 type removeRequest struct {

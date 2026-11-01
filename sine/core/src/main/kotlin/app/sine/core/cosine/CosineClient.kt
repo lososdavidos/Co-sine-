@@ -21,6 +21,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
@@ -151,6 +152,10 @@ data class IngestJob(
 @Serializable private data class ErrorResponse(val error: String)
 @Serializable private data class CandidatesResponse(val candidates: List<Candidate> = emptyList())
 @Serializable private data class ChooseRequest(val query: ReviewQuery, val key: String)
+/** An uploaded file, filed: its song, and whether the library had it already. */
+@Serializable
+data class Uploaded(val track: String, val duplicate: Boolean = false)
+
 @Serializable private data class RemoveRequest(val tracks: List<String>)
 @Serializable private data class RemoveResponse(val removed: Int)
 @Serializable private data class CapabilitiesResponse(val version: String, val capabilities: Set<String> = emptySet())
@@ -292,6 +297,17 @@ class CosineClient(
      * Inbox won't bring them back, though adding one again on purpose will.
      * Returns how many were in the library.
      */
+    /**
+     * Uploads one file from the phone (§4): filed like anything else, into
+     * this account's library. [body] is its bytes, and must give them again
+     * if asked twice (a new session). Waits while Cosine files it.
+     */
+    suspend fun upload(name: String, body: RequestBody): Uploaded =
+        send(Request.Builder().url(url("library/upload", "name" to name)).post(body), Uploaded.serializer(), via = slow)
+
+    /** For uploads: the bytes take as long as they take, and so does filing them. */
+    private val slow by lazy { http.newBuilder().readTimeout(10, TimeUnit.MINUTES).writeTimeout(10, TimeUnit.MINUTES).build() }
+
     suspend fun remove(trackIds: List<String>): Int =
         send(post("library/remove", RemoveRequest.serializer(), RemoveRequest(trackIds)), RemoveResponse.serializer()).removed
 

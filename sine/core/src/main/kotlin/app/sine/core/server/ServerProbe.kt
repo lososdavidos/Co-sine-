@@ -59,6 +59,8 @@ object Capability {
     const val HOME_LAYOUT = "home-layout"
     /** Listening statistics, one's own (§6.13). */
     const val STATS = "stats"
+    /** Files uploaded from the phone (§4). */
+    const val UPLOAD = "upload"
 }
 
 sealed interface ProbeResult {

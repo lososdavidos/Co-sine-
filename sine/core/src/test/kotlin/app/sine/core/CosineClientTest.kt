@@ -20,7 +20,9 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
@@ -75,6 +77,10 @@ class CosineClientTest {
                            "overTime":[{"label":"Jan","start":"2026-01-01T00:00:00Z","plays":96,"seconds":22000}]},
                            "windows":[{"key":"30d","label":"Last 30 days","from":"2026-10-02T00:00:00Z","to":"2026-11-01T00:00:00Z","bucket":"day"},{"key":"all","label":"All time","from":"0001-01-01T00:00:00Z","to":"2026-11-01T00:00:00Z","bucket":"year"}]}"""
                     )
+                    "/cosine/v1/library/upload" -> {
+                        bodies += "${request.url.queryParameter("name")}:${request.body?.utf8()}"
+                        json("""{"track":"tr-12","duplicate":false}""", 201)
+                    }
                     "/cosine/v1/stats/years" -> json("""{"years":[{"year":2026,"summary":{"plays":1284,"seconds":298800,"tracks":212,"artists":61},"topArtist":{"id":"ar-3","name":"Mira Solune","plays":214,"seconds":51000,"firstPlayed":"2021-03-04T20:00:00Z"}},{"year":2025,"summary":{"plays":3}}]}""")
                     "/cosine/v1/lookup/stream" -> MockResponse.Builder().addHeader("Content-Type", "application/x-ndjson")
                         .body(streamLines.joinToString("") { "$it\n" })
@@ -209,6 +215,14 @@ class CosineClientTest {
         val changed = c.saveSmart(app.sine.core.model.SmartRules.withSetting(made.copy(name = "Dust", rule = "forgotten", span = null)))
         assertEquals(12, changed.months)
         assertTrue(bodies.last().startsWith("PUT ") && bodies.last().contains("\"months\":6"), bodies.last())
+    }
+
+    @Test
+    fun `an upload goes as its bytes, named`() = runTest {
+        val c = client()
+        val up = c.upload("Skeler - Tides.mp3", "ID3 bytes".toByteArray().toRequestBody("audio/mpeg".toMediaType()))
+        assertEquals("tr-12", up.track)
+        assertEquals("Skeler - Tides.mp3:ID3 bytes", bodies.last())
     }
 
     @Test

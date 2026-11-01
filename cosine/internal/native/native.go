@@ -64,7 +64,7 @@ func (a *API) capabilities() []string {
 		caps = append(caps, CapSync)
 	}
 	if a.Ingester != nil {
-		caps = append(caps, CapRemove)
+		caps = append(caps, CapRemove, CapUpload)
 	}
 	if a.Playlists != nil {
 		caps = append(caps, CapPlaylists, CapShared)
