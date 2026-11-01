@@ -135,6 +135,9 @@ fun Pill(
     contentDescription: String? = null,
     /** A second action, two taps away; a single tap then waits a moment to be sure. */
     onDoubleClick: (() -> Unit)? = null,
+    /** What holding it does instead of saying its name, and that said to a screen reader. */
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
 ) {
     val background = when (kind) {
         PillKind.Primary -> Color.Transparent // the accent, drawn (accentFill)
@@ -179,8 +182,8 @@ fun Pill(
                 interactionSource = null,
                 indication = if (bare) ripple(if (kind.bareTone() == IconTone.Fault) ({ PhaseColor.Fault }) else ({ Ambient.fill.value }), bounded = false, radius = height / 2) else ripple(),
                 enabled = enabled, role = Role.Button, onClick = onClick, onDoubleClick = onDoubleClick,
-                onLongClickLabel = if (text == null && contentDescription != null) "Say its name" else null,
-                onLongClick = if (text == null && contentDescription != null) ({ sayName(contentDescription) }) else null,
+                onLongClickLabel = onLongClickLabel ?: if (text == null && contentDescription != null) "Say its name" else null,
+                onLongClick = onLongClick ?: if (text == null && contentDescription != null) ({ sayName(contentDescription) }) else null,
             )
             .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
             .padding(

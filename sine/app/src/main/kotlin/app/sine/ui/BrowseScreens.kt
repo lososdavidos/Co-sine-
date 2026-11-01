@@ -29,6 +29,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.sine.ui.phase.PhaseShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -290,6 +302,17 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
         if (canReview) toReview = runCatching { cosine?.reviewQueue(limit = 1)?.total }.getOrNull()
     }
 
+    val canMakePlaylists = session.canEditPlaylists
+    // Holding + rolls out what it can make: music to add, or a playlist.
+    var choosing by remember { mutableStateOf(false) }
+    BackHandler(enabled = choosing) { choosing = false }
+    val app = context.applicationContext
+    fun newPlaylist() = nav.form {
+        NameForm("New playlist", "", "Create") { name ->
+            attemptChange(app, session, edit = true) { session.createPlaylist(name); null }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         TitleBar("Library")
         Segmented(segments, segment, { segment = it }, Modifier.padding(horizontal = 20.dp), icons = segmentIcons)
@@ -298,9 +321,23 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (segment < 2) Chip(null, downloadedOnly, { downloadedOnly = !downloadedOnly }, icon = PhaseIcons.OnPhone, contentDescription = "Only what's on this phone")
+            if (!choosing && segment < 2) Chip(null, downloadedOnly, { downloadedOnly = !downloadedOnly }, icon = PhaseIcons.OnPhone, contentDescription = "Only what's on this phone")
             Spacer(Modifier.weight(1f))
-            if (canReview) {
+            // The choices roll out of + to its left, over where the others were.
+            AnimatedVisibility(
+                visible = choosing,
+                enter = expandHorizontally(tween(220), expandFrom = Alignment.End) + fadeIn(tween(160)),
+                exit = shrinkHorizontally(tween(180), shrinkTowards = Alignment.End) + fadeOut(tween(120)),
+            ) {
+                Row(
+                    Modifier.clip(PhaseShape.Pill).background(PhaseColor.Float).border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill).padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (canIngest) Pill("Add music", { choosing = false; nav.navigate(Routes.add()) }, kind = PillKind.Secondary, icon = PhaseIcons.Plus, height = 40.dp)
+                    if (canMakePlaylists) Pill("New playlist", { choosing = false; newPlaylist() }, kind = PillKind.Secondary, icon = PhaseIcons.PlaylistAdd, height = 40.dp)
+                }
+            }
+            if (canReview && !choosing) {
                 val n = toReview ?: 0
                 Pill(
                     null, { nav.navigate(Routes.REVIEW) }, height = 40.dp, icon = PhaseIcons.Review,
@@ -309,7 +346,23 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
                     contentDescription = if (n > 0) "Review, $n waiting" else "Review",
                 )
             }
-            if (canIngest) Pill(null, { nav.navigate(Routes.add()) }, height = 40.dp, icon = PhaseIcons.Plus, contentDescription = "Add music")
+            if (canIngest || canMakePlaylists) {
+                val turn by animateFloatAsState(if (choosing) 45f else 0f, tween(200), label = "plus")
+                Pill(
+                    null,
+                    {
+                        when {
+                            choosing -> choosing = false
+                            canIngest -> nav.navigate(Routes.add())
+                            else -> newPlaylist()
+                        }
+                    },
+                    Modifier.graphicsLayer { rotationZ = turn },
+                    height = 40.dp, icon = PhaseIcons.Plus,
+                    contentDescription = if (choosing) "Close" else if (canIngest) "Add music" else "New playlist",
+                    onLongClick = { choosing = !choosing }, onLongClickLabel = "Add music or make a playlist",
+                )
+            }
         }
         if (activeDownloads > 0) {
             StatusLine(
