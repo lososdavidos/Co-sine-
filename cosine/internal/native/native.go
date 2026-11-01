@@ -15,9 +15,11 @@ import (
 	"strings"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/devices"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/homes"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/jams"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
@@ -47,6 +49,10 @@ type API struct {
 	Log       *slog.Logger
 	// Homes keeps each account's Home arrangement; nil: Sine keeps it on the phone only.
 	Homes *homes.Service
+	// Devices keeps each client's playback session; nil: none are kept.
+	Devices *devices.Service
+	// Jams: Jam's party mode; nil: none.
+	Jams *jams.Service
 }
 
 func (a *API) capabilities() []string {
@@ -64,7 +70,7 @@ func (a *API) capabilities() []string {
 		caps = append(caps, CapSync)
 	}
 	if a.Ingester != nil {
-		caps = append(caps, CapRemove)
+		caps = append(caps, CapRemove, CapUpload)
 	}
 	if a.Playlists != nil {
 		caps = append(caps, CapPlaylists, CapShared)
@@ -80,6 +86,12 @@ func (a *API) capabilities() []string {
 	}
 	if a.Homes != nil {
 		caps = append(caps, CapHome)
+	}
+	if a.Devices != nil {
+		caps = append(caps, CapSessions)
+	}
+	if a.Jams != nil {
+		caps = append(caps, CapJam)
 	}
 	return caps
 }
@@ -118,6 +130,12 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Homes != nil {
 		a.registerHome(mux)
+	}
+	if a.Devices != nil {
+		a.registerDevices(mux)
+	}
+	if a.Jams != nil {
+		a.registerJams(mux)
 	}
 }
 

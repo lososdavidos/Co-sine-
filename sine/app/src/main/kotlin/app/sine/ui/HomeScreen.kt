@@ -73,6 +73,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import app.sine.core.cosine.DeviceNow
 import app.sine.core.cosine.IngestJob
 import app.sine.core.home.HomeDefaults
 import app.sine.core.home.HomeEdits
@@ -174,6 +175,7 @@ private fun tileLabel(tile: Tile) = when (tile.kind) {
     TileKind.REVIEW -> "Review"
     TileKind.INGEST -> "Adding"
     TileKind.STATS -> "Listening"
+    TileKind.RESUME -> "Resume"
     else -> tile.name ?: "Tile"
 }
 
@@ -327,6 +329,10 @@ private suspend fun tap(context: Context, session: AccountSession, nav: Pages, t
         TileKind.REVIEW -> nav.navigate(Routes.REVIEW)
         TileKind.INGEST -> nav.navigate(Routes.add())
         TileKind.STATS -> nav.navigate(Routes.STATS)
+        TileKind.RESUME -> {
+            val from = elsewhere(context, session) ?: return say("Nothing playing on your other devices.")
+            resumeFrom(context, session, from)
+        }
         TileKind.SHUFFLE_ALL -> {
             val all = session.libraryTracks() ?: session.offline().all()
             if (all.isEmpty()) say(Voice.NO_DOWNLOADS) else player.play(session, all, shuffle = true)
@@ -371,6 +377,7 @@ private fun TileFace(session: AccountSession, tile: Tile, order: Int) {
         TileKind.REVIEW -> ReviewFace(session, tile.size)
         TileKind.INGEST -> IngestFace(session, tile.size)
         TileKind.STATS -> StatsFace(session, tile.size)
+        TileKind.RESUME -> ResumeFace(session, tile.size, order)
         else -> {
             val mirrored by session.mirrored.collectAsStateWithLifecycle()
             val changed by session.playlistsChanged.collectAsStateWithLifecycle()
@@ -623,6 +630,68 @@ private fun ReviewFace(session: AccountSession, size: TileSize) {
     )
 }
 
+/**
+ * Resume (§4A): what another of your devices was playing last, and where
+ * it got to; a tap picks it up here, from that moment.
+ */
+@Composable
+private fun ResumeFace(session: AccountSession, size: TileSize, order: Int) {
+    val context = LocalContext.current
+    var from by remember { mutableStateOf<DeviceNow?>(null) }
+    var looked by remember { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(Unit) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                from = elsewhere(context, session)
+                looked = true
+                delay(30_000)
+            }
+        }
+    }
+    val f = from
+    val title = f?.title
+    if (f == null || title == null) {
+        QuietFace(size, PhaseIcons.Device, "Resume", if (looked) "Nothing playing on your other devices." else null)
+        return
+    }
+    ArtFace(
+        listOf(session.artwork(f.coverArt)), title, listOfNotNull(f.artist, "on ${f.device.name}").joinToString(" · "), size, order,
+        label = if (f.playing) "Playing on ${f.device.name}" else "Resume from ${f.device.name}",
+    )
+}
+
+/** The most recent session on another of this account's devices; null when there's none, or no server. */
+internal suspend fun elsewhere(context: Context, session: AccountSession): DeviceNow? {
+    val c = session.cosine ?: return null
+    val me = context.graph.device.id
+    return runCatching { c.devices() }.getOrNull()?.firstOrNull { it.device.id != me && it.track != null }
+}
+
+/**
+ * Plays here what [from] was playing, from its song and moment on: its
+ * queue's songs as this library knows them, the rest of its order after.
+ */
+internal suspend fun resumeFrom(context: Context, session: AccountSession, from: DeviceNow) {
+    val c = session.cosine ?: return
+    try {
+        val s = c.session(from.device.id)
+        val ahead = s.queue.drop(s.current).take(RESUME_AHEAD)
+        val tracks = ahead.mapNotNull { id -> runCatching { session.track(id).value }.getOrNull() }
+        if (tracks.isEmpty()) return say(Voice.TRACK_UNAVAILABLE)
+        val first = tracks.first().id == ahead.first()
+        context.graph.player.play(session, tracks, startMs = if (first) s.positionMs else 0)
+        say("Picked up from ${from.device.name}.")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        say(Voice.serverUnreachable(isCosine = true), Signal.Server)
+    }
+}
+
+/** How much of another device's queue comes across: what's ahead, enough for a long evening. */
+private const val RESUME_AHEAD = 300
+
 /** Listening (§6.13): the last 30 days' plays, rolling over as they change, and how long. */
 @Composable
 private fun StatsFace(session: AccountSession, size: TileSize) {
@@ -706,6 +775,7 @@ internal fun AddTileForm(session: AccountSession) {
         Tile(TileKind.REVIEW, size = TileSize.Small).takeIf { session.cosine != null && Capability.REVIEW in caps },
         Tile(TileKind.INGEST).takeIf { session.cosine != null && Capability.INGEST in caps },
         Tile(TileKind.STATS).takeIf { session.cosine != null && Capability.STATS in caps },
+        Tile(TileKind.RESUME, size = TileSize.Wide).takeIf { session.cosine != null && Capability.SESSIONS in caps },
     ).filter { t -> tiles.none { it.id == t.id } }
     // Liked songs first: a playlist of its own, not a smart one, but made the same way, from what you do.
     val smart = (listOf(Tile(TileKind.PLAYLIST, Playlist.LIKED, name = Playlist.LIKED_NAME)) +

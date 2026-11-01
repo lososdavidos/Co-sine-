@@ -22,6 +22,7 @@ import app.sine.core.subsonic.SubsonicClient
 import app.sine.core.subsonic.SubsonicCredentials
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -225,6 +226,8 @@ class LiveCosineTest {
         assertTrue(friend.sync(0).playlists.none { it.id == offline.playlist.id }, "left")
         assertTrue(sub.playlists().any { it.id == offline.playlist.id }, "still the owner's")
 
+        devicesAndJam(kind, cosine, friend, friendCreds.username, tides.id)
+
         // Scrobbling is the server's (§4A); nothing connected yet.
         assertTrue(Capability.SCROBBLING in kind.capabilities, "$kind")
         val scrobbling = cosine.scrobbling()
@@ -276,5 +279,48 @@ class LiveCosineTest {
         assertEquals(listOf(status.trackId), gone.removedTracks)
         mirror.apply(gone)
         assertEquals(null, mirror.library.value.track(status.trackId!!))
+    }
+
+    /** Devices, their sessions and remote control (§4A, §4B), then a Jam between two accounts (§4C). */
+    private suspend fun devicesAndJam(kind: ServerKind.Cosine, cosine: CosineClient, friend: CosineClient, friendName: String, tidesId: String) {
+        // This phone's session (§4A): kept on Cosine, listed with its song,
+        // and what a Subsonic app's getPlayQueue picks up.
+        assertTrue(Capability.SESSIONS in kind.capabilities, "$kind")
+        val me = app.sine.core.cosine.DeviceInfo("sine-contract", "Contract phone", "phone")
+        cosine.saveSession(me, app.sine.core.cosine.PlaySession(listOf(tidesId), 0, 42_000, playing = true))
+        val kept = cosine.session(me.id)
+        assertEquals(listOf(tidesId), kept.queue)
+        assertEquals(42_000, kept.positionMs)
+        val now = cosine.devices().first { it.device.id == me.id }
+        assertEquals("Tides", now.title)
+        assertEquals("Contract phone", now.device.name)
+        // Remote control through Cosine (§4B): a command sent while this
+        // device listens reaches it at once.
+        val got = kotlinx.coroutines.coroutineScope {
+            val heard = async(kotlinx.coroutines.Dispatchers.IO) { cosine.listen(me.id, waitSeconds = 10) }
+            var listening = false
+            repeat(50) { if (!listening) { kotlinx.coroutines.delay(100); listening = cosine.devices().any { it.device.id == me.id && it.listening } } }
+            assertTrue(listening, "listed as listening")
+            cosine.command(me.id, app.sine.core.cosine.RemoteCommand("seek", positionMs = 9_000))
+            heard.await()
+        }
+        assertEquals(listOf("seek"), got.map { it.type })
+        assertEquals(9_000, got.single().positionMs)
+
+        // Jam (§4C): started, the friend asked and joining, a song added
+        // playing for both, the host's alone to pause, and over when it ends.
+        assertTrue(Capability.JAM in kind.capabilities, "$kind")
+        val jam = cosine.startJam(listOf(friendName))
+        assertEquals(jam.id, friend.jams().invitations.single().id)
+        friend.joinJam(jam.id)
+        cosine.addToJam(jam.id, listOf(tidesId))
+        val heard = friend.jam(jam.id)
+        assertEquals(listOf("Tides"), heard.queue.map { it.title })
+        assertTrue(heard.playing, "the first song plays")
+        val refused = runCatching { friend.jamTransport(jam.id, "pause") }.exceptionOrNull()
+        assertTrue(refused is CosineException && refused.status == 403, "only the host: $refused")
+        cosine.endJam(jam.id)
+        assertEquals(null, friend.jams().jam)
+
     }
 }

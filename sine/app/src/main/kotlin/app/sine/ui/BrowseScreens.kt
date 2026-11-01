@@ -29,6 +29,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import app.sine.ui.phase.PhaseShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
@@ -41,6 +46,8 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -65,6 +72,8 @@ import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseField
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseLabel
+import app.sine.ui.phase.IconTone
+import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseType
 import app.sine.ui.phase.Pill
 import app.sine.ui.phase.PillKind
@@ -303,6 +312,10 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
     }
 
     val canMakePlaylists = session.canEditPlaylists
+    val canUpload = cosine != null && Capability.UPLOAD in account.kind.capabilities
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        startUpload(context, session, uris)
+    }
     // Holding + rolls out what it can make: music to add, or a playlist.
     var choosing by remember { mutableStateOf(false) }
     BackHandler(enabled = choosing) { choosing = false }
@@ -322,19 +335,23 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (!choosing && segment < 2) Chip(null, downloadedOnly, { downloadedOnly = !downloadedOnly }, icon = PhaseIcons.OnPhone, contentDescription = "Only what's on this phone")
-            Spacer(Modifier.weight(1f))
+            if (!choosing) Spacer(Modifier.weight(1f))
             // The choices roll out of + to its left, over where the others were.
             AnimatedVisibility(
                 visible = choosing,
+                // While open, the row is theirs: they share it evenly, the × beside them.
+                modifier = if (choosing) Modifier.weight(1f) else Modifier,
                 enter = expandHorizontally(tween(220), expandFrom = Alignment.End) + fadeIn(tween(160)),
                 exit = shrinkHorizontally(tween(180), shrinkTowards = Alignment.End) + fadeOut(tween(120)),
             ) {
                 Row(
-                    Modifier.clip(PhaseShape.Pill).background(PhaseColor.Float).border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill).padding(4.dp),
+                    Modifier.fillMaxWidth().clip(PhaseShape.Pill).background(PhaseColor.Float).border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill).padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    if (canIngest) Pill("Add music", { choosing = false; nav.navigate(Routes.add()) }, kind = PillKind.Secondary, icon = PhaseIcons.Plus, height = 40.dp)
-                    if (canMakePlaylists) Pill("New playlist", { choosing = false; newPlaylist() }, kind = PillKind.Secondary, icon = PhaseIcons.PlaylistAdd, height = 40.dp)
+                    // One word each, beside the +: what it adds. A screen reader hears the whole action.
+                    if (canIngest) AddChoice("Music", "Add music", PhaseIcons.Plus, Modifier.weight(1f)) { choosing = false; nav.navigate(Routes.add()) }
+                    if (canMakePlaylists) AddChoice("Playlist", "New playlist", PhaseIcons.PlaylistAdd, Modifier.weight(1f)) { choosing = false; newPlaylist() }
+                    if (canUpload) AddChoice("Upload", "Upload from this phone", PhaseIcons.Upload, Modifier.weight(1f)) { choosing = false; pickFiles.launch(arrayOf("audio/*")) }
                 }
             }
             if (canReview && !choosing) {
@@ -360,7 +377,7 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
                     Modifier.graphicsLayer { rotationZ = turn },
                     height = 40.dp, icon = PhaseIcons.Plus,
                     contentDescription = if (choosing) "Close" else if (canIngest) "Add music" else "New playlist",
-                    onLongClick = { choosing = !choosing }, onLongClickLabel = "Add music or make a playlist",
+                    onLongClick = { choosing = !choosing }, onLongClickLabel = if (canUpload) "Add music, make a playlist, or upload" else "Add music or make a playlist",
                 )
             }
         }
@@ -376,6 +393,24 @@ fun LibraryScreen(session: AccountSession, nav: Pages) {
             1 -> AlbumList(session, downloadedOnly, nav)
             else -> PlaylistList(session, nav)
         }
+    }
+}
+
+/** One thing + can add: its icon over its word, a slab of its own in the pill. */
+@Composable
+private fun AddChoice(word: String, name: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
+    Column(
+        modifier
+            .height(52.dp)
+            .clip(PhaseShape.Pill)
+            .background(PhaseColor.Lift)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = name },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        PhaseIcon(icon, null, size = 20.dp, tone = IconTone.Sine)
+        Text(word, color = PhaseColor.Text1, style = PhaseType.Button.copy(fontSize = 12.sp), maxLines = 1)
     }
 }
 

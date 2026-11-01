@@ -19,6 +19,8 @@ import (
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/devices"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/jams"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 )
 
@@ -32,6 +34,10 @@ type API struct {
 	Playlists *playlists.Service
 	// OnPlay hears that plays were recorded (to scrobble them); may be nil.
 	OnPlay func()
+	// Devices keeps each app's play queue (§4A); nil: none is kept.
+	Devices *devices.Service
+	// Jams lets someone in a jam hear its songs they don't have (§4C); nil: no jams.
+	Jams *jams.Service
 }
 
 type request struct {
@@ -86,6 +92,8 @@ func (a *API) Handler() http.Handler {
 		"stream":          serveFile,
 		"download":        serveFile,
 		"getCoverArt":     getCoverArt,
+		"savePlayQueue":   savePlayQueue,
+		"getPlayQueue":    getPlayQueue,
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, hr *http.Request) {
 		name := strings.TrimSuffix(path.Base(hr.URL.Path), ".view")
@@ -395,6 +403,12 @@ func serveFile(r *request) (*Response, error) {
 		return nil, err
 	}
 	rel, contentType, isMissing, err := r.lib.object(r.ctx(), r.user.ID, id)
+	if errors.Is(err, errNotFound) && r.api.Jams != nil {
+		// Not theirs, but playing in a jam they're in (?jam=): they hear it anyway (§4C).
+		if jam, perr := strconv.ParseInt(r.FormValue("jam"), 10, 64); perr == nil && r.api.Jams.Hears(r.ctx(), jam, r.user.ID, id) {
+			rel, contentType, isMissing, err = r.lib.anyObject(r.ctx(), id)
+		}
+	}
 	if err != nil {
 		return nil, wrapNotFound(err)
 	}

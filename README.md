@@ -35,11 +35,20 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Songs you add to the queue play next, in the order you added them, shuffled or not, and stay next if you skip ahead or play something else. The queue shows them all, then the next ten of what's playing
 - Pinned downloads of a track, album, artist or playlist into a folder you choose (SAF). A `.nomedia` file is written there, the folders follow `Artist/Album/Track`, and downloads wait for an unmetered connection unless you allow mobile data. The download budget is soft: it warns but never refuses.
 - Offline: downloaded music browses, plays and shows artwork with the server gone
+- Keep what you stream: songs you play stay on the phone up to a size you choose (Settings, 2 GB by default), so they play offline and never download twice; the least recently played go first
 - Plays are recorded locally as timestamped events and scrobbled with their real time when the server is reachable
 
 **Cosine** has its core: first-run setup in a dashboard, Inbox ingest into a content-hashed Store, a tags/filename resolver, and the Subsonic API Sine uses. Sine can log in to it in place of Navidrome. Details in [`cosine/README.md`](cosine/README.md).
 
-**Adding music from links:** paste a link or search in Sine's Add screen (the Library's + on a Cosine account; hold it to choose between adding music and making a playlist) or with the + in Search's field, share a link to Sine from any app (it goes to the account you're in), or use the dashboard. It looks up as you type: a link at once, a search from the third letter. Each result has its own add button, and an album or playlist can be added whole from the top. Cosine fetches it with yt-dlp and files it. Links shared while offline are kept and sent on reconnect.
+**Adding music from links:** paste a link or search in Sine's Add screen (the Library's + on a Cosine account; hold it to choose adding music, making a playlist, or uploading files from the phone) or with the + in Search's field, share a link to Sine from any app (it goes to the account you're in), or use the dashboard. It looks up as you type: a link at once, a search from the third letter. Each result has its own add button, and an album or playlist can be added whole from the top. Cosine fetches it with yt-dlp and files it. Links shared while offline are kept and sent on reconnect.
+
+**Resume anywhere:** every phone with Sine, and every Subsonic app, keeps its queue and where it got to on Cosine. Sine's Resume tile on Home shows what your other device was playing; tap it to carry on here from that moment. Other apps pick it up through Subsonic's play queue.
+
+**Remote control:** Settings → Devices (or the device mark in Now playing) lists your phones and Subsonic apps with what each is playing. Tap one that's listening to control it from here: play, pause, skip, seek, jump to a song. Play here moves its music to this phone; Play there sends this phone's music to it. It goes through Cosine, so it works anywhere you can reach the server.
+
+**Jam:** listen together with other accounts on your server, wherever they are. Start one from the people mark in Now playing (or Settings → Jam) and pick who to ask; they join from their Jam page. Anyone adds songs (hold a song anywhere, then Add to jam); the host plays, pauses and skips, and everyone hears the same moment within about a second. A song you don't have plays anyway, and Keep it adds it to your library.
+
+**Uploading from the phone:** hold the Library's + and choose Upload, then pick audio files. Each goes up to Cosine, is identified and filed like anything else, and lands in your library only (the Inbox folder is the way to give everyone something).
 
 **Identifying music:** Cosine cleans uploader noise out of titles ("[HD Upgrade]", "(Official Video)", "PREMIERE:"), then looks everything up in MusicBrainz, Discogs and Bandcamp, in that order, and files it under the first confident match's artist and release, with that catalogue's cover. Anything none of them is sure of goes to the review queue (Sine: Library → Review; also in the dashboard). There you pick a match or type the details yourself. Every correction is logged and can be reverted.
 
@@ -67,7 +76,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, remote control, Jam, and the desktop client.
+**Not yet built:** audio fingerprinting, the mirror's live push, the cache's WiFi prefetch, Android Auto browsing, Jam's multi-room mode, and the desktop client.
 
 ## Design
 

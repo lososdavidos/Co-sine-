@@ -60,6 +60,9 @@ class PlayerConnection(private val context: Context) {
     private val prefs = context.getSharedPreferences("player", Context.MODE_PRIVATE)
     /** The account whose songs are playing: the last one to start something. */
     private var playingFor: String? = prefs.getString("account", null)
+
+    /** The account whose songs are playing, if any has played here. */
+    val playingAccount: String? get() = playingFor
     private val _last = MutableStateFlow(readLast())
     val last: StateFlow<LastPlayed?> = _last.asStateFlow()
 
@@ -145,6 +148,10 @@ class PlayerConnection(private val context: Context) {
     }
 
     fun togglePlay() = withController { if (it.isPlaying) it.pause() else it.play() }
+    fun resume() = withController { it.play() }
+    fun pause() = withController { it.pause() }
+    /** The player's own volume, 0 to 1, under the phone's. */
+    fun setVolume(v: Float) = withController { it.volume = v.coerceIn(0f, 1f) }
     fun next() = withController { it.seekToNextMediaItem() }
     fun previous() = withController { it.seekToPrevious() }
     fun seekTo(ms: Long) = withController { it.seekTo(ms) }
@@ -245,8 +252,34 @@ class PlayerConnection(private val context: Context) {
         )
     }
 
-    private fun mediaItem(session: AccountSession, track: Track): MediaItem? {
-        val uri = when (val source = session.playSource(track)) {
+    /**
+     * Plays a jam's songs (§4C) from [index] at [startMs], playing or not as
+     * the jam is: just them, in order, no shuffle, nothing kept from before.
+     */
+    fun playJam(session: AccountSession, jam: Long, songs: List<Track>, index: Int, startMs: Long, playing: Boolean) {
+        val items = songs.mapNotNull { mediaItem(session, it, jam) }
+        if (items.isEmpty()) return
+        playingFor = session.account.id
+        prefs.edit().putString("account", session.account.id).apply()
+        withController { c ->
+            c.shuffleModeEnabled = false
+            c.setMediaItems(items, index.coerceIn(0, items.lastIndex), startMs)
+            c.prepare()
+            if (playing) c.play() else c.pause()
+        }
+    }
+
+    /** More of a jam's songs, at the end, without disturbing what plays. */
+    fun appendJam(session: AccountSession, jam: Long, songs: List<Track>) {
+        val items = songs.mapNotNull { mediaItem(session, it, jam) }
+        if (items.isNotEmpty()) withController { it.addMediaItems(items) }
+    }
+
+    /** Moves to the song at [index] of the list, at [ms]. */
+    fun seekTo(index: Int, ms: Long) = withController { if (index in 0 until it.mediaItemCount) it.seekTo(index, ms) }
+
+    private fun mediaItem(session: AccountSession, track: Track, jam: Long? = null): MediaItem? {
+        val uri = when (val source = if (jam == null) session.playSource(track) else session.jamSource(track, jam)) {
             is PlaySource.Local -> source.location
             is PlaySource.Remote -> source.url
             PlaySource.Unavailable -> return null

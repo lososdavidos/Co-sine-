@@ -143,6 +143,8 @@ class LocalStateTest {
         assertEquals(PlaySource.Local("content://local"), PlaySource.resolve(d, online = true) { "http://s" })
         assertEquals(PlaySource.Remote("http://s"), PlaySource.resolve(null, online = true) { "http://s" })
         assertEquals(PlaySource.Unavailable, PlaySource.resolve(null, online = false) { "http://s" })
+        // Kept whole as it streamed: it plays offline, from the phone.
+        assertEquals(PlaySource.Remote("http://s"), PlaySource.resolve(null, online = false, cached = true) { "http://s" })
     }
 
     @Test

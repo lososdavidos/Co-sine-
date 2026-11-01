@@ -28,6 +28,7 @@ import app.sine.core.model.PlaylistDetail
 import app.sine.core.model.Track
 import app.sine.core.play.PlayLog
 import app.sine.core.play.PlaySource
+import app.sine.playback.StreamCache
 import app.sine.core.server.Capability
 import app.sine.core.subsonic.AlbumListType
 import app.sine.core.subsonic.SubsonicClient
@@ -480,7 +481,11 @@ class AccountSession(
     suspend fun disconnectScrobbler(service: String) = native().disconnectScrobbler(service)
 
     fun playSource(track: Track): PlaySource =
-        PlaySource.resolve(downloads[track.id], isOnline) { client.streamUrl(track.id) }
+        PlaySource.resolve(downloads[track.id], isOnline, StreamCache.has(track.id)) { client.streamUrl(track.id) }
+
+    /** A song in a jam: downloaded, from here; else through the jam, which lets you hear what you don't have (§4C). */
+    fun jamSource(track: Track, jam: Long): PlaySource =
+        PlaySource.resolve(downloads[track.id], isOnline, StreamCache.has(track.id)) { client.streamUrl(track.id, jam) }
 
     fun coverFile(coverArt: String) = File(coversDir, DownloadLayout.sanitize(coverArt) + ".img")
 

@@ -44,10 +44,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        graph.visible.value = true
         graph.player.connect()
     }
 
     override fun onStop() {
+        graph.visible.value = false
         graph.player.disconnect()
         super.onStop()
     }

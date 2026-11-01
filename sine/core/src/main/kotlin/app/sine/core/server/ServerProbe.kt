@@ -59,6 +59,12 @@ object Capability {
     const val HOME_LAYOUT = "home-layout"
     /** Listening statistics, one's own (§6.13). */
     const val STATS = "stats"
+    /** Files uploaded from the phone (§4). */
+    const val UPLOAD = "upload"
+    /** Each install keeps its queue and position on Cosine, to pick up on another (§4A). */
+    const val SESSIONS = "sessions"
+    /** Jam's party mode (§4C). */
+    const val JAM = "jam"
 }
 
 sealed interface ProbeResult {

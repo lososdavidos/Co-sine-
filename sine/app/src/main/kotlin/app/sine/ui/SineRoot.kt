@@ -44,6 +44,9 @@ object Routes {
     const val REVIEW = "review"
     const val DOWNLOADED = "downloaded"
     const val STATS = "stats"
+    const val DEVICES = "devices"
+    const val JAM = "jam"
+    private const val REMOTE = "remote/"
     private const val ARTIST = "artist/"
     private const val ALBUM = "album/"
     private const val PLAYLIST = "playlist/"
@@ -55,6 +58,7 @@ object Routes {
     fun playlist(id: String) = PLAYLIST + Uri.encode(id)
     fun add(text: String = "") = ADD + Uri.encode(text)
     fun correct(track: String) = CORRECT + Uri.encode(track)
+    fun remote(device: String) = REMOTE + Uri.encode(device)
 
     /** What a route of the kind [prefix] names, decoded; null for a route of another kind. */
     private fun arg(route: String, prefix: String): String? =
@@ -65,6 +69,7 @@ object Routes {
     fun playlistOf(route: String) = arg(route, PLAYLIST)
     fun addOf(route: String) = arg(route, ADD)
     fun correctionOf(route: String) = arg(route, CORRECT)
+    fun remoteOf(route: String) = arg(route, REMOTE)
 }
 
 @Composable
@@ -208,6 +213,8 @@ private fun Screen(session: AccountSession, pages: Pages, page: Page) {
         Routes.SETTINGS -> SettingsScreen(session, pages)
         Routes.REVIEW -> ReviewScreen(session, onOpen = { pages.navigate(Routes.correct(it)) })
         Routes.STATS -> StatsScreen(session, pages)
+        Routes.DEVICES -> DevicesScreen(session, pages)
+        Routes.JAM -> JamScreen(session, pages)
         Routes.DOWNLOADED -> DownloadedScreen(session, pages)
         Routes.ADD_ACCOUNT -> AddAccountScreen(onDone = { pages.popBackStack() }, onCancel = { pages.popBackStack() })
         else -> {
@@ -215,6 +222,7 @@ private fun Screen(session: AccountSession, pages: Pages, page: Page) {
             Routes.albumOf(route)?.let { return AlbumScreen(session, it, pages) }
             Routes.playlistOf(route)?.let { return PlaylistScreen(session, it, pages) }
             Routes.addOf(route)?.let { return AddScreen(session, it, onCorrect = { track -> pages.navigate(Routes.correct(track)) }) }
+            Routes.remoteOf(route)?.let { return RemoteScreen(session, it, pages) }
             Routes.correctionOf(route)?.let { return CorrectionScreen(session, it, onDone = { pages.popBackStack() }) }
         }
     }

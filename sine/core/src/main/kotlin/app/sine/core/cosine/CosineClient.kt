@@ -21,6 +21,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
@@ -143,6 +144,16 @@ data class IngestJob(
     val from: String? = null,
     val playlist: Boolean? = null,
 )
+@Serializable private data class SeenRequest(val name: String, val kind: String)
+@Serializable private data class NamesInvite(val invite: List<String>)
+@Serializable private data class NamesBody(val names: List<String>)
+@Serializable private data class JamTransport(val type: String, val positionMs: Long, val index: Int)
+@Serializable private data class AddedResponse(val added: Int = 0)
+@Serializable private data class CommandsResponse(val commands: List<RemoteCommand> = emptyList())
+@Serializable private data class DevicesResponse(val devices: List<DeviceNow> = emptyList())
+@Serializable private data class SaveSession(
+    val name: String, val kind: String, val queue: List<String>, val current: Int, val positionMs: Long, val playing: Boolean,
+)
 @Serializable private data class YearsResponse(val years: List<StatsYear> = emptyList())
 @Serializable private data class SmartResponse(val playlists: List<SmartPlaylist> = emptyList())
 @Serializable private data class RetryRequest(val force: Boolean)
@@ -151,6 +162,10 @@ data class IngestJob(
 @Serializable private data class ErrorResponse(val error: String)
 @Serializable private data class CandidatesResponse(val candidates: List<Candidate> = emptyList())
 @Serializable private data class ChooseRequest(val query: ReviewQuery, val key: String)
+/** An uploaded file, filed: its song, and whether the library had it already. */
+@Serializable
+data class Uploaded(val track: String, val duplicate: Boolean = false)
+
 @Serializable private data class RemoveRequest(val tracks: List<String>)
 @Serializable private data class RemoveResponse(val removed: Int)
 @Serializable private data class CapabilitiesResponse(val version: String, val capabilities: Set<String> = emptySet())
@@ -265,6 +280,74 @@ class CosineClient(
     suspend fun retry(jobId: Long, force: Boolean = false): IngestJob =
         send(post("ingest/jobs/$jobId/retry", RetryRequest.serializer(), RetryRequest(force)), JobResponse.serializer()).job
 
+    /** The account's Devices with a session, the most recently changed first (§4A). */
+    suspend fun devices(): List<DeviceNow> = send(get("devices"), DevicesResponse.serializer()).devices
+
+    /** Names this Device to the account, so it can be found and controlled before it has played anything. */
+    suspend fun seen(device: DeviceInfo) {
+        val json = WireJson.encodeToString(SeenRequest.serializer(), SeenRequest(device.name, device.kind)).toRequestBody(JSON)
+        send(Request.Builder().url(url("devices/${device.id}")).put(json), OkResponse.serializer())
+    }
+
+    /** One Device's session. */
+    suspend fun session(deviceId: String): PlaySession = send(get("devices/$deviceId/session"), PlaySession.serializer())
+
+    /** Keeps what this Device is playing, naming it, so another can pick it up. */
+    suspend fun saveSession(device: DeviceInfo, session: PlaySession) {
+        val body = SaveSession(device.name, device.kind, session.queue, session.current, session.positionMs, session.playing)
+        val json = WireJson.encodeToString(SaveSession.serializer(), body).toRequestBody(JSON)
+        send(Request.Builder().url(url("devices/${device.id}/session")).put(json), OkResponse.serializer())
+    }
+
+    /**
+     * Waits up to [waitSeconds] for what another device tells this one to do
+     * (§4B), and returns it as soon as something comes; empty when nothing did.
+     */
+    suspend fun listen(deviceId: String, waitSeconds: Int = 25): List<RemoteCommand> =
+        send(get("devices/$deviceId/commands", "wait" to waitSeconds.toString()), CommandsResponse.serializer(), via = slow).commands
+
+    /** Tells another of the account's devices to do something; refused (409) when it isn't listening. */
+    suspend fun command(deviceId: String, command: RemoteCommand) {
+        send(post("devices/$deviceId/commands", RemoteCommand.serializer(), command), OkResponse.serializer())
+    }
+
+    // ---------------------------------------------------------------- Jam (§4C)
+
+    suspend fun jams(): Jams = send(get("jams"), Jams.serializer())
+
+    /** Starts a jam, inviting [names]; you're its host. */
+    suspend fun startJam(names: List<String>): Jam = send(post("jams", NamesInvite.serializer(), NamesInvite(names)), Jam.serializer())
+
+    /** The jam now; with [since], waits up to [waitSeconds] for a newer one. */
+    suspend fun jam(id: Long, since: Long = 0, waitSeconds: Int = 25): Jam =
+        send(get("jams/$id", "since" to since.toString(), "wait" to waitSeconds.toString()), Jam.serializer(), via = slow)
+
+    suspend fun joinJam(id: Long) = jamDo(id, "join")
+    suspend fun leaveJam(id: Long) = jamDo(id, "leave")
+    suspend fun endJam(id: Long) = jamDo(id, "end")
+
+    suspend fun inviteToJam(id: Long, names: List<String>) {
+        send(post("jams/$id/invite", NamesBody.serializer(), NamesBody(names)), OkResponse.serializer())
+    }
+
+    /** Adds songs to the jam's queue; anyone in it may. */
+    suspend fun addToJam(id: Long, trackIds: List<String>) {
+        send(post("jams/$id/queue", RemoveRequest.serializer(), RemoveRequest(trackIds)), OkResponse.serializer())
+    }
+
+    /** The host's: play, pause, toggle, seek, next, previous, skip. */
+    suspend fun jamTransport(id: Long, type: String, positionMs: Long = 0, index: Int = 0) {
+        send(post("jams/$id/transport", JamTransport.serializer(), JamTransport(type, positionMs, index)), OkResponse.serializer())
+    }
+
+    private suspend fun jamDo(id: Long, what: String) {
+        send(Request.Builder().url(url("jams/$id/$what")).post(ByteArray(0).toRequestBody(JSON)), OkResponse.serializer())
+    }
+
+    /** Puts songs already on Cosine into this account's library: one heard in a jam (§4C). */
+    suspend fun addToLibrary(trackIds: List<String>): Int =
+        send(post("library/add", RemoveRequest.serializer(), RemoveRequest(trackIds)), AddedResponse.serializer()).added
+
     /** Listening in [window] (30d, year, a year such as 2025, or all), the top [limit] of each kind (§6.13). */
     suspend fun stats(window: String = "30d", limit: Int = 10): Stats =
         send(get("stats", "window" to window, "limit" to limit.toString()), Stats.serializer())
@@ -292,6 +375,17 @@ class CosineClient(
      * Inbox won't bring them back, though adding one again on purpose will.
      * Returns how many were in the library.
      */
+    /**
+     * Uploads one file from the phone (§4): filed like anything else, into
+     * this account's library. [body] is its bytes, and must give them again
+     * if asked twice (a new session). Waits while Cosine files it.
+     */
+    suspend fun upload(name: String, body: RequestBody): Uploaded =
+        send(Request.Builder().url(url("library/upload", "name" to name)).post(body), Uploaded.serializer(), via = slow)
+
+    /** For uploads: the bytes take as long as they take, and so does filing them. */
+    private val slow by lazy { http.newBuilder().readTimeout(10, TimeUnit.MINUTES).writeTimeout(10, TimeUnit.MINUTES).build() }
+
     suspend fun remove(trackIds: List<String>): Int =
         send(post("library/remove", RemoveRequest.serializer(), RemoveRequest(trackIds)), RemoveResponse.serializer()).removed
 

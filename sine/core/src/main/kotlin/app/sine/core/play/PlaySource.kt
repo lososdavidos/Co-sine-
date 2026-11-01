@@ -9,9 +9,14 @@ sealed interface PlaySource {
     data object Unavailable : PlaySource
 
     companion object {
-        fun resolve(downloaded: DownloadedTrack?, online: Boolean, streamUrl: () -> String): PlaySource = when {
+        /**
+         * A download first; else the stream, online, or offline when the
+         * stream was kept whole on the phone as it played ([cached]): the
+         * player then reads it from there and never reaches for the server.
+         */
+        fun resolve(downloaded: DownloadedTrack?, online: Boolean, cached: Boolean = false, streamUrl: () -> String): PlaySource = when {
             downloaded != null -> Local(downloaded.location)
-            online -> Remote(streamUrl())
+            online || cached -> Remote(streamUrl())
             else -> Unavailable
         }
     }

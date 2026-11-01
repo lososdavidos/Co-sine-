@@ -163,8 +163,9 @@ class SubsonicClient(
         call(if (liked) "star" else "unstar", "id" to trackId)
     }
 
-    fun streamUrl(trackId: String): String =
-        url("stream", "id" to trackId, "format" to "raw").toString()
+    /** A song's stream; with [jam], one you hear through that jam though you don't have it (§4C). */
+    fun streamUrl(trackId: String, jam: Long? = null): String =
+        (if (jam == null) url("stream", "id" to trackId, "format" to "raw") else url("stream", "id" to trackId, "format" to "raw", "jam" to jam)).toString()
 
     /** The original file, byte for byte. Used for pinned downloads. */
     fun downloadUrl(trackId: String): String = url("download", "id" to trackId).toString()

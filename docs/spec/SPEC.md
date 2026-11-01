@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 186 resolved decisions · last updated 2026-11-01 (Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 195 resolved decisions · last updated 2026-11-01 (keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -410,6 +410,15 @@ costs nothing and makes the visible folder mean something.
 | **Pinned** | Explicit downloads. Never evicted. Own budget. Visible folder. Guarantees G1. |
 | **Cache** | Filled by the WiFi prefetch policy. Evictable under pressure, own cap. |
 
+`NOTE` Built (0.8.0), the cache tier's first part: every song streamed is
+kept in app-private storage as it plays, under its own id (so a stream
+address that changes still finds it), up to a size set in Settings → Keep
+what you stream (Off, 1, 2 or 8 GB; 2 by default), the least recently
+played going first, and a smaller size trims at once. A song kept whole
+plays offline and is never fetched twice; a pinned download isn't kept a
+second time. Not built yet: the WiFi prefetch that fills it ahead of
+listening, and skipped songs going first.
+
 `RESOLVED` **Metered detection follows Android's metered flag,** not "is it
 WiFi". A tethered hotspot is correctly treated as expensive — which is exactly
 the case where getting it wrong costs real money.
@@ -653,6 +662,16 @@ would be. One code path, no special-case storage area.
 Per §2.2, the uploaded file itself is stored byte-for-byte as received — the
 resolver decides *where* it goes, never *what it contains*.
 
+`NOTE` Built (0.7.1): Sine's Library + offers Upload when held: pick audio
+files on the phone and they go one at a time to `POST
+/cosine/v1/library/upload?name=` (capability `upload`), the bytes as the
+body. Cosine ingests each as source `upload`, into the uploader's Library
+only — an upload is asked for, so unlike an Inbox drop it is no broadcast,
+and it lifts a dismissed marker. It answers with the song, or that it was
+there already; anything not audio is refused (415) and leaves nothing
+behind. The shelf says how it goes: each file as it uploads, then how many
+were filed, already there, or refused.
+
 ### 4.1 The Inbox
 
 `RESOLVED` Nothing writes into the Store but the server. Getting files in from
@@ -705,6 +724,18 @@ playlist should show the gap rather than hide it.
 the server, so playback resumes across devices — phone to browser to any
 Subsonic client. The Subsonic API already carries a play-queue endpoint, so
 third-party clients get this for free.
+
+`NOTE` Built (0.8.0) as per-Device sessions (§4B): each install of Sine,
+and each Subsonic app by its client name, keeps its own queue, song and
+position on Cosine (`PUT /cosine/v1/devices/{id}/session`, capability
+`sessions`; `savePlayQueue` for Subsonic apps). Sine sends it a moment
+after anything changes, and every half minute while playing. Subsonic's
+`getPlayQueue` answers with the account's most recently changed session,
+whichever device it was, so any app picks up where any other left off.
+Sine's Resume tile shows what another of your devices was playing last
+and where it got to; a tap plays it here from that moment, its queue's
+next songs after it (Q85: another device's session is offered, never
+taken over without asking).
 
 `RESOLVED` **Scrobbling is server-side.** Last.fm / ListenBrainz credentials
 live on the server, which scrobbles when a play arrives. Offline plays that sync
@@ -782,14 +813,30 @@ UI, model, sync and library code are shared; the audio layer is not.
 `RESOLVED` **Any device can control any other device on the same account.** The
 phone drives what the desktop is playing: transport, queue, volume, seek.
 
-`RESOLVED` **Control is direct, over the LAN.** Devices discover each other by
-mDNS and talk peer-to-peer, without Cosine in the path, so remote control keeps
-working when the server is down.
+`REVISED` **Control goes through Cosine.** (Was: direct over the LAN, by
+mDNS, peer to peer.) Cosine already holds every Device's session, so a
+command is a message to it there: it works wherever Cosine can be
+reached, not only at home, and Jam (§4C) shares the one path. The cost
+accepted: with the server down, devices can't control each other — the
+same moment they can't stream from it either. Q78's relay is the design
+now, not a fallback.
 
-⚠️ Consequence: **remote control does not work off-LAN.** You cannot pause the
-desktop from outside the house. Cosine already holds a WebSocket to every
-connected client, so a server-relayed fallback would be nearly free if that turns
-out to matter — noted as Q78, not built.
+`NOTE` Built (0.8.0): a Device listens at `GET
+/cosine/v1/devices/{id}/commands` (held open up to 25 s, answered the
+moment a command comes); another of the account's sends one with `POST`:
+play, pause, toggle, next, previous, seek, skip to a song in its queue,
+volume, or a queue to play from a song and moment. A Device that hasn't
+listened in the last 70 s is away, and a command to it is refused at
+once (409) rather than left waiting; one not taken within 20 s is
+dropped, never acted on late. Commands live in memory only. Sine listens
+while it's on screen or playing, reports its session straight after
+doing what it was told, and backs off to a minute when the server is
+away. Its Devices page (Settings, or the device mark in Now playing)
+shows this phone and the others, each with what it plays and whether
+it's listening; one tapped is controlled from here — its transport, its
+wave to seek, what's next to skip to — with Play here (its music on this
+phone, from its moment, and it paused) and Play there (this phone's
+music sent to it, and this phone paused).
 
 This makes **Device** a first-class concept the model did not previously have:
 
@@ -820,6 +867,27 @@ spec should carry them as two modes rather than one feature:
 Sub-100ms alignment is meaningless between two people in different cities; a
 one-second offset is invisible there and unacceptable in one room. One mechanism
 serving both would mean paying multi-room's cost everywhere.
+
+`NOTE` Built (0.8.0): the party mode only; multi-room waits. Cosine keeps
+each jam (migration v9: jams, jam_members, jam_queue; capability `jam`):
+its host, who's asked and who's in, one queue in the order added with
+who added each, and where the music is as an anchor — song, position, the
+moment that was true, playing or not. Every listener works out "now" from
+the anchor and the songs' lengths, as Cosine does, so a song ending moves
+everyone on without a message. A listener waits on the jam (`GET
+/cosine/v1/jams/{id}?since=VERSION`, held open up to 25 s) and hears a
+change the moment there is one; between changes Sine checks every few
+seconds and puts back anything more than 0.9 s off. Anyone in it adds
+songs (any song in the Store: a jam is heard, not browsed); only the host
+plays, pauses, seeks and skips (403 otherwise). Someone without a song
+streams it through the jam (`stream?jam=`), allowed only while they're in
+it and the song is in its queue; Keep it puts it in their library
+(`POST /cosine/v1/library/add`). The host leaving ends it for everyone;
+starting or joining another leaves the one you were in. Sine's Jam page
+(the people mark in Now playing, or Settings) starts one with the
+accounts you pick, shows the jams you're asked to, and in one, who's
+there, what plays and who added it, the queue, and the host's transport;
+any song held anywhere offers Add to jam.
 
 ### 4C.1a Rules
 
@@ -2067,6 +2135,7 @@ not silently keep gigabytes.
 | — | Shared playlists | Auto-add Pointers for missing Tracks on accept |
 | — | Multiple qualities | Linked as versions of one Track |
 | — | Device storage | Two tiers: pinned (never evicted) + cache (evictable) |
+| — | The cache, first | What's streamed is kept, by song, least recently played going first; its size in Settings, 2 GB by default |
 | — | Transcoding | None. Originals only |
 | — | Pointer target | Track, with optional version pin |
 | — | Version matching | Resolved identity only; no fingerprinting |
@@ -2233,7 +2302,15 @@ not silently keep gigabytes.
 | — | The shelf's colour | The accent near black; the place you're in a pill of its gradient |
 | — | Fixed colour | Settings → Appearance: from the artwork (default), or one of seven fixed colours |
 | — | Artist dividers | Filed without a leading "The", accents aside, # first; the list sorts by the same rule, so its letters always show |
-| — | Library's + | A tap adds music; held, a pill rolls out of it to choose Add music or New playlist, and it turns to a × that rolls it back |
+| — | Library's + | A tap adds music; held, a pill rolls out of it to choose Music, Playlist or Upload, each its icon over its word, and it turns to a × that rolls it back |
+| — | Devices | Each install and Subsonic app is a Device with its own session on Cosine; getPlayQueue is the latest of them |
+| — | Resume | A Home tile: another device's last session, played here from its moment on a tap |
+| — | Remote control | Through Cosine, not peer to peer: works anywhere the server can be reached; a device away is said at once |
+| — | Jam, first | The party mode only, through Cosine; multi-room waits |
+| — | Jam's clock | An anchor (song, position, moment, playing) every listener works out "now" from; more than 0.9 s off is put back |
+| — | Jam's songs | Anyone adds any song in the Store; one you don't have streams through the jam; Keep it adds it |
+| — | Moving music | Play here takes another device's music from its moment; Play there sends this phone's |
+| — | Uploads | From the phone to the uploader's Library only, one file at a time, filed like any ingest |
 
 ---
 
@@ -2269,7 +2346,7 @@ decided.
 
 | # | Question | Proposal |
 |---|---|---|
-| Q78 | Server-relayed remote control off-LAN | Not built. Direct LAN as decided; the relay stays a known cheap addition if controlling the desktop from elsewhere turns out to matter. |
+| Q78 | Server-relayed remote control off-LAN | **Overturned**: control goes through Cosine always (§4B), so it works off-LAN by design. |
 | Q82 | Do Jam plays count for everyone? | A play is recorded for every participant who holds a Pointer for that Track. Someone hearing it without having it records nothing — there is nothing to attach it to. If they add it during the jam, it counts from then on. |
 | Q84 | Desktop playback backend | VLCJ. libVLC decodes everything yt-dlp can produce, it's a single dependency, and it saves writing format handling twice. GStreamer is the alternative if VLCJ's licensing or footprint becomes a problem. |
 | Q85 | Which session does "resume" pick? | The current device's own session by default. When another Device has a more recent session, offer "continue from <device>" rather than asking every time. |

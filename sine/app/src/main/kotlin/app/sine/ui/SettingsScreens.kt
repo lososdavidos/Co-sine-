@@ -33,6 +33,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.mutableLongStateOf
+import app.sine.playback.StreamCache
 import app.sine.ui.phase.PhaseShape
 import app.sine.ui.phase.Ambient
 import app.sine.core.color.Accents
@@ -83,6 +85,9 @@ private const val GB = 1024L * 1024 * 1024
 private val budgets: List<Pair<String, Long?>> = listOf(
     "None" to null, "2 GB" to 2 * GB, "8 GB" to 8 * GB, "32 GB" to 32 * GB, "128 GB" to 128 * GB,
 )
+
+/** How much of what's streamed is kept. */
+private val streamCaches = listOf("Off" to 0L, "1 GB" to (1L shl 30), "2 GB" to (2L shl 30), "8 GB" to (8L shl 30))
 
 @Composable
 fun SettingsScreen(session: AccountSession, nav: Pages) {
@@ -146,6 +151,20 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
                 TopSpace()
                 Text("Settings", color = PhaseColor.Text1, style = PhaseType.display(44.sp))
             }
+        }
+        // Jam (§4C): listening with other accounts.
+        if (session.can(Capability.JAM)) item {
+            ItemRow(
+                "Jam", "Listen together with other accounts", null, showArt = false,
+                end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) },
+            ) { nav.navigate(Routes.JAM) }
+        }
+        // Your devices (§4B): this phone and the others, to control them from here.
+        if (session.can(Capability.SESSIONS)) item {
+            ItemRow(
+                "Devices", "Your phones and apps, and controlling them", null, showArt = false,
+                end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) },
+            ) { nav.navigate(Routes.DEVICES) }
         }
         // Listening (§6.13): reached from the account control, as yours alone.
         if (session.can(Capability.STATS)) item {
@@ -229,6 +248,32 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
             Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("On this phone: ${Voice.songs(downloads.size)}, ${Voice.formatBytes(total)}.", Modifier.weight(1f), color = PhaseColor.Text2, style = PhaseType.Body)
                 if (downloads.isNotEmpty()) Pill("Remove all", ::askRemoveAll, kind = PillKind.QuietFault, height = 40.dp)
+            }
+        }
+
+        // Keeping what you stream (§2.5): played songs stay, to play offline and not download twice.
+        item {
+            var kept by remember { mutableLongStateOf(StreamCache.size()) }
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Keep what you stream", color = PhaseColor.Text1, style = PhaseType.Name)
+                    Text(
+                        "Songs you play stay on this phone up to this much, the least recently played going first. Kept whole, they play offline.",
+                        color = PhaseColor.Text2, style = PhaseType.Small,
+                    )
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    streamCaches.forEach { (label, bytes) ->
+                        Chip(label, settings.streamCacheBytes == bytes, {
+                            graph.settings.setStreamCache(bytes)
+                            kept = StreamCache.size()
+                        })
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Kept now: ${Voice.formatBytes(kept)}.", Modifier.weight(1f), color = PhaseColor.Text2, style = PhaseType.Body)
+                    if (kept > 0) Pill("Clear", { StreamCache.clear(); kept = 0 }, kind = PillKind.Quiet, height = 40.dp)
+                }
             }
         }
 

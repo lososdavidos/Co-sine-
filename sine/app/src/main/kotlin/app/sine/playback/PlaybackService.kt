@@ -45,7 +45,8 @@ class PlaybackService : MediaSessionService() {
             .setConnectTimeoutMs(8_000)
             .setReadTimeoutMs(30_000)
         val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http)))
+            // Streams are kept as they play, up to the size set (StreamCache).
+            .setMediaSourceFactory(DefaultMediaSourceFactory(StreamCache.dataSource(DefaultDataSource.Factory(this, http))))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -144,7 +145,8 @@ class PlaybackService : MediaSessionService() {
         ): ListenableFuture<MutableList<MediaItem>> = Futures.immediateFuture(
             mediaItems.map { item ->
                 val uri = item.requestMetadata.mediaUri
-                if (uri == null) item else item.buildUpon().setUri(uri).build()
+                // Kept under the song's id, so a changed stream address still finds it.
+                if (uri == null) item else item.buildUpon().setUri(uri).setCustomCacheKey(item.mediaId).build()
             }.toMutableList()
         )
     }

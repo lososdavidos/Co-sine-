@@ -31,6 +31,8 @@ object TileKind {
     const val DOWNLOADED = "downloaded"
     const val REVIEW = "review"
     const val INGEST = "ingest"
+    /** Pick up what another device was playing (§4A). */
+    const val RESUME = "resume"
     /** Listening statistics (§6.13). */
     const val STATS = "stats"
 

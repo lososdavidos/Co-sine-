@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import app.sine.core.model.Track
+import app.sine.core.server.Capability
 import app.sine.core.text.Voice
 import app.sine.data.AccountSession
 import app.sine.graph
@@ -154,8 +155,16 @@ fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
                                     style = PhaseType.Name.copy(fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            // The Device marker (§6.6): where this is playing.
-                            Tag(null, icon = PhaseIcons.Device, contentDescription = "Playing on this phone")
+                            // Jam lives in now playing (§6.2): listening with others (§4C).
+                            if (session.can(Capability.JAM)) {
+                                Pill(null, { nav.navigate(Routes.JAM) }, kind = PillKind.Floating, icon = PhaseIcons.Jam, height = 40.dp, width = 48.dp, contentDescription = "Jam")
+                            }
+                            // The Device marker (§6.6): where this is playing; with other devices to reach, it opens them (§4B).
+                            if (session.can(Capability.SESSIONS)) {
+                                Pill(null, { nav.navigate(Routes.DEVICES) }, kind = PillKind.Floating, icon = PhaseIcons.Device, height = 40.dp, width = 48.dp, contentDescription = "Playing on this phone. Devices")
+                            } else {
+                                Tag(null, icon = PhaseIcons.Device, contentDescription = "Playing on this phone")
+                            }
                         }
                         Box(contentAlignment = Alignment.Center) {
                             Art(meta.artworkUri, 350.dp, Modifier.fillMaxWidth().aspectRatio(1f))
