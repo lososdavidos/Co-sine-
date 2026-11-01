@@ -144,6 +144,8 @@ data class IngestJob(
     val from: String? = null,
     val playlist: Boolean? = null,
 )
+@Serializable private data class SeenRequest(val name: String, val kind: String)
+@Serializable private data class CommandsResponse(val commands: List<RemoteCommand> = emptyList())
 @Serializable private data class DevicesResponse(val devices: List<DeviceNow> = emptyList())
 @Serializable private data class SaveSession(
     val name: String, val kind: String, val queue: List<String>, val current: Int, val positionMs: Long, val playing: Boolean,
@@ -277,6 +279,12 @@ class CosineClient(
     /** The account's Devices with a session, the most recently changed first (§4A). */
     suspend fun devices(): List<DeviceNow> = send(get("devices"), DevicesResponse.serializer()).devices
 
+    /** Names this Device to the account, so it can be found and controlled before it has played anything. */
+    suspend fun seen(device: DeviceInfo) {
+        val json = WireJson.encodeToString(SeenRequest.serializer(), SeenRequest(device.name, device.kind)).toRequestBody(JSON)
+        send(Request.Builder().url(url("devices/${device.id}")).put(json), OkResponse.serializer())
+    }
+
     /** One Device's session. */
     suspend fun session(deviceId: String): PlaySession = send(get("devices/$deviceId/session"), PlaySession.serializer())
 
@@ -285,6 +293,18 @@ class CosineClient(
         val body = SaveSession(device.name, device.kind, session.queue, session.current, session.positionMs, session.playing)
         val json = WireJson.encodeToString(SaveSession.serializer(), body).toRequestBody(JSON)
         send(Request.Builder().url(url("devices/${device.id}/session")).put(json), OkResponse.serializer())
+    }
+
+    /**
+     * Waits up to [waitSeconds] for what another device tells this one to do
+     * (§4B), and returns it as soon as something comes; empty when nothing did.
+     */
+    suspend fun listen(deviceId: String, waitSeconds: Int = 25): List<RemoteCommand> =
+        send(get("devices/$deviceId/commands", "wait" to waitSeconds.toString()), CommandsResponse.serializer(), via = slow).commands
+
+    /** Tells another of the account's devices to do something; refused (409) when it isn't listening. */
+    suspend fun command(deviceId: String, command: RemoteCommand) {
+        send(post("devices/$deviceId/commands", RemoteCommand.serializer(), command), OkResponse.serializer())
     }
 
     /** Listening in [window] (30d, year, a year such as 2025, or all), the top [limit] of each kind (§6.13). */

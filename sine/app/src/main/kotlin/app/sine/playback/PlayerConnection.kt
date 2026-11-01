@@ -148,6 +148,10 @@ class PlayerConnection(private val context: Context) {
     }
 
     fun togglePlay() = withController { if (it.isPlaying) it.pause() else it.play() }
+    fun resume() = withController { it.play() }
+    fun pause() = withController { it.pause() }
+    /** The player's own volume, 0 to 1, under the phone's. */
+    fun setVolume(v: Float) = withController { it.volume = v.coerceIn(0f, 1f) }
     fun next() = withController { it.seekToNextMediaItem() }
     fun previous() = withController { it.seekToPrevious() }
     fun seekTo(ms: Long) = withController { it.seekTo(ms) }

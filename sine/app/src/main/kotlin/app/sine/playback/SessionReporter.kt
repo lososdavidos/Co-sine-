@@ -21,7 +21,18 @@ import kotlinx.coroutines.launch
 class SessionReporter(private val graph: AppGraph) {
     private data class Shape(val queue: List<String>, val index: Int, val playing: Boolean)
 
-    fun start(scope: CoroutineScope) = scope.launch(Dispatchers.Main) {
+    private var scope: CoroutineScope? = null
+
+    /** Sends the session now: after a remote command, so the device that sent it sees it done. */
+    fun sendNow() {
+        scope?.launch(Dispatchers.Main) {
+            delay(300) // the player's state catches up first
+            val s = graph.player.state.value
+            if (s.current != null) send(Shape(s.queue.map { it.item.mediaId }, s.index, s.isPlaying))
+        }
+    }
+
+    fun start(scope: CoroutineScope) = scope.also { this.scope = it }.launch(Dispatchers.Main) {
         graph.player.state
             .map { s -> Shape(s.queue.map { it.item.mediaId }, s.index, s.isPlaying) }
             .distinctUntilChanged()

@@ -22,6 +22,7 @@ import app.sine.core.subsonic.SubsonicClient
 import app.sine.core.subsonic.SubsonicCredentials
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -218,6 +219,18 @@ class LiveCosineTest {
         val now = cosine.devices().first { it.device.id == me.id }
         assertEquals("Tides", now.title)
         assertEquals("Contract phone", now.device.name)
+        // Remote control through Cosine (§4B): a command sent while this
+        // device listens reaches it at once.
+        val got = kotlinx.coroutines.coroutineScope {
+            val heard = async(kotlinx.coroutines.Dispatchers.IO) { cosine.listen(me.id, waitSeconds = 10) }
+            var listening = false
+            repeat(50) { if (!listening) { kotlinx.coroutines.delay(100); listening = cosine.devices().any { it.device.id == me.id && it.listening } } }
+            assertTrue(listening, "listed as listening")
+            cosine.command(me.id, app.sine.core.cosine.RemoteCommand("seek", positionMs = 9_000))
+            heard.await()
+        }
+        assertEquals(listOf("seek"), got.map { it.type })
+        assertEquals(9_000, got.single().positionMs)
 
         // Shared with a second account (§2.3), who accepts it and gets its songs.
         assertTrue(Capability.SHARED_PLAYLISTS in kind.capabilities, "$kind")

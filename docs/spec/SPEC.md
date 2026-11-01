@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 190 resolved decisions · last updated 2026-11-01 (devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 191 resolved decisions · last updated 2026-11-01 (devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -811,6 +811,23 @@ reached, not only at home, and Jam (§4C) shares the one path. The cost
 accepted: with the server down, devices can't control each other — the
 same moment they can't stream from it either. Q78's relay is the design
 now, not a fallback.
+
+`NOTE` Built (0.8.0): a Device listens at `GET
+/cosine/v1/devices/{id}/commands` (held open up to 25 s, answered the
+moment a command comes); another of the account's sends one with `POST`:
+play, pause, toggle, next, previous, seek, skip to a song in its queue,
+volume, or a queue to play from a song and moment. A Device that hasn't
+listened in the last 70 s is away, and a command to it is refused at
+once (409) rather than left waiting; one not taken within 20 s is
+dropped, never acted on late. Commands live in memory only. Sine listens
+while it's on screen or playing, reports its session straight after
+doing what it was told, and backs off to a minute when the server is
+away. Its Devices page (Settings, or the device mark in Now playing)
+shows this phone and the others, each with what it plays and whether
+it's listening; one tapped is controlled from here — its transport, its
+wave to seek, what's next to skip to — with Play here (its music on this
+phone, from its moment, and it paused) and Play there (this phone's
+music sent to it, and this phone paused).
 
 This makes **Device** a first-class concept the model did not previously have:
 
@@ -2257,7 +2274,8 @@ not silently keep gigabytes.
 | — | Library's + | A tap adds music; held, a pill rolls out of it to choose Music, Playlist or Upload, each its icon over its word, and it turns to a × that rolls it back |
 | — | Devices | Each install and Subsonic app is a Device with its own session on Cosine; getPlayQueue is the latest of them |
 | — | Resume | A Home tile: another device's last session, played here from its moment on a tap |
-| — | Remote control | Through Cosine, not peer to peer: works anywhere the server can be reached |
+| — | Remote control | Through Cosine, not peer to peer: works anywhere the server can be reached; a device away is said at once |
+| — | Moving music | Play here takes another device's music from its moment; Play there sends this phone's |
 | — | Uploads | From the phone to the uploader's Library only, one file at a time, filed like any ingest |
 
 ---

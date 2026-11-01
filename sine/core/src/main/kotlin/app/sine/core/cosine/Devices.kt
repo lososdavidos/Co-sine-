@@ -33,4 +33,21 @@ data class DeviceNow(
     val playing: Boolean = false,
     val songs: Int = 0,
     val updatedAt: String = "",
+    /** There now, and can be controlled (§4B). */
+    val listening: Boolean = false,
+)
+
+/**
+ * Something one Device tells another to do (§4B): play, pause, toggle,
+ * next, previous, seek ([positionMs]), skip (to [index] in its queue),
+ * volume ([volume], 0 to 1), or queue: play [queue] from [index] at [positionMs].
+ */
+@Serializable
+data class RemoteCommand(
+    val type: String,
+    val positionMs: Long = 0,
+    val index: Int = 0,
+    val volume: Double = 0.0,
+    val queue: List<String> = emptyList(),
+    val from: String = "",
 )

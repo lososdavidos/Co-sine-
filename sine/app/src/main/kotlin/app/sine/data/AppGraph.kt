@@ -2,6 +2,7 @@ package app.sine.data
 
 import android.content.Context
 import java.util.UUID
+import app.sine.playback.RemoteListener
 import app.sine.playback.SessionReporter
 import app.sine.core.cosine.DeviceInfo
 import android.os.Build
@@ -94,8 +95,15 @@ class AppGraph(private val context: Context) {
         }
     }
 
+    /** Whether Sine is on screen: with it, or playing, this phone can be controlled from another (§4B). */
+    val visible = MutableStateFlow(false)
+
+    /** Tells Cosine what this phone plays (§4A). */
+    val reporter = SessionReporter(this)
+
     init {
-        SessionReporter(this).start(scope)
+        reporter.start(scope)
+        RemoteListener(this).start(scope)
         // Offline work goes up as soon as there is a network again.
         scope.launch {
             network.state.collect { state ->

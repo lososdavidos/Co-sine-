@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
@@ -122,4 +123,46 @@ func deviceServer(t *testing.T) (*httptest.Server, *db.DB) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv, d
+}
+
+func TestRemoteControl(t *testing.T) {
+	// One device tells another what to do, through Cosine (§4B).
+	srv, _ := deviceServer(t)
+	tok := login(t, srv)
+	call(t, srv, "PUT", "/cosine/v1/devices/tablet", tok, map[string]any{"name": "Tablet", "kind": "phone"})
+	if code, _ := call(t, srv, "POST", "/cosine/v1/devices/tablet/commands", tok, map[string]any{"type": "pause"}); code != http.StatusConflict {
+		t.Fatal("not listening yet, so 409:", code)
+	}
+	got := make(chan map[string]any, 1)
+	go func() {
+		_, out := call(t, srv, "GET", "/cosine/v1/devices/tablet/commands?wait=5", tok, nil)
+		got <- out
+	}()
+	// Once it's listening, it's listed so, and a command reaches it at once.
+	var listening bool
+	for i := 0; i < 50 && !listening; i++ {
+		time.Sleep(20 * time.Millisecond)
+		_, list := call(t, srv, "GET", "/cosine/v1/devices", tok, nil)
+		for _, d := range list["devices"].([]any) {
+			listening = listening || d.(map[string]any)["listening"] == true
+		}
+	}
+	if !listening {
+		t.Fatal("not listed as listening")
+	}
+	if code, _ := call(t, srv, "POST", "/cosine/v1/devices/tablet/commands", tok, map[string]any{"type": "seek", "positionMs": 9000}); code != http.StatusAccepted {
+		t.Fatal(code)
+	}
+	select {
+	case out := <-got:
+		cmds := out["commands"].([]any)
+		if len(cmds) != 1 || cmds[0].(map[string]any)["type"] != "seek" || cmds[0].(map[string]any)["positionMs"] != float64(9000) {
+			t.Fatal(out)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the command didn't arrive")
+	}
+	if code, _ := call(t, srv, "POST", "/cosine/v1/devices/tablet/commands", tok, map[string]any{"type": "explode"}); code != http.StatusBadRequest {
+		t.Fatal(code)
+	}
 }

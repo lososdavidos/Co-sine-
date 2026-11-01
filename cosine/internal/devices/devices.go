@@ -11,6 +11,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
@@ -54,13 +55,18 @@ type Now struct {
 	PositionMs int64     `json:"positionMs"`
 	Playing    bool      `json:"playing"`
 	Songs      int       `json:"songs"` // in its queue
-	UpdatedAt  time.Time `json:"updatedAt"`
+	UpdatedAt  time.Time `json:"updatedAt,omitzero"`
+	// Listening: it's there now, and can be controlled (§4B).
+	Listening bool `json:"listening"`
 }
 
 type Service struct {
 	DB *db.DB
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
+	// Hub carries remote control's commands; made when first needed.
+	Hub  *Hub
+	once sync.Once
 }
 
 func (s *Service) now() time.Time {
@@ -175,13 +181,16 @@ func (s *Service) session(ctx context.Context, where string, args ...any) (Sessi
 	return sess, nil
 }
 
-// Playing lists the account's Devices with a session, the most recently
-// changed first, each with the song it's at.
+// Playing lists the account's Devices that have played something or are
+// there to be controlled now, the most recently changed first, each with
+// the song it's at.
 func (s *Service) Playing(ctx context.Context, user int64) ([]Now, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT d.client_id, d.name, d.kind, d.last_seen, p.queue, p.current, p.position_ms, p.playing, p.updated_at
-		FROM devices d JOIN play_sessions p ON p.device_id = d.id
-		WHERE d.user_id = ? ORDER BY p.updated_at DESC`, user)
+		SELECT d.id, d.client_id, d.name, d.kind, d.last_seen,
+		       COALESCE(p.queue, '[]'), COALESCE(p.current, 0), COALESCE(p.position_ms, 0), COALESCE(p.playing, 0),
+		       COALESCE(p.updated_at, 0), p.device_id IS NOT NULL
+		FROM devices d LEFT JOIN play_sessions p ON p.device_id = d.id
+		WHERE d.user_id = ? ORDER BY COALESCE(p.updated_at, d.last_seen) DESC`, user)
 	if err != nil {
 		return nil, err
 	}
@@ -189,13 +198,21 @@ func (s *Service) Playing(ctx context.Context, user int64) ([]Now, error) {
 	out := []Now{}
 	for rows.Next() {
 		var n Now
-		var seen, updated int64
+		var row, seen, updated int64
 		var queue string
 		var cur int
-		if err := rows.Scan(&n.Device.ID, &n.Device.Name, &n.Device.Kind, &seen, &queue, &cur, &n.PositionMs, &n.Playing, &updated); err != nil {
+		var played bool
+		if err := rows.Scan(&row, &n.Device.ID, &n.Device.Name, &n.Device.Kind, &seen, &queue, &cur, &n.PositionMs, &n.Playing, &updated, &played); err != nil {
 			return nil, err
 		}
-		n.Device.LastSeen, n.UpdatedAt = time.UnixMilli(seen), time.UnixMilli(updated)
+		n.Listening = s.hub().listening(row)
+		if !played && !n.Listening {
+			continue
+		}
+		n.Device.LastSeen = time.UnixMilli(seen)
+		if played {
+			n.UpdatedAt = time.UnixMilli(updated)
+		}
 		var ids []int64
 		json.Unmarshal([]byte(queue), &ids)
 		n.Songs = len(ids)
