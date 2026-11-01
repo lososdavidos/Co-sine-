@@ -19,6 +19,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/homes"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/jams"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/mirror"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/playlists"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/review"
@@ -50,6 +51,8 @@ type API struct {
 	Homes *homes.Service
 	// Devices keeps each client's playback session; nil: none are kept.
 	Devices *devices.Service
+	// Jams: Jam's party mode; nil: none.
+	Jams *jams.Service
 }
 
 func (a *API) capabilities() []string {
@@ -86,6 +89,9 @@ func (a *API) capabilities() []string {
 	}
 	if a.Devices != nil {
 		caps = append(caps, CapSessions)
+	}
+	if a.Jams != nil {
+		caps = append(caps, CapJam)
 	}
 	return caps
 }
@@ -127,6 +133,9 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Devices != nil {
 		a.registerDevices(mux)
+	}
+	if a.Jams != nil {
+		a.registerJams(mux)
 	}
 }
 

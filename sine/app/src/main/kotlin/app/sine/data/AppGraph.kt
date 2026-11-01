@@ -2,6 +2,7 @@ package app.sine.data
 
 import android.content.Context
 import java.util.UUID
+import app.sine.playback.JamFollower
 import app.sine.playback.RemoteListener
 import app.sine.playback.SessionReporter
 import app.sine.core.cosine.DeviceInfo
@@ -101,8 +102,12 @@ class AppGraph(private val context: Context) {
     /** Tells Cosine what this phone plays (§4A). */
     val reporter = SessionReporter(this)
 
+    /** The jam this phone is in, held to its clock (§4C). */
+    val jam = JamFollower(this)
+
     init {
         reporter.start(scope)
+        jam.start(scope)
         RemoteListener(this).start(scope)
         // Offline work goes up as soon as there is a network again.
         scope.launch {

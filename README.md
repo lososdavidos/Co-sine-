@@ -45,6 +45,8 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Remote control:** Settings → Devices (or the device mark in Now playing) lists your phones and Subsonic apps with what each is playing. Tap one that's listening to control it from here: play, pause, skip, seek, jump to a song. Play here moves its music to this phone; Play there sends this phone's music to it. It goes through Cosine, so it works anywhere you can reach the server.
 
+**Jam:** listen together with other accounts on your server, wherever they are. Start one from the people mark in Now playing (or Settings → Jam) and pick who to ask; they join from their Jam page. Anyone adds songs (hold a song anywhere, then Add to jam); the host plays, pauses and skips, and everyone hears the same moment within about a second. A song you don't have plays anyway, and Keep it adds it to your library.
+
 **Uploading from the phone:** hold the Library's + and choose Upload, then pick audio files. Each goes up to Cosine, is identified and filed like anything else, and lands in your library only (the Inbox folder is the way to give everyone something).
 
 **Identifying music:** Cosine cleans uploader noise out of titles ("[HD Upgrade]", "(Official Video)", "PREMIERE:"), then looks everything up in MusicBrainz, Discogs and Bandcamp, in that order, and files it under the first confident match's artist and release, with that catalogue's cover. Anything none of them is sure of goes to the review queue (Sine: Library → Review; also in the dashboard). There you pick a match or type the details yourself. Every correction is logged and can be reverted.
@@ -73,7 +75,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, Jam, and the desktop client.
+**Not yet built:** audio fingerprinting, the mirror's live push, the cache tier, Android Auto browsing, Jam's multi-room mode, and the desktop client.
 
 ## Design
 

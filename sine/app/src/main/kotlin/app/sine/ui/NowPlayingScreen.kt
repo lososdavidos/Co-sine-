@@ -155,6 +155,10 @@ fun NowPlayingScreen(session: AccountSession, nav: Pages, onClose: () -> Unit) {
                                     style = PhaseType.Name.copy(fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
+                            // Jam lives in now playing (§6.2): listening with others (§4C).
+                            if (session.can(Capability.JAM)) {
+                                Pill(null, { nav.navigate(Routes.JAM) }, kind = PillKind.Floating, icon = PhaseIcons.Jam, height = 40.dp, width = 48.dp, contentDescription = "Jam")
+                            }
                             // The Device marker (§6.6): where this is playing; with other devices to reach, it opens them (§4B).
                             if (session.can(Capability.SESSIONS)) {
                                 Pill(null, { nav.navigate(Routes.DEVICES) }, kind = PillKind.Floating, icon = PhaseIcons.Device, height = 40.dp, width = 48.dp, contentDescription = "Playing on this phone. Devices")

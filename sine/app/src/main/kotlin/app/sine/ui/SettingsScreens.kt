@@ -147,6 +147,13 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
                 Text("Settings", color = PhaseColor.Text1, style = PhaseType.display(44.sp))
             }
         }
+        // Jam (§4C): listening with other accounts.
+        if (session.can(Capability.JAM)) item {
+            ItemRow(
+                "Jam", "Listen together with other accounts", null, showArt = false,
+                end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) },
+            ) { nav.navigate(Routes.JAM) }
+        }
         // Your devices (§4B): this phone and the others, to control them from here.
         if (session.can(Capability.SESSIONS)) item {
             ItemRow(

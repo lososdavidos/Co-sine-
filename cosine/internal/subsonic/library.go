@@ -364,6 +364,17 @@ ORDER BY o.missing, COALESCE(o.hash = p.pin_hash, 0) DESC, o.size DESC LIMIT 1`,
 	return
 }
 
+// anyObject is a Track's file whoever holds it: for a jam's listeners (§4C).
+func (l library) anyObject(ctx context.Context, id int64) (rel, contentType string, missing bool, err error) {
+	err = l.db.QueryRowContext(ctx, `
+SELECT o.rel_path, o.content_type, o.missing FROM objects o WHERE o.track_id = ?
+ORDER BY o.missing, o.size DESC LIMIT 1`, id).Scan(&rel, &contentType, &missing)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = errNotFound
+	}
+	return
+}
+
 func (l library) releaseArt(ctx context.Context, id string) (string, error) {
 	var art sql.NullString
 	var err error

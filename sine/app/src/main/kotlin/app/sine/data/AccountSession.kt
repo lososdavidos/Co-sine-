@@ -482,6 +482,10 @@ class AccountSession(
     fun playSource(track: Track): PlaySource =
         PlaySource.resolve(downloads[track.id], isOnline) { client.streamUrl(track.id) }
 
+    /** A song in a jam: downloaded, from here; else through the jam, which lets you hear what you don't have (§4C). */
+    fun jamSource(track: Track, jam: Long): PlaySource =
+        PlaySource.resolve(downloads[track.id], isOnline) { client.streamUrl(track.id, jam) }
+
     fun coverFile(coverArt: String) = File(coversDir, DownloadLayout.sanitize(coverArt) + ".img")
 
     /** Local cover first, so artwork works offline (G1). */

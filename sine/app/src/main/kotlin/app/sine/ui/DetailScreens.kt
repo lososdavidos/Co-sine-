@@ -453,6 +453,23 @@ internal fun trackSelection(
             say(if (n == 0) Voice.TRACK_UNAVAILABLE else if (n == 1) "Added to the queue." else "$n songs added to the queue.")
             onClear()
         })
+        // In a jam: into its one queue, for everyone (§4C).
+        context.graph.jam.jam.value?.let { jam ->
+            add(ShelfAction("Add to jam", icon = PhaseIcons.Jam) {
+                scope.launch {
+                    try {
+                        session.cosine?.addToJam(jam.id, chosen.map { it.id })
+                        context.graph.jam.refresh()
+                        say(if (chosen.size == 1) "Added to the jam." else "${chosen.size} songs added to the jam.")
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        say("The jam didn't take it.", Signal.Server)
+                    }
+                }
+                onClear()
+            })
+        }
         add(ShelfAction("Download", icon = PhaseIcons.OnPhone) {
             chosen.filterNot { it.id in session.downloads }.forEach {
                 startDownload(context, session, DownloadNode.OfTrack(it.id), chosen, nav, quiet = true)

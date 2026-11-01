@@ -27,6 +27,33 @@ const maxUpload = 2 << 30
 func (a *API) registerLibrary(mux *http.ServeMux) {
 	mux.HandleFunc("POST /cosine/v1/library/remove", a.authed(a.remove))
 	mux.HandleFunc("POST /cosine/v1/library/upload", a.authed(a.upload))
+	mux.HandleFunc("POST /cosine/v1/library/add", a.authed(a.addToLibrary))
+}
+
+// addToLibrary puts songs already in the Store into the caller's Library:
+// one heard in a jam, say (§4C). Asked for, so a removal marker goes.
+func (a *API) addToLibrary(w http.ResponseWriter, r *http.Request, u auth.User) {
+	var req removeRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	n := 0
+	for _, t := range req.Tracks {
+		id, ok := review.ParseTrack(t)
+		if !ok {
+			continue
+		}
+		if err := a.Ingester.Undismiss(r.Context(), id, []int64{u.ID}); err != nil {
+			a.fail(w, err)
+			return
+		}
+		if err := a.Ingester.GrantPointers(r.Context(), id, []int64{u.ID}); err != nil {
+			a.fail(w, err)
+			return
+		}
+		n++
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"added": n})
 }
 
 // upload takes one audio file, its bytes as the body and its name in

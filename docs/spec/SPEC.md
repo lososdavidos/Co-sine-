@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 191 resolved decisions · last updated 2026-11-01 (devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 194 resolved decisions · last updated 2026-11-01 (Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -858,6 +858,27 @@ spec should carry them as two modes rather than one feature:
 Sub-100ms alignment is meaningless between two people in different cities; a
 one-second offset is invisible there and unacceptable in one room. One mechanism
 serving both would mean paying multi-room's cost everywhere.
+
+`NOTE` Built (0.8.0): the party mode only; multi-room waits. Cosine keeps
+each jam (migration v9: jams, jam_members, jam_queue; capability `jam`):
+its host, who's asked and who's in, one queue in the order added with
+who added each, and where the music is as an anchor — song, position, the
+moment that was true, playing or not. Every listener works out "now" from
+the anchor and the songs' lengths, as Cosine does, so a song ending moves
+everyone on without a message. A listener waits on the jam (`GET
+/cosine/v1/jams/{id}?since=VERSION`, held open up to 25 s) and hears a
+change the moment there is one; between changes Sine checks every few
+seconds and puts back anything more than 0.9 s off. Anyone in it adds
+songs (any song in the Store: a jam is heard, not browsed); only the host
+plays, pauses, seeks and skips (403 otherwise). Someone without a song
+streams it through the jam (`stream?jam=`), allowed only while they're in
+it and the song is in its queue; Keep it puts it in their library
+(`POST /cosine/v1/library/add`). The host leaving ends it for everyone;
+starting or joining another leaves the one you were in. Sine's Jam page
+(the people mark in Now playing, or Settings) starts one with the
+accounts you pick, shows the jams you're asked to, and in one, who's
+there, what plays and who added it, the queue, and the host's transport;
+any song held anywhere offers Add to jam.
 
 ### 4C.1a Rules
 
@@ -2275,6 +2296,9 @@ not silently keep gigabytes.
 | — | Devices | Each install and Subsonic app is a Device with its own session on Cosine; getPlayQueue is the latest of them |
 | — | Resume | A Home tile: another device's last session, played here from its moment on a tap |
 | — | Remote control | Through Cosine, not peer to peer: works anywhere the server can be reached; a device away is said at once |
+| — | Jam, first | The party mode only, through Cosine; multi-room waits |
+| — | Jam's clock | An anchor (song, position, moment, playing) every listener works out "now" from; more than 0.9 s off is put back |
+| — | Jam's songs | Anyone adds any song in the Store; one you don't have streams through the jam; Keep it adds it |
 | — | Moving music | Play here takes another device's music from its moment; Play there sends this phone's |
 | — | Uploads | From the phone to the uploader's Library only, one file at a time, filed like any ingest |
 

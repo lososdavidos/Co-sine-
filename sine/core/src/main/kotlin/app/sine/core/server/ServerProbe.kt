@@ -63,6 +63,8 @@ object Capability {
     const val UPLOAD = "upload"
     /** Each install keeps its queue and position on Cosine, to pick up on another (§4A). */
     const val SESSIONS = "sessions"
+    /** Jam's party mode (§4C). */
+    const val JAM = "jam"
 }
 
 sealed interface ProbeResult {
