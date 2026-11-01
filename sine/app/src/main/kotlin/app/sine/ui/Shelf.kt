@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Rect
@@ -77,7 +78,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import app.sine.graph
 import app.sine.ui.phase.Ambience
+import app.sine.ui.phase.Ambient
 import app.sine.ui.phase.IconTone
+import app.sine.ui.phase.SineBrush
 import app.sine.ui.phase.Initial
 import app.sine.ui.phase.LocalSayName
 import app.sine.ui.phase.PhaseColor
@@ -235,8 +238,10 @@ fun DetailBar(back: String, onBack: () -> Unit, showAccount: Boolean, modifier: 
     Row(
         modifier
             .fillMaxWidth()
+            // Its buttons are bare icons (§6.1): what scrolls under them fades into the ground first.
+            .background(Brush.verticalGradient(listOf(PhaseColor.Ground.copy(alpha = 0.92f), PhaseColor.Ground.copy(alpha = 0.75f), PhaseColor.Ground.copy(alpha = 0f))))
             .statusBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 16.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -297,8 +302,9 @@ fun Shelf(
             .onSizeChanged { shelf.reserve = with(density) { it.height.toDp() } + navBar + 24.dp }
             .onGloballyPositioned { onBounds(it.boundsInRoot()) }
             .clip(PhaseShape.Floating)
-            .background(PhaseColor.Float)
-            .border(1.dp, PhaseColor.LineFloat, PhaseShape.Floating)
+            // The shelf wears the accent, dark: the cover's colour, near black (§6.3).
+            .background(Ambient.shelf.value)
+            .border(1.dp, Ambient.shelfLine.value, PhaseShape.Floating)
             .animateContentSize(tween(160)),
     ) {
         if (question != null) {
@@ -320,7 +326,7 @@ fun Shelf(
             Box {
                 // The cover, blurred behind the row (§6.7), under Float at the
                 // strength that keeps the row's text readable over any cover.
-                Ambience(art, Modifier.matchParentSize(), fadeFrom = null, scrim = PhaseColor.Float.copy(alpha = BAR_SCRIM), weakTint = true)
+                Ambience(art, Modifier.matchParentSize(), fadeFrom = null, scrim = Ambient.shelf.value.copy(alpha = BAR_SCRIM), weakTint = true)
                 Column {
                     PlayerRow(
                         title = item.mediaMetadata.title?.toString().orEmpty(),
@@ -366,8 +372,9 @@ fun SelectionBar(selection: ShelfSelection, modifier: Modifier = Modifier) {
             .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
             .fillMaxWidth()
             .clip(PhaseShape.Floating)
-            .background(PhaseColor.Float)
-            .border(1.dp, PhaseColor.LineFloat, PhaseShape.Floating),
+            // The shelf wears the accent, dark: the cover's colour, near black (§6.3).
+            .background(Ambient.shelf.value)
+            .border(1.dp, Ambient.shelfLine.value, PhaseShape.Floating),
     ) { SelectionRows(selection) }
 }
 
@@ -405,7 +412,7 @@ private fun PlayerRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("$artist ", color = PhaseColor.Text2, style = PhaseType.Small.copy(fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     // The Device marker: once remote control exists, playback may be elsewhere (§6.6).
-                    PhaseIcon(PhaseIcons.Device, "This phone", size = 14.dp, tone = IconTone.Dim)
+                    PhaseIcon(PhaseIcons.Device, "This phone", size = 14.dp, tone = IconTone.Nav)
                 }
             }
         }
@@ -428,13 +435,14 @@ private fun Seam(durationMs: Long, playing: Boolean, key: String, position: () -
             delay(500)
         }
     }
-    Box(Modifier.fillMaxWidth().height(2.dp).background(PhaseColor.LineFloat)) {
-        Box(Modifier.fillMaxWidth(fraction).height(2.dp).background(PhaseColor.Sine))
+    Box(Modifier.fillMaxWidth().height(2.dp).background(Ambient.shelfLine.value)) {
+        Box(Modifier.fillMaxWidth(fraction).height(2.dp).background(PhaseColor.SineBrush))
     }
 }
 
 /**
- * Navigation: three icons, the one you're in on the light pill and named.
+ * Navigation: three icons, the one you're in on a pill of the accent's
+ * gradient and named; the others a soft tint of it (§6.1).
  * The pill is one thing that moves: with the finger while a swipe carries
  * you between destinations, and with the slide when one is tapped. A name
  * comes out from behind its icon as the pill arrives, and goes back in as
@@ -456,7 +464,7 @@ private fun NavRow(destinations: List<Destination>, current: String?, position: 
                     layout(constraints.maxWidth, constraints.maxHeight) { pill.place(((slot + gapPx) * position).roundToInt(), 0) }
                 }
                 .clip(PhaseShape.Pill)
-                .background(PhaseColor.Text1),
+                .background(PhaseColor.SineBrush),
         )
         Row(Modifier.fillMaxSize().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(gap)) {
             destinations.forEachIndexed { i, d ->
@@ -479,7 +487,7 @@ private fun NavRow(destinations: List<Destination>, current: String?, position: 
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    PhaseIcon(d.icon, null, size = 22.dp, tone = if (under > 0.5f) IconTone.OnLight else IconTone.Dim)
+                    PhaseIcon(d.icon, null, size = 22.dp, tone = if (under > 0.5f) IconTone.OnSine else IconTone.Nav)
                     Text(
                         d.label,
                         Modifier.clearAndSetSemantics {}.outFromBehind(under).padding(start = 8.dp),

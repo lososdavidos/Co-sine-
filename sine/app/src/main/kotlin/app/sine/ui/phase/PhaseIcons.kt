@@ -152,8 +152,12 @@ class IconTone(val top: Color, val bottom: Color, val edge: Color, val rim: Colo
         val Dim = IconTone(Color(0xFFCDD0D3), Color(0xFF8C9094), Color(0xFF303336))
         /** Marks beside a row: a chevron, a local copy. */
         val Faint = IconTone(Color(0xFFA9ACB0), Color(0xFF777B7F), Color(0xFF282B2E))
-        /** The accent, lit: it follows the artwork on screen with Sine (Ambient). */
-        val Sine: IconTone get() = IconTone(Ambient.light.value, Ambient.far.value, Ambient.deep.value, Color(0xD9F2F8FF))
+        /** The accent, lit: it follows the artwork on screen with Sine (Ambient). An icon button is this, bare. */
+        val Sine: IconTone get() = IconTone(Ambient.light.value, Ambient.fill.value, Ambient.deep.value, Color(0xD9F2F8FF))
+        /** The accent's far hue, lit: icons beside each other take turns, so a row isn't flat. */
+        val SineFar: IconTone get() = IconTone(Ambient.lightFar.value, Ambient.far.value, Ambient.deep.value, Color(0xD9F2F8FF))
+        /** On the shelf, which wears the accent dark: a soft tint of it. */
+        val Nav: IconTone get() = IconTone(Ambient.navTop.value, Ambient.navBottom.value, Ambient.deep.value)
         val Cosine = IconTone(Color(0xFF63A8EE), Color(0xFF0F63AF), Color(0xFF062F57), Color(0xB3B5D7F7))
         val Fault = IconTone(Color(0xFFFFA59B), Color(0xFFE5483B), Color(0xFF6E1C16), Color(0xCCFFE1DC))
         /** Ink on a Sine pill: dark, its shadow a deeper blue. */

@@ -35,14 +35,51 @@ import kotlinx.coroutines.withContext
  * as the blue, so ink reads on it as well (Accents).
  */
 object Ambient {
-    class Colors(val fill: Color, val far: Color, val light: Color, val deep: Color)
+    /** An accent in all its strengths (Accents.Accent). */
+    class Colors(
+        val fill: Color, val far: Color, val light: Color, val lightFar: Color, val deep: Color,
+        val shelf: Color, val shelfLine: Color, val navTop: Color, val navBottom: Color,
+    ) {
+        internal val all get() = listOf(fill, far, light, lightFar, deep, shelf, shelfLine, navTop, navBottom)
+    }
 
-    val Blue = Colors(Color(0xFF53A4FF), Color(0xFF3F8FF0), Color(0xFFB2D6FF), Color(0xFF0E4683))
+    private fun Accents.Accent.colors() = Colors(
+        Color(fill), Color(far), Color(light), Color(lightFar), Color(deep),
+        Color(shelf), Color(shelfLine), Color(navTop), Color(navBottom),
+    )
 
-    internal val fill = Animatable(Blue.fill)
-    internal val far = Animatable(Blue.far)
-    internal val light = Animatable(Blue.light)
-    internal val deep = Animatable(Blue.deep)
+    /** Phase's own blue, exact where it was set by hand, the rest worked out as for any hue. */
+    val Blue: Colors = Accents.accent(Accents.fixed.first().second).let {
+        Colors(
+            Color(0xFF53A4FF), Color(0xFF3F8FF0), Color(0xFFB2D6FF), Color(it.lightFar), Color(0xFF0E4683),
+            Color(it.shelf), Color(it.shelfLine), Color(it.navTop), Color(it.navBottom),
+        )
+    }
+
+    /** One of the fixed colours by name (Settings, Appearance); null, the artwork's. */
+    fun fixed(name: String?): Colors? {
+        val hues = Accents.fixed.firstOrNull { it.first == name }?.second ?: return null
+        return if (hues == Accents.fixed.first().second) Blue else Accents.accent(hues).colors()
+    }
+
+    private val shown = Blue.all.map { Animatable(it) }
+    internal val fill get() = shown[0]
+    internal val far get() = shown[1]
+    internal val light get() = shown[2]
+    internal val lightFar get() = shown[3]
+    internal val deep get() = shown[4]
+    internal val shelf get() = shown[5]
+    internal val shelfLine get() = shown[6]
+    internal val navTop get() = shown[7]
+    internal val navBottom get() = shown[8]
+
+    /** Eases every strength to [target]. */
+    internal suspend fun easeTo(target: Colors) = coroutineScope {
+        target.all.forEachIndexed { i, c -> launch { shown[i].animateTo(c, tween(EASE_MS)) } }
+    }
+
+    /** Set by Settings: a fixed colour instead of the artwork's. */
+    var fixed by mutableStateOf<Colors?>(null)
 
     /** A source of colour: a page's artwork, or (weakly) the song playing in the shelf. */
     internal class Source(val weak: Boolean) {
@@ -70,8 +107,7 @@ object Ambient {
     private fun pick(bitmap: Bitmap): Colors? {
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        val a = Accents.accent(Accents.hues(pixels) ?: return null)
-        return Colors(Color(a.fill), Color(a.far), Color(a.light), Color(a.deep))
+        return Accents.accent(Accents.hues(pixels) ?: return null).colors()
     }
 }
 
@@ -92,21 +128,16 @@ fun AmbientSource(model: Any?, weak: Boolean = false) {
     }
 }
 
-/** Works out the accent from the sources, and eases into it. Once, at the root. */
+/** Works out the accent from the sources, or the fixed colour, and eases into it. Once, at the root. */
 @Composable
 fun AmbientHost() {
     val context = LocalContext.current.applicationContext
-    val model = Ambient.sources.lastOrNull { !it.weak && it.model != null }?.model
+    val fixed = Ambient.fixed
+    val model = if (fixed != null) null else Ambient.sources.lastOrNull { !it.weak && it.model != null }?.model
         ?: Ambient.sources.lastOrNull { it.model != null }?.model
-    LaunchedEffect(model) {
-        val target = model?.let { runCatching { Ambient.colorsOf(context, it) }.getOrNull() } ?: Ambient.Blue
-        coroutineScope {
-            val ease = tween<Color>(EASE_MS)
-            launch { Ambient.fill.animateTo(target.fill, ease) }
-            launch { Ambient.far.animateTo(target.far, ease) }
-            launch { Ambient.light.animateTo(target.light, ease) }
-            launch { Ambient.deep.animateTo(target.deep, ease) }
-        }
+    LaunchedEffect(model, fixed) {
+        val target = fixed ?: model?.let { runCatching { Ambient.colorsOf(context, it) }.getOrNull() } ?: Ambient.Blue
+        Ambient.easeTo(target)
     }
 }
 
