@@ -29,6 +29,7 @@ import app.sine.graph
 import app.sine.ui.phase.LocalSayName
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseIcons
+import app.sine.ui.phase.Ambient
 import app.sine.ui.phase.PhaseTheme
 import app.sine.ui.phase.Signal
 import kotlinx.coroutines.delay
@@ -69,6 +70,9 @@ object Routes {
 fun SineRoot() {
     val graph = LocalContext.current.graph
     PhaseTheme {
+        // Appearance: a fixed colour instead of the artwork's (§6.1).
+        val fixedColour = graph.settings.state.collectAsStateWithLifecycle().value.fixedColour
+        LaunchedEffect(fixedColour) { Ambient.fixed = Ambient.fixed(fixedColour) }
         val accounts by graph.accounts.state.collectAsStateWithLifecycle()
         val session by graph.activeSession.collectAsStateWithLifecycle()
         val share by graph.incomingShare.collectAsStateWithLifecycle()

@@ -33,6 +33,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.sine.ui.phase.PhaseShape
+import app.sine.ui.phase.Ambient
+import app.sine.core.color.Accents
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
@@ -156,6 +166,9 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
             }
         }
 
+        item { SectionHeader("Appearance") }
+        item { ColourSetting(settings.fixedColour) { graph.settings.setFixedColour(it) } }
+
         item { SectionHeader("Downloads") }
         item {
             val folder = settings.downloadTreeUri?.let { Uri.parse(it).lastPathSegment?.substringAfter(':') }
@@ -223,6 +236,48 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
                 "Phase type: Instrument Sans and Martian Mono, under the SIL Open Font License.",
                 Modifier.padding(horizontal = 20.dp, vertical = 24.dp), color = PhaseColor.Text3, style = PhaseType.Small,
             )
+        }
+    }
+}
+
+/**
+ * Sine's colour (§6.1): the artwork's, as it changes, or one kept fixed.
+ * Each fixed one is shown as it fills: its gradient, square, since it's read.
+ */
+@Composable
+private fun ColourSetting(fixed: String?, onChoose: (String?) -> Unit) {
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Colour", color = PhaseColor.Text1, style = PhaseType.Name)
+            Text(
+                if (fixed == null) "Taken from the artwork on screen." else "$fixed, whatever is on screen. Red and the server's blue never change.",
+                color = PhaseColor.Text2, style = PhaseType.Small,
+            )
+        }
+        Chip("From the artwork", fixed == null, { onChoose(null) })
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            for ((name, _) in Accents.fixed) {
+                val colors = Ambient.fixed(name) ?: continue
+                val on = fixed == name
+                Column(
+                    Modifier
+                        .clip(PhaseShape.Square)
+                        .selectable(selected = on, role = Role.RadioButton, onClick = { onChoose(name) })
+                        .padding(4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(PhaseShape.Square)
+                            .background(Brush.linearGradient(listOf(colors.fill, colors.far)))
+                            .then(if (on) Modifier.border(2.dp, PhaseColor.Text1, PhaseShape.Square) else Modifier),
+                        contentAlignment = Alignment.Center,
+                    ) { if (on) PhaseIcon(PhaseIcons.Check, null, size = 22.dp, tone = IconTone.OnSine) }
+                    Text(name, color = if (on) PhaseColor.Text1 else PhaseColor.Text2, style = PhaseType.Small)
+                }
+            }
         }
     }
 }

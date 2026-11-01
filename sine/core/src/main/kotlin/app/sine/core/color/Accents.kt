@@ -15,8 +15,16 @@ object Accents {
     /** Two hues, in degrees: the cover's strongest, and a second for the gradient's far end. */
     data class Hues(val main: Float, val far: Float)
 
-    /** An accent in three strengths, ARGB: the fill, a lighter top and a deep edge, as icons are lit. */
-    data class Accent(val fill: Int, val far: Int, val light: Int, val deep: Int)
+    /**
+     * An accent in its strengths, ARGB: the fill and the gradient's far end;
+     * each lit lighter on top, as icons are, over a deep edge; the shelf's
+     * surface and hairline, the hue near black; and the shelf's own icons,
+     * a soft tint of it.
+     */
+    data class Accent(
+        val fill: Int, val far: Int, val light: Int, val lightFar: Int, val deep: Int,
+        val shelf: Int, val shelfLine: Int, val navTop: Int, val navBottom: Int,
+    )
 
     private const val BINS = 24
     private const val BIN = 360f / BINS
@@ -77,7 +85,26 @@ object Accents {
         fill = atLuminance(hues.main, FILL),
         far = atLuminance(hues.far, FILL),
         light = atLuminance(hues.main, LIGHT, saturation = 0.9f),
+        lightFar = atLuminance(hues.far, LIGHT, saturation = 0.9f),
         deep = atLuminance(hues.main, DEEP),
+        shelf = hsl(hues.main, 0.38f, 0.115f),
+        shelfLine = hsl(hues.main, 0.32f, 0.19f),
+        navTop = atLuminance(hues.main, 0.78f, saturation = 0.6f),
+        navBottom = atLuminance(hues.main, 0.45f, saturation = 0.6f),
+    )
+
+    /**
+     * The fixed colours to choose from instead of the artwork's (Settings):
+     * a name, and the hues of its gradient. The blue is Phase's own.
+     */
+    val fixed = listOf(
+        "Blue" to Hues(253f, 228f),
+        "Teal" to Hues(178f, 205f),
+        "Green" to Hues(140f, 168f),
+        "Amber" to Hues(38f, 14f),
+        "Coral" to Hues(10f, 345f),
+        "Pink" to Hues(335f, 300f),
+        "Violet" to Hues(280f, 250f),
     )
 
     // The blue's own: #53A4FF, and its icon's lit top and deep edge.
@@ -119,7 +146,7 @@ object Accents {
         return Triple((h + 360f) % 360f, if (mx == 0f) 0f else d / mx, mx)
     }
 
-    private fun hsl(h: Float, s: Float, l: Float): Int {
+    fun hsl(h: Float, s: Float, l: Float): Int {
         val c = (1 - abs(2 * l - 1)) * s
         val x = c * (1 - abs((h / 60f) % 2 - 1))
         val m = l - c / 2

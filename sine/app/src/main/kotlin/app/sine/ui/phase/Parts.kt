@@ -32,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.material3.ripple
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -89,6 +92,17 @@ enum class PillKind {
  */
 val LocalSayName = staticCompositionLocalOf<(String) -> Unit> { {} }
 
+/**
+ * The light an icon button takes, bare (no pill behind it): the accent, the
+ * near hue or the far one; red where it removes; Cosine for the server.
+ */
+fun PillKind.bareTone(): IconTone = when (this) {
+    PillKind.Primary, PillKind.Secondary -> IconTone.Sine
+    PillKind.Server -> IconTone.Cosine
+    PillKind.Fault, PillKind.SecondaryFault, PillKind.QuietFault -> IconTone.Fault
+    else -> IconTone.SineFar
+}
+
 /** The light an icon takes on a pill of this kind. */
 fun PillKind.iconTone(): IconTone = when (this) {
     PillKind.Primary -> IconTone.OnSine
@@ -100,9 +114,11 @@ fun PillKind.iconTone(): IconTone = when (this) {
 }
 
 /**
- * Something you press. Transport is a pill too, wider than tall: a round
- * button would read as a person. With an icon and no [text] it's an icon
- * button: [contentDescription] is its name, said when it's held.
+ * Something you press. With words it's a pill, wider than tall: a round
+ * button would read as a person. With an icon and no [text] the icon is the
+ * button (§6.1): no pill and no outline behind it, lit in the artwork's
+ * colours, [height] by [width] of touch around it, a glow of its colour
+ * under the finger. [contentDescription] is its name, said when it's held.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -138,6 +154,7 @@ fun Pill(
     val strong = kind == PillKind.Primary || kind == PillKind.Server || kind == PillKind.Fault || kind == PillKind.SecondaryFault
     val textSize = if (height < 44.dp) 13.sp else if (height < 48.dp) 14.sp else 15.sp
     val iconOnly = icon != null && text == null && count == null
+    val bare = iconOnly
     val sayName = LocalSayName.current
     Row(
         modifier
@@ -150,10 +167,17 @@ fun Pill(
                     else -> Modifier.defaultMinSize(minWidth = height)
                 },
             )
-            .clip(PhaseShape.Pill)
-            .then(if (kind == PillKind.Primary) Modifier.background(PhaseColor.SineBrush) else Modifier.background(background))
-            .then(if (kind == PillKind.Outline) Modifier.border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill) else Modifier)
+            .then(
+                when {
+                    bare -> Modifier
+                    kind == PillKind.Primary -> Modifier.clip(PhaseShape.Pill).background(PhaseColor.SineBrush)
+                    kind == PillKind.Outline -> Modifier.clip(PhaseShape.Pill).border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill)
+                    else -> Modifier.clip(PhaseShape.Pill).background(background)
+                },
+            )
             .combinedClickable(
+                interactionSource = null,
+                indication = if (bare) ripple(bounded = false, radius = height / 2, color = if (kind.bareTone() == IconTone.Fault) PhaseColor.Fault else PhaseColor.Sine) else ripple(),
                 enabled = enabled, role = Role.Button, onClick = onClick, onDoubleClick = onDoubleClick,
                 onLongClickLabel = if (text == null && contentDescription != null) "Say its name" else null,
                 onLongClick = if (text == null && contentDescription != null) ({ sayName(contentDescription) }) else null,
@@ -173,11 +197,13 @@ fun Pill(
         if (icon != null) {
             val iconSize = when {
                 text != null -> if (height >= 56.dp) 22.dp else 18.dp
-                height >= 56.dp -> 26.dp
-                height >= 44.dp -> 22.dp
-                else -> 20.dp
+                // Bare, the icon is all there is to see: larger, the primary largest.
+                kind == PillKind.Primary -> height * 0.72f
+                height >= 56.dp -> 30.dp
+                height >= 44.dp -> 26.dp
+                else -> 22.dp
             }
-            PhaseIcon(icon, null, size = iconSize, tone = kind.iconTone())
+            PhaseIcon(icon, null, size = iconSize, tone = if (bare && !enabled) IconTone.Dim else if (bare) kind.bareTone() else kind.iconTone())
         }
         if (text != null) {
             Text(
@@ -308,7 +334,7 @@ fun Segmented(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     val icon = icons?.getOrNull(i)
-                    if (icon != null) PhaseIcon(icon, null, size = 20.dp, tone = if (on) IconTone.OnLight else IconTone.Dim)
+                    if (icon != null) PhaseIcon(icon, null, size = 20.dp, tone = if (on) IconTone.OnLight else IconTone.Nav)
                     if (icon == null || on) {
                         Text(
                             label, maxLines = 1, color = if (on) PhaseColor.Ink else PhaseColor.Text2,
@@ -323,7 +349,9 @@ fun Segmented(
 
 /**
  * A filter or a choice among settings: outlined, the light pill when on. With
- * an [icon] and no [text], [contentDescription] names it, and holding it says so.
+ * an [icon] and no [text] it's a switch, the icon alone (§6.1): lit, with a
+ * dot beneath, when on; grey when off. [contentDescription] names it, and
+ * holding it says so.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -338,15 +366,21 @@ fun Chip(
     val sayName = LocalSayName.current
     Row(
         modifier
-            .height(40.dp)
+            .height(if (text == null) 48.dp else 40.dp)
             .then(if (text == null) Modifier.width(52.dp) else Modifier)
-            .clip(PhaseShape.Pill)
-            .background(if (selected) PhaseColor.Text1 else Color.Transparent)
-            .border(1.dp, if (selected) PhaseColor.Text1 else PhaseColor.LineFloat, PhaseShape.Pill)
+            .then(
+                if (text == null) Modifier.drawBehind {
+                    if (selected) drawCircle(Ambient.far.value, radius = 2.dp.toPx(), center = Offset(size.width / 2, size.height - 3.dp.toPx()))
+                } else Modifier
+                    .clip(PhaseShape.Pill)
+                    .background(if (selected) PhaseColor.Text1 else Color.Transparent)
+                    .border(1.dp, if (selected) PhaseColor.Text1 else PhaseColor.LineFloat, PhaseShape.Pill),
+            )
             .then(
                 if (text == null && contentDescription != null) {
                     Modifier
                         .combinedClickable(
+                            interactionSource = null, indication = ripple(bounded = false, radius = 24.dp, color = PhaseColor.Sine),
                             role = Role.Checkbox, onClick = onClick,
                             onLongClick = { sayName(contentDescription) }, onLongClickLabel = "Say its name",
                         )
@@ -360,7 +394,16 @@ fun Chip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
     ) {
-        if (icon != null) PhaseIcon(icon, null, size = if (text == null) 20.dp else 18.dp, tone = if (selected) IconTone.OnLight else IconTone.Dim)
+        if (icon != null) {
+            PhaseIcon(
+                icon, null, size = if (text == null) 26.dp else 18.dp,
+                tone = when {
+                    text == null -> if (selected) IconTone.SineFar else IconTone.Dim
+                    selected -> IconTone.OnLight
+                    else -> IconTone.Dim
+                },
+            )
+        }
         if (text != null) {
             Text(
                 text, maxLines = 1, color = if (selected) PhaseColor.Ink else PhaseColor.Text2,
