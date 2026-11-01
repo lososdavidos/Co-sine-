@@ -67,6 +67,15 @@ class CosineClientTest {
                     return json("""{"error":"Session expired. Authenticate again."}""", 401)
                 }
                 return when (path) {
+                    "/cosine/v1/stats" -> json(
+                        """{"report":{"window":{"key":"${request.url.queryParameter("window")}","label":"This year","from":"2026-01-01T00:00:00Z","to":"2027-01-01T00:00:00Z","bucket":"month"},
+                           "summary":{"plays":1284,"seconds":298800,"tracks":212,"artists":61},
+                           "artists":[{"id":"ar-3","name":"Mira Solune","plays":214,"seconds":51000,"firstPlayed":"2021-03-04T20:00:00Z"}],
+                           "albums":[],"tracks":[{"id":"tr-9","name":"Quarter Turn","artist":"Mira Solune","plays":41,"seconds":9800,"firstPlayed":"2024-06-01T10:00:00Z"}],
+                           "overTime":[{"label":"Jan","start":"2026-01-01T00:00:00Z","plays":96,"seconds":22000}]},
+                           "windows":[{"key":"30d","label":"Last 30 days","from":"2026-10-02T00:00:00Z","to":"2026-11-01T00:00:00Z","bucket":"day"},{"key":"all","label":"All time","from":"0001-01-01T00:00:00Z","to":"2026-11-01T00:00:00Z","bucket":"year"}]}"""
+                    )
+                    "/cosine/v1/stats/years" -> json("""{"years":[{"year":2026,"summary":{"plays":1284,"seconds":298800,"tracks":212,"artists":61},"topArtist":{"id":"ar-3","name":"Mira Solune","plays":214,"seconds":51000,"firstPlayed":"2021-03-04T20:00:00Z"}},{"year":2025,"summary":{"plays":3}}]}""")
                     "/cosine/v1/lookup/stream" -> MockResponse.Builder().addHeader("Content-Type", "application/x-ndjson")
                         .body(streamLines.joinToString("") { "$it\n" })
                         .throttleBody(streamLines.first().length + 1L, streamGapMs, TimeUnit.MILLISECONDS).build()
@@ -200,6 +209,21 @@ class CosineClientTest {
         val changed = c.saveSmart(app.sine.core.model.SmartRules.withSetting(made.copy(name = "Dust", rule = "forgotten", span = null)))
         assertEquals(12, changed.months)
         assertTrue(bodies.last().startsWith("PUT ") && bodies.last().contains("\"months\":6"), bodies.last())
+    }
+
+    @Test
+    fun `listening statistics`() = runTest {
+        val c = client()
+        val stats = c.stats("year")
+        assertEquals("year", stats.report.window.key)
+        assertEquals("month", stats.report.window.bucket)
+        assertEquals(1284, stats.report.summary.plays)
+        assertEquals("Mira Solune", stats.report.artists.single().name)
+        assertEquals("Mira Solune", stats.report.tracks.single().artist)
+        assertEquals(listOf("30d", "all"), stats.windows.map { it.key })
+        val years = c.statsYears()
+        assertEquals(listOf(2026, 2025), years.map { it.year })
+        assertNull(years[1].topArtist)
     }
 
     @Test

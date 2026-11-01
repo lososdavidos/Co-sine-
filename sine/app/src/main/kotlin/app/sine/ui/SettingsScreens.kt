@@ -147,6 +147,13 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
                 Text("Settings", color = PhaseColor.Text1, style = PhaseType.display(44.sp))
             }
         }
+        // Listening (§6.13): reached from the account control, as yours alone.
+        if (session.can(Capability.STATS)) item {
+            ItemRow(
+                "Listening", "What you've played, and when", null, showArt = false,
+                end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) },
+            ) { nav.navigate(Routes.STATS) }
+        }
         item { SectionHeader("Accounts") }
         items(accounts.accounts, key = { it.id }) { a ->
             val active = a.id == session.account.id
