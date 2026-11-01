@@ -22,6 +22,7 @@ object Voice {
 
     /** A count of songs. People hear songs; "track" stays in the code. */
     fun songs(count: Int) = if (count == 1) "1 song" else "$count songs"
+    fun people(count: Int) = if (count == 1) "1 person" else "$count people"
 
     /** Taking songs out of your library (§4.1): asked first, then said. */
     fun removeQuestion(count: Int) =

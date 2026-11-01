@@ -27,6 +27,16 @@ data class SettingsState(
     val fixedColour: String? = null,
     /** Songs streamed are kept on the phone up to this many bytes, the least recently played going first; 0 keeps none. */
     val streamCacheBytes: Long = 2L shl 30,
+    /**
+     * Crossfade (Q69): each song fades into the next over this many
+     * seconds; 0 is off, the default, and songs play gapless.
+     */
+    val crossfadeSec: Int = 0,
+    /**
+     * Prefetch (§2.5): on an unmetered network, the songs coming up are kept
+     * ahead of playing them, so they carry on where the signal doesn't.
+     */
+    val prefetch: Boolean = true,
 ) {
     fun forAccount(id: String) = perAccount[id] ?: AccountSettings()
 }
@@ -47,10 +57,20 @@ class SettingsStore(file: File) {
     fun setStreamCache(bytes: Long) = update { it.copy(streamCacheBytes = bytes.coerceAtLeast(0)) }
 
     @Synchronized
+    fun setCrossfade(seconds: Int) = update { it.copy(crossfadeSec = seconds.coerceIn(0, MAX_CROSSFADE_SEC)) }
+
+    @Synchronized
+    fun setPrefetch(on: Boolean) = update { it.copy(prefetch = on) }
+
+    @Synchronized
     fun setFixedColour(name: String?) = update { it.copy(fixedColour = name) }
 
     @Synchronized
     fun forgetAccount(id: String) = update { it.copy(perAccount = it.perAccount - id) }
+
+    companion object {
+        const val MAX_CROSSFADE_SEC = 12
+    }
 
     private fun update(f: (SettingsState) -> SettingsState) {
         val next = f(_state.value)

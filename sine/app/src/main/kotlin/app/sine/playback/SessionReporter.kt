@@ -53,7 +53,7 @@ class SessionReporter(private val graph: AppGraph) {
         val cosine = session.cosine ?: return
         if (!session.can(Capability.SESSIONS)) return
         val position = graph.player.positionMs()
-        val sent = PlaySession(shape.queue.take(MAX_QUEUE), shape.index.coerceAtLeast(0), position, shape.playing)
+        val sent = PlaySession(shape.queue.take(MAX_QUEUE), shape.index.coerceAtLeast(0), position, shape.playing, volume = graph.mediaVolume().toDouble())
         // Off the main thread for the network; a failure waits for the next change.
         kotlinx.coroutines.withContext(Dispatchers.IO) { runCatching { cosine.saveSession(graph.device, sent) } }
     }

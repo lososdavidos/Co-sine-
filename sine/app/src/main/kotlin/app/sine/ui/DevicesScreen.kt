@@ -40,6 +40,7 @@ import app.sine.data.AccountSession
 import app.sine.graph
 import app.sine.ui.phase.Ambience
 import app.sine.ui.phase.IconTone
+import app.sine.ui.phase.LevelBar
 import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseIcon
 import app.sine.ui.phase.PhaseIcons
@@ -152,6 +153,9 @@ fun RemoteScreen(session: AccountSession, deviceId: String, nav: Pages) {
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var scrub by remember { mutableStateOf<Float?>(null) }
+    // The volume being set here, until the device says it has it.
+    var setting by remember { mutableStateOf<Float?>(null) }
+    var sentVolume by remember { mutableStateOf<Float?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(deviceId) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -163,6 +167,9 @@ fun RemoteScreen(session: AccountSession, deviceId: String, nav: Pages) {
                         queue = runCatching { c.session(deviceId) }.getOrNull()
                     }
                     now?.let { positionMs = it.positionMs }
+                    // Back from the device as sent: what it says is what shows again.
+                    val said = now?.volume?.toFloat()
+                    if (said != null && sentVolume != null && kotlin.math.abs(said - sentVolume!!) < 0.08f) sentVolume = null
                     val ahead = queue?.let { q -> q.queue.drop(q.current).take(UP_NEXT + 1) }.orEmpty()
                     ahead.filter { it !in titles }.forEach { id ->
                         runCatching { session.track(id).value }.getOrNull()?.let { t ->
@@ -263,6 +270,28 @@ fun RemoteScreen(session: AccountSession, deviceId: String, nav: Pages) {
                     send(RemoteCommand("queue", queue = ids, index = mine.index.coerceAtLeast(0), positionMs = graph.player.positionMs()), "Playing on ${d.device.name}.")
                     graph.player.pause()
                 }, icon = PhaseIcons.Forward, height = 44.dp)
+            }
+        }
+        // Its volume (§4B): the one its own buttons change. Shown once it says where it is.
+        val level = setting ?: sentVolume ?: d?.volume?.toFloat()
+        if (listening && level != null) item {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    PhaseLabel("Volume")
+                    Text("${Math.round(level * 100)}%", color = PhaseColor.Text2, style = PhaseType.Data)
+                }
+                LevelBar(
+                    fraction = level,
+                    onChange = { setting = it },
+                    onChangeEnd = {
+                        setting?.let { v ->
+                            sentVolume = v
+                            send(RemoteCommand("volume", volume = v.toDouble()))
+                        }
+                        setting = null
+                    },
+                    description = "Volume on ${d.device.name}",
+                )
             }
         }
         val q = queue

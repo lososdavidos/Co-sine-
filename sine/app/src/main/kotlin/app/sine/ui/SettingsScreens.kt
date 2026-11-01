@@ -87,6 +87,33 @@ private val budgets: List<Pair<String, Long?>> = listOf(
 )
 
 /** How much of what's streamed is kept. */
+private val crossfades = listOf("Off" to 0, "3 s" to 3, "6 s" to 6, "12 s" to 12)
+
+/** A row that turns something on or off, the whole row the target. */
+@Composable
+private fun SettingSwitch(title: String, line: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .rowSurface(false)
+            .toggleable(value = on, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, color = PhaseColor.Text1, style = PhaseType.Name)
+            Text(line, color = PhaseColor.Text2, style = PhaseType.Small)
+        }
+        Switch(
+            checked = on,
+            onCheckedChange = null,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = PhaseColor.Ink, checkedTrackColor = PhaseColor.Sine, checkedBorderColor = PhaseColor.Sine,
+                uncheckedThumbColor = PhaseColor.Text3, uncheckedTrackColor = PhaseColor.Raised, uncheckedBorderColor = PhaseColor.LineStrong,
+            ),
+        )
+    }
+}
+
 private val streamCaches = listOf("Off" to 0L, "1 GB" to (1L shl 30), "2 GB" to (2L shl 30), "8 GB" to (8L shl 30))
 
 @Composable
@@ -273,6 +300,33 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Kept now: ${Voice.formatBytes(kept)}.", Modifier.weight(1f), color = PhaseColor.Text2, style = PhaseType.Body)
                     if (kept > 0) Pill("Clear", { StreamCache.clear(); kept = 0 }, kind = PillKind.Quiet, height = 40.dp)
+                }
+            }
+        }
+        // The prefetch (§2.5): what's coming up is kept ahead, on Wi-Fi.
+        if (settings.streamCacheBytes > 0) item {
+            SettingSwitch(
+                "Keep what's coming up",
+                "On Wi-Fi, the next songs are kept before they play, so they carry on without signal.",
+                settings.prefetch,
+            ) { graph.settings.setPrefetch(it) }
+        }
+
+        // Crossfade (Q69): off is gapless.
+        item { SectionHeader("Playback") }
+        item {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Crossfade", color = PhaseColor.Text1, style = PhaseType.Name)
+                    Text(
+                        "Each song fades into the next. Songs from one album still run into each other, as they were made. Off, songs play gapless.",
+                        color = PhaseColor.Text2, style = PhaseType.Small,
+                    )
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    crossfades.forEach { (label, seconds) ->
+                        Chip(label, settings.crossfadeSec == seconds, { graph.settings.setCrossfade(seconds) })
+                    }
                 }
             }
         }

@@ -176,6 +176,7 @@ private fun tileLabel(tile: Tile) = when (tile.kind) {
     TileKind.INGEST -> "Adding"
     TileKind.STATS -> "Listening"
     TileKind.RESUME -> "Resume"
+    TileKind.JAM -> "Jam"
     else -> tile.name ?: "Tile"
 }
 
@@ -329,6 +330,7 @@ private suspend fun tap(context: Context, session: AccountSession, nav: Pages, t
         TileKind.REVIEW -> nav.navigate(Routes.REVIEW)
         TileKind.INGEST -> nav.navigate(Routes.add())
         TileKind.STATS -> nav.navigate(Routes.STATS)
+        TileKind.JAM -> nav.navigate(Routes.JAM)
         TileKind.RESUME -> {
             val from = elsewhere(context, session) ?: return say("Nothing playing on your other devices.")
             resumeFrom(context, session, from)
@@ -378,6 +380,7 @@ private fun TileFace(session: AccountSession, tile: Tile, order: Int) {
         TileKind.INGEST -> IngestFace(session, tile.size)
         TileKind.STATS -> StatsFace(session, tile.size)
         TileKind.RESUME -> ResumeFace(session, tile.size, order)
+        TileKind.JAM -> JamFace(session, tile.size, order)
         else -> {
             val mirrored by session.mirrored.collectAsStateWithLifecycle()
             val changed by session.playlistsChanged.collectAsStateWithLifecycle()
@@ -661,6 +664,30 @@ private fun ResumeFace(session: AccountSession, size: TileSize, order: Int) {
     )
 }
 
+/**
+ * Jam (§4C): the jam you're in, with what it plays and who's there; else
+ * an invitation waiting, with who from; else a start. A tap opens Jam.
+ */
+@Composable
+private fun JamFace(session: AccountSession, size: TileSize, order: Int) {
+    val follower = LocalContext.current.graph.jam
+    val jam by follower.jam.collectAsStateWithLifecycle()
+    val invitations by follower.invitations.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { follower.refresh() }
+    val j = jam
+    val song = j?.queue?.getOrNull(j.current)
+    val invite = invitations.firstOrNull()
+    when {
+        j != null && song != null -> ArtFace(
+            listOf(session.artwork(song.coverArt)), song.title, listOfNotNull(song.artist, Voice.people(j.members.count { it.joined })).joinToString(" · "), size, order,
+            label = if (j.you.host) "Your jam" else "${j.host}'s jam",
+        )
+        j != null -> QuietFace(size, PhaseIcons.Jam, if (j.you.host) "Your jam" else "${j.host}'s jam", "Nothing queued yet. Add songs from anywhere.")
+        invite != null -> QuietFace(size, PhaseIcons.Jam, "Jam", "${invite.host} asked you to listen together.")
+        else -> QuietFace(size, PhaseIcons.Jam, "Jam", "Listen together, each on your own phone.")
+    }
+}
+
 /** The most recent session on another of this account's devices; null when there's none, or no server. */
 internal suspend fun elsewhere(context: Context, session: AccountSession): DeviceNow? {
     val c = session.cosine ?: return null
@@ -759,8 +786,8 @@ private fun IngestFace(session: AccountSession, size: TileSize) {
 
 /**
  * Generated tiles and smart playlists, added from Home (§6.4.1). Pinned
- * items come from their own pages; Resume, Jam and Favourites wait for
- * their features.
+ * items come from their own pages. Each made tile is offered once its
+ * server can fill it.
  */
 @Composable
 internal fun AddTileForm(session: AccountSession) {
@@ -776,6 +803,7 @@ internal fun AddTileForm(session: AccountSession) {
         Tile(TileKind.INGEST).takeIf { session.cosine != null && Capability.INGEST in caps },
         Tile(TileKind.STATS).takeIf { session.cosine != null && Capability.STATS in caps },
         Tile(TileKind.RESUME, size = TileSize.Wide).takeIf { session.cosine != null && Capability.SESSIONS in caps },
+        Tile(TileKind.JAM, size = TileSize.Wide).takeIf { session.cosine != null && Capability.JAM in caps },
     ).filter { t -> tiles.none { it.id == t.id } }
     // Liked songs first: a playlist of its own, not a smart one, but made the same way, from what you do.
     val smart = (listOf(Tile(TileKind.PLAYLIST, Playlist.LIKED, name = Playlist.LIKED_NAME)) +

@@ -12,15 +12,14 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import app.sine.MainActivity
 import app.sine.core.play.PlayEvent
 import app.sine.core.play.PlayLog
 import app.sine.core.play.shuffledFrom
 import app.sine.graph
-import com.google.common.util.concurrent.Futures
-import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,11 +28,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Owns the player. MediaSessionService gives the media notification, lockscreen
- * controls, Bluetooth metadata and headset buttons (§5.2a) without extra code.
+ * Owns the player. MediaLibraryService gives the media notification, lockscreen
+ * controls, Bluetooth metadata and headset buttons (§5.2a) without extra code,
+ * and Android Auto its library to browse (CarLibrary).
  */
-class PlaybackService : MediaSessionService() {
-    private var session: MediaSession? = null
+class PlaybackService : MediaLibraryService() {
+    private var session: MediaLibrarySession? = null
+    private var tail: ExoPlayer? = null
+    private var crossfader: Crossfader? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @OptIn(UnstableApi::class)
@@ -44,19 +46,23 @@ class PlaybackService : MediaSessionService() {
         val http = DefaultHttpDataSource.Factory()
             .setConnectTimeoutMs(8_000)
             .setReadTimeoutMs(30_000)
-        val player = ExoPlayer.Builder(this)
+        val sources = DefaultMediaSourceFactory(StreamCache.dataSource(DefaultDataSource.Factory(this, http)))
+        fun build(focus: Boolean) = ExoPlayer.Builder(this)
             // Streams are kept as they play, up to the size set (StreamCache).
-            .setMediaSourceFactory(DefaultMediaSourceFactory(StreamCache.dataSource(DefaultDataSource.Factory(this, http))))
+            .setMediaSourceFactory(sources)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .build(),
-                /* handleAudioFocus = */ true,
+                /* handleAudioFocus = */ focus,
             )
-            .setHandleAudioBecomingNoisy(true)
+            .setHandleAudioBecomingNoisy(focus)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+        val player = build(focus = true)
+        // The end of a song, fading out under the next (Crossfader): the player holds the focus for both.
+        val tail = build(focus = false).also { this.tail = it }
         // Songs added to the queue go next, shuffled or not (QueueOrder, #37).
         player.setShuffleOrder(QueueOrder(IntArray(0)))
         // Shuffle turned on mid-queue starts its order with what's playing,
@@ -77,15 +83,30 @@ class PlaybackService : MediaSessionService() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, player)
-            .setCallback(Callback)
+        session = MediaLibrarySession.Builder(this, player, CarLibrary(applicationContext, scope))
             .setSessionActivity(openApp)
             .build()
 
         scope.launch { recordPlays(player) }
+        val settings = graph.settings
+        val fader = Crossfader(player, tail, seconds = { settings.state.value.crossfadeSec }, held = { graph.jam.jam.value != null })
+        crossfader = fader
+        scope.launch { fader.run() }
+        // Turned off mid-fade: the fade stops, at full volume.
+        scope.launch { settings.state.collect { if (it.crossfadeSec == 0) fader.cancel() } }
+        scope.launch {
+            Prefetcher(player) {
+                val net = graph.network.state.value
+                settings.state.value.prefetch && StreamCache.max > 0 && net.connected && !net.metered
+            }.run()
+        }
+        // The home screen widget follows what plays (§6.19).
+        player.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) = NowPlayingWidget.update(applicationContext, player)
+        })
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = session?.player
@@ -94,11 +115,15 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         scope.cancel()
+        crossfader?.cancel()
+        tail?.release()
+        tail = null
         session?.run {
             player.release()
             release()
         }
         session = null
+        NowPlayingWidget.update(applicationContext, null)
         super.onDestroy()
     }
 
@@ -130,25 +155,6 @@ class PlaybackService : MediaSessionService() {
                 scope.launch(Dispatchers.IO) { runCatching { account.flushPlays() } }
             }
         }
-    }
-
-    /**
-     * Items arriving from a MediaController carry no URI (Media3 strips local
-     * configuration across the session boundary). Sine passes it in the request
-     * metadata and restores it here.
-     */
-    private object Callback : MediaSession.Callback {
-        override fun onAddMediaItems(
-            mediaSession: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            mediaItems: MutableList<MediaItem>,
-        ): ListenableFuture<MutableList<MediaItem>> = Futures.immediateFuture(
-            mediaItems.map { item ->
-                val uri = item.requestMetadata.mediaUri
-                // Kept under the song's id, so a changed stream address still finds it.
-                if (uri == null) item else item.buildUpon().setUri(uri).setCustomCacheKey(item.mediaId).build()
-            }.toMutableList()
-        )
     }
 
     private companion object {

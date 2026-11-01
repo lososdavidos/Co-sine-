@@ -19,6 +19,8 @@ data class PlaySession(
     val positionMs: Long = 0,
     val playing: Boolean = false,
     val updatedAt: String = "",
+    /** Its media volume, 0 to 1; null when it doesn't say (§4B). */
+    val volume: Double? = null,
 )
 
 /** A Device and the song it's at, for picking up where it left off. */
@@ -33,6 +35,8 @@ data class DeviceNow(
     val playing: Boolean = false,
     val songs: Int = 0,
     val updatedAt: String = "",
+    /** Its media volume, 0 to 1; null when it doesn't say. */
+    val volume: Double? = null,
     /** There now, and can be controlled (§4B). */
     val listening: Boolean = false,
 )

@@ -96,3 +96,55 @@ fun WaveScrubber(
         )
     }
 }
+
+/**
+ * A level to set, like a volume: a straight line, Sine up to the level and
+ * grey after it, with a round end where it is. Drag or tap; the change is
+ * said once, when the finger lifts.
+ */
+@Composable
+fun LevelBar(
+    fraction: Float,
+    onChange: (Float) -> Unit,
+    onChangeEnd: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    description: String,
+) {
+    val change by rememberUpdatedState(onChange)
+    val end by rememberUpdatedState(onChangeEnd)
+    Canvas(
+        modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .semantics {
+                contentDescription = description
+                progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
+                if (enabled) setProgress { v -> change(v.coerceIn(0f, 1f)); end(); true }
+            }
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                detectTapGestures { o -> change((o.x / size.width).coerceIn(0f, 1f)); end() }
+            }
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                detectDragGestures(
+                    onDragStart = { o -> change((o.x / size.width).coerceIn(0f, 1f)) },
+                    onDragEnd = { end() },
+                    onDragCancel = { end() },
+                ) { c, _ ->
+                    c.consume()
+                    change((c.position.x / size.width).coerceIn(0f, 1f))
+                }
+            },
+    ) {
+        val mid = size.height / 2
+        val stroke = 4.dp.toPx()
+        val knob = 8.dp.toPx()
+        val x = knob + (size.width - 2 * knob) * fraction.coerceIn(0f, 1f)
+        drawLine(PhaseColor.Bar, Offset(knob, mid), Offset(size.width - knob, mid), stroke, StrokeCap.Round)
+        val on = if (enabled) PhaseColor.Sine else PhaseColor.Text3
+        drawLine(on, Offset(knob, mid), Offset(x, mid), stroke, StrokeCap.Round)
+        drawCircle(on, knob, Offset(x, mid))
+    }
+}
