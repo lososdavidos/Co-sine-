@@ -134,8 +134,8 @@ object PhaseShape {
 }
 
 private val colors = darkColorScheme(
-    primary = PhaseColor.Sine, onPrimary = PhaseColor.Ink,
-    primaryContainer = PhaseColor.Sine, onPrimaryContainer = PhaseColor.Ink, inversePrimary = PhaseColor.Sine,
+    primary = Ambient.Blue.fill, onPrimary = PhaseColor.Ink,
+    primaryContainer = Ambient.Blue.fill, onPrimaryContainer = PhaseColor.Ink, inversePrimary = Ambient.Blue.fill,
     secondary = PhaseColor.Cosine, onSecondary = PhaseColor.OnCosine,
     secondaryContainer = PhaseColor.Lift, onSecondaryContainer = PhaseColor.Text1,
     tertiary = PhaseColor.Cosine, onTertiary = PhaseColor.OnCosine,
@@ -177,10 +177,9 @@ private val shapes = Shapes(
  */
 @Composable
 fun PhaseTheme(content: @Composable () -> Unit) {
-    // The accent moves with the artwork (Ambient); Material's parts follow it.
-    val sine = PhaseColor.Sine
-    val scheme = colors.copy(primary = sine, primaryContainer = sine, inversePrimary = sine)
-    MaterialTheme(colorScheme = scheme, typography = typography, shapes = shapes) {
+    // Material's scheme stays the blue: read here, the accent easing in would
+    // rebuild the whole app every frame. Phase's own parts follow it (Ambient).
+    MaterialTheme(colorScheme = colors, typography = typography, shapes = shapes) {
         AmbientHost()
         content()
     }
