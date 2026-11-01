@@ -137,7 +137,7 @@ fun Pill(
     onDoubleClick: (() -> Unit)? = null,
 ) {
     val background = when (kind) {
-        PillKind.Primary -> PhaseColor.Sine
+        PillKind.Primary -> Color.Transparent // the accent, drawn (accentFill)
         PillKind.Secondary, PillKind.SecondaryFault -> PhaseColor.Lift
         PillKind.Server -> PhaseColor.Cosine
         PillKind.Fault -> PhaseColor.Fault
@@ -170,14 +170,14 @@ fun Pill(
             .then(
                 when {
                     bare -> Modifier
-                    kind == PillKind.Primary -> Modifier.clip(PhaseShape.Pill).background(PhaseColor.SineBrush)
+                    kind == PillKind.Primary -> Modifier.clip(PhaseShape.Pill).accentFill()
                     kind == PillKind.Outline -> Modifier.clip(PhaseShape.Pill).border(1.dp, PhaseColor.LineFloat, PhaseShape.Pill)
                     else -> Modifier.clip(PhaseShape.Pill).background(background)
                 },
             )
             .combinedClickable(
                 interactionSource = null,
-                indication = if (bare) ripple(bounded = false, radius = height / 2, color = if (kind.bareTone() == IconTone.Fault) PhaseColor.Fault else PhaseColor.Sine) else ripple(),
+                indication = if (bare) ripple(if (kind.bareTone() == IconTone.Fault) ({ PhaseColor.Fault }) else ({ Ambient.fill.value }), bounded = false, radius = height / 2) else ripple(),
                 enabled = enabled, role = Role.Button, onClick = onClick, onDoubleClick = onDoubleClick,
                 onLongClickLabel = if (text == null && contentDescription != null) "Say its name" else null,
                 onLongClick = if (text == null && contentDescription != null) ({ sayName(contentDescription) }) else null,
@@ -380,7 +380,7 @@ fun Chip(
                 if (text == null && contentDescription != null) {
                     Modifier
                         .combinedClickable(
-                            interactionSource = null, indication = ripple(bounded = false, radius = 24.dp, color = PhaseColor.Sine),
+                            interactionSource = null, indication = ripple({ Ambient.fill.value }, bounded = false, radius = 24.dp),
                             role = Role.Checkbox, onClick = onClick,
                             onLongClick = { sayName(contentDescription) }, onLongClickLabel = "Say its name",
                         )
@@ -420,7 +420,7 @@ fun Tick(checked: Boolean, modifier: Modifier = Modifier) {
         modifier
             .size(22.dp)
             .clip(PhaseShape.Square)
-            .then(if (checked) Modifier.background(PhaseColor.SineBrush) else Modifier)
+            .then(if (checked) Modifier.accentFill() else Modifier)
             .border(1.5.dp, if (checked) PhaseColor.Sine else PhaseColor.LineStrong, PhaseShape.Square),
         contentAlignment = Alignment.Center,
     ) {
@@ -573,6 +573,8 @@ fun Ambience(
     // Its art colours the screen (Ambient, #39): weakly, from the shelf.
     tints: Boolean = true,
     weakTint: Boolean = false,
+    // A scrim that follows the accent, read as it's drawn (the shelf's).
+    scrimOf: (() -> Color)? = null,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     if (tints) AmbientSource(model, weak = weakTint)
@@ -586,7 +588,7 @@ fun Ambience(
                 colorFilter = Vivid,
                 modifier = Modifier.matchParentSize().blur(32.dp),
             )
-            Box(Modifier.matchParentSize().background(scrim))
+            Box(Modifier.matchParentSize().then(if (scrimOf != null) Modifier.drawBehind { drawRect(scrimOf()) } else Modifier.background(scrim)))
             if (fadeFrom != null) {
                 Box(
                     Modifier
@@ -617,7 +619,7 @@ fun Modifier.rowSurface(selected: Boolean): Modifier =
         .fillMaxWidth()
         .padding(horizontal = 8.dp)
         .clip(PhaseShape.Square)
-        .then(if (selected) Modifier.background(PhaseColor.SineBrush) else Modifier)
+        .then(if (selected) Modifier.accentFill() else Modifier)
 
 /** The colour of a row's text: ink when selected, dimmed when it can't play. */
 fun rowInk(selected: Boolean, dimmed: Boolean, secondary: Boolean = false): Color = when {

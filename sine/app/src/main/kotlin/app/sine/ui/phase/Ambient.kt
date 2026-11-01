@@ -13,6 +13,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import app.sine.core.color.Accents
@@ -113,6 +121,25 @@ object Ambient {
 
 /** The accent as a gradient: for what's filled with it, a pill or a selected row. */
 val PhaseColor.SineBrush: Brush get() = Brush.linearGradient(listOf(Sine, SineFar))
+
+/*
+ * What wears the accent reads it as it's drawn, never as it's composed: a
+ * colour easing in as a page slides repaints these, and rebuilds nothing.
+ */
+
+/** Filled with the accent's gradient, in [shape]. */
+fun Modifier.accentFill(shape: Shape = RectangleShape): Modifier = drawBehind {
+    drawOutline(shape.createOutline(size, layoutDirection, this), Brush.linearGradient(listOf(Ambient.fill.value, Ambient.far.value)))
+}
+
+/** The shelf's surface: the accent near black, with a hairline of it round [shape]. */
+fun Modifier.shelfSurface(shape: Shape): Modifier = drawWithContent {
+    val outline = shape.createOutline(size, layoutDirection, this)
+    drawOutline(outline, Ambient.shelf.value)
+    drawContent()
+    // Drawn on the edge and half clipped away: a 1dp line inside.
+    drawOutline(outline, Ambient.shelfLine.value, style = Stroke(2.dp.toPx()))
+}
 
 /**
  * Offers [model]'s artwork as the colour of the screen while this is shown.

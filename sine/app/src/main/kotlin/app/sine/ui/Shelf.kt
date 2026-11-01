@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -80,7 +81,8 @@ import app.sine.graph
 import app.sine.ui.phase.Ambience
 import app.sine.ui.phase.Ambient
 import app.sine.ui.phase.IconTone
-import app.sine.ui.phase.SineBrush
+import app.sine.ui.phase.accentFill
+import app.sine.ui.phase.shelfSurface
 import app.sine.ui.phase.Initial
 import app.sine.ui.phase.LocalSayName
 import app.sine.ui.phase.PhaseColor
@@ -303,8 +305,7 @@ fun Shelf(
             .onGloballyPositioned { onBounds(it.boundsInRoot()) }
             .clip(PhaseShape.Floating)
             // The shelf wears the accent, dark: the cover's colour, near black (§6.3).
-            .background(Ambient.shelf.value)
-            .border(1.dp, Ambient.shelfLine.value, PhaseShape.Floating)
+            .shelfSurface(PhaseShape.Floating)
             .animateContentSize(tween(160)),
     ) {
         if (question != null) {
@@ -326,7 +327,7 @@ fun Shelf(
             Box {
                 // The cover, blurred behind the row (§6.7), under Float at the
                 // strength that keeps the row's text readable over any cover.
-                Ambience(art, Modifier.matchParentSize(), fadeFrom = null, scrim = Ambient.shelf.value.copy(alpha = BAR_SCRIM), weakTint = true)
+                Ambience(art, Modifier.matchParentSize(), fadeFrom = null, weakTint = true, scrimOf = { Ambient.shelf.value.copy(alpha = BAR_SCRIM) })
                 Column {
                     PlayerRow(
                         title = item.mediaMetadata.title?.toString().orEmpty(),
@@ -373,8 +374,7 @@ fun SelectionBar(selection: ShelfSelection, modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .clip(PhaseShape.Floating)
             // The shelf wears the accent, dark: the cover's colour, near black (§6.3).
-            .background(Ambient.shelf.value)
-            .border(1.dp, Ambient.shelfLine.value, PhaseShape.Floating),
+            .shelfSurface(PhaseShape.Floating),
     ) { SelectionRows(selection) }
 }
 
@@ -435,8 +435,8 @@ private fun Seam(durationMs: Long, playing: Boolean, key: String, position: () -
             delay(500)
         }
     }
-    Box(Modifier.fillMaxWidth().height(2.dp).background(Ambient.shelfLine.value)) {
-        Box(Modifier.fillMaxWidth(fraction).height(2.dp).background(PhaseColor.SineBrush))
+    Box(Modifier.fillMaxWidth().height(2.dp).drawBehind { drawRect(Ambient.shelfLine.value) }) {
+        Box(Modifier.fillMaxWidth(fraction).height(2.dp).accentFill())
     }
 }
 
@@ -464,7 +464,7 @@ private fun NavRow(destinations: List<Destination>, current: String?, position: 
                     layout(constraints.maxWidth, constraints.maxHeight) { pill.place(((slot + gapPx) * position).roundToInt(), 0) }
                 }
                 .clip(PhaseShape.Pill)
-                .background(PhaseColor.SineBrush),
+                .accentFill(),
         )
         Row(Modifier.fillMaxSize().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(gap)) {
             destinations.forEachIndexed { i, d ->

@@ -3,7 +3,7 @@ package app.sine.ui.phase
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -142,9 +142,25 @@ object PhaseIcons {
  * coloured faces, a hairline of [rim] along its upper edges where the light
  * catches. Slightly 3D: a millimetre of relief, never a render. [edge] is
  * chosen for the surface the icon sits on, so the relief reads on it.
+ *
+ * A tone that follows the artwork (Ambient) reads its colours when the icon
+ * is drawn, not when it's composed: a colour easing in repaints the icons,
+ * and rebuilds nothing.
  */
-@Immutable
-class IconTone(val top: Color, val bottom: Color, val edge: Color, val rim: Color = Color.Unspecified) {
+@Stable
+class IconTone(
+    private val topOf: () -> Color,
+    private val bottomOf: () -> Color,
+    private val edgeOf: () -> Color,
+    private val rimOf: () -> Color = { Color.Unspecified },
+) {
+    constructor(top: Color, bottom: Color, edge: Color, rim: Color = Color.Unspecified) : this({ top }, { bottom }, { edge }, { rim })
+
+    val top: Color get() = topOf()
+    val bottom: Color get() = bottomOf()
+    val edge: Color get() = edgeOf()
+    val rim: Color get() = rimOf()
+
     companion object {
         /** On the ground, raised and floating surfaces, and secondary pills. */
         val Light = IconTone(Color(0xFFFFFFFF), Color(0xFFB4B8BC), Color(0xFF3E4246))
@@ -153,15 +169,15 @@ class IconTone(val top: Color, val bottom: Color, val edge: Color, val rim: Colo
         /** Marks beside a row: a chevron, a local copy. */
         val Faint = IconTone(Color(0xFFA9ACB0), Color(0xFF777B7F), Color(0xFF282B2E))
         /** The accent, lit: it follows the artwork on screen with Sine (Ambient). An icon button is this, bare. */
-        val Sine: IconTone get() = IconTone(Ambient.light.value, Ambient.fill.value, Ambient.deep.value, Color(0xD9F2F8FF))
+        val Sine = IconTone({ Ambient.light.value }, { Ambient.fill.value }, { Ambient.deep.value }, { Color(0xD9F2F8FF) })
         /** The accent's far hue, lit: icons beside each other take turns, so a row isn't flat. */
-        val SineFar: IconTone get() = IconTone(Ambient.lightFar.value, Ambient.far.value, Ambient.deep.value, Color(0xD9F2F8FF))
+        val SineFar = IconTone({ Ambient.lightFar.value }, { Ambient.far.value }, { Ambient.deep.value }, { Color(0xD9F2F8FF) })
         /** On the shelf, which wears the accent dark: a soft tint of it. */
-        val Nav: IconTone get() = IconTone(Ambient.navTop.value, Ambient.navBottom.value, Ambient.deep.value)
+        val Nav = IconTone({ Ambient.navTop.value }, { Ambient.navBottom.value }, { Ambient.deep.value })
         val Cosine = IconTone(Color(0xFF63A8EE), Color(0xFF0F63AF), Color(0xFF062F57), Color(0xB3B5D7F7))
         val Fault = IconTone(Color(0xFFFFA59B), Color(0xFFE5483B), Color(0xFF6E1C16), Color(0xCCFFE1DC))
         /** Ink on a Sine pill: dark, its shadow a deeper blue. */
-        val OnSine: IconTone get() = IconTone(Color(0xFF26313E), Color(0xFF0A0B0C), Ambient.far.value, Color(0x99FFFFFF))
+        val OnSine = IconTone({ Color(0xFF26313E) }, { Color(0xFF0A0B0C) }, { Ambient.far.value }, { Color(0x99FFFFFF) })
         /** Ink on a red pill. */
         val OnFault = IconTone(Color(0xFF36201E), Color(0xFF0A0B0C), Color(0xFFB13A2F), Color(0x80FFC4BD))
         /** Light on a Cosine pill. */
@@ -198,7 +214,8 @@ fun PhaseIcon(
                 val rim = this.size.height * 0.04f
                 val face = Brush.verticalGradient(listOf(tone.top, tone.bottom))
                 val edge = ColorFilter.tint(tone.edge)
-                val light = if (tone.rim.isSpecified) ColorFilter.tint(tone.rim) else null
+                // The rim costs two more layers: only where it can be seen, on an icon 28dp or larger.
+                val light = if (tone.rim.isSpecified && this.size.height >= RIM_FROM.toPx()) ColorFilter.tint(tone.rim) else null
                 // Room for the relief below the glyph and the rim's offset copy.
                 val bounds = Rect(Offset(0f, -depth), Size(this.size.width, this.size.height + 2 * depth))
                 val layer = Paint()
@@ -225,3 +242,5 @@ fun PhaseIcon(
             },
     )
 }
+
+private val RIM_FROM = 28.dp
