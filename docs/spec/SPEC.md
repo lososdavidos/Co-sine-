@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 187 resolved decisions · last updated 2026-11-01 (uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 190 resolved decisions · last updated 2026-11-01 (devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -716,6 +716,18 @@ the server, so playback resumes across devices — phone to browser to any
 Subsonic client. The Subsonic API already carries a play-queue endpoint, so
 third-party clients get this for free.
 
+`NOTE` Built (0.8.0) as per-Device sessions (§4B): each install of Sine,
+and each Subsonic app by its client name, keeps its own queue, song and
+position on Cosine (`PUT /cosine/v1/devices/{id}/session`, capability
+`sessions`; `savePlayQueue` for Subsonic apps). Sine sends it a moment
+after anything changes, and every half minute while playing. Subsonic's
+`getPlayQueue` answers with the account's most recently changed session,
+whichever device it was, so any app picks up where any other left off.
+Sine's Resume tile shows what another of your devices was playing last
+and where it got to; a tap plays it here from that moment, its queue's
+next songs after it (Q85: another device's session is offered, never
+taken over without asking).
+
 `RESOLVED` **Scrobbling is server-side.** Last.fm / ListenBrainz credentials
 live on the server, which scrobbles when a play arrives. Offline plays that sync
 up later are scrobbled correctly, and Subsonic clients scrobble without any
@@ -792,14 +804,13 @@ UI, model, sync and library code are shared; the audio layer is not.
 `RESOLVED` **Any device can control any other device on the same account.** The
 phone drives what the desktop is playing: transport, queue, volume, seek.
 
-`RESOLVED` **Control is direct, over the LAN.** Devices discover each other by
-mDNS and talk peer-to-peer, without Cosine in the path, so remote control keeps
-working when the server is down.
-
-⚠️ Consequence: **remote control does not work off-LAN.** You cannot pause the
-desktop from outside the house. Cosine already holds a WebSocket to every
-connected client, so a server-relayed fallback would be nearly free if that turns
-out to matter — noted as Q78, not built.
+`REVISED` **Control goes through Cosine.** (Was: direct over the LAN, by
+mDNS, peer to peer.) Cosine already holds every Device's session, so a
+command is a message to it there: it works wherever Cosine can be
+reached, not only at home, and Jam (§4C) shares the one path. The cost
+accepted: with the server down, devices can't control each other — the
+same moment they can't stream from it either. Q78's relay is the design
+now, not a fallback.
 
 This makes **Device** a first-class concept the model did not previously have:
 
@@ -2244,6 +2255,9 @@ not silently keep gigabytes.
 | — | Fixed colour | Settings → Appearance: from the artwork (default), or one of seven fixed colours |
 | — | Artist dividers | Filed without a leading "The", accents aside, # first; the list sorts by the same rule, so its letters always show |
 | — | Library's + | A tap adds music; held, a pill rolls out of it to choose Music, Playlist or Upload, each its icon over its word, and it turns to a × that rolls it back |
+| — | Devices | Each install and Subsonic app is a Device with its own session on Cosine; getPlayQueue is the latest of them |
+| — | Resume | A Home tile: another device's last session, played here from its moment on a tap |
+| — | Remote control | Through Cosine, not peer to peer: works anywhere the server can be reached |
 | — | Uploads | From the phone to the uploader's Library only, one file at a time, filed like any ingest |
 
 ---
@@ -2280,7 +2294,7 @@ decided.
 
 | # | Question | Proposal |
 |---|---|---|
-| Q78 | Server-relayed remote control off-LAN | Not built. Direct LAN as decided; the relay stays a known cheap addition if controlling the desktop from elsewhere turns out to matter. |
+| Q78 | Server-relayed remote control off-LAN | **Overturned**: control goes through Cosine always (§4B), so it works off-LAN by design. |
 | Q82 | Do Jam plays count for everyone? | A play is recorded for every participant who holds a Pointer for that Track. Someone hearing it without having it records nothing — there is nothing to attach it to. If they add it during the jam, it counts from then on. |
 | Q84 | Desktop playback backend | VLCJ. libVLC decodes everything yt-dlp can produce, it's a single dependency, and it saves writing format handling twice. GStreamer is the alternative if VLCJ's licensing or footprint becomes a problem. |
 | Q85 | Which session does "resume" pick? | The current device's own session by default. When another Device has a more recent session, offer "continue from <device>" rather than asking every time. |

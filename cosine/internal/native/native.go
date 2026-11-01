@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/devices"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/homes"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
@@ -47,6 +48,8 @@ type API struct {
 	Log       *slog.Logger
 	// Homes keeps each account's Home arrangement; nil: Sine keeps it on the phone only.
 	Homes *homes.Service
+	// Devices keeps each client's playback session; nil: none are kept.
+	Devices *devices.Service
 }
 
 func (a *API) capabilities() []string {
@@ -80,6 +83,9 @@ func (a *API) capabilities() []string {
 	}
 	if a.Homes != nil {
 		caps = append(caps, CapHome)
+	}
+	if a.Devices != nil {
+		caps = append(caps, CapSessions)
 	}
 	return caps
 }
@@ -118,6 +124,9 @@ func (a *API) Register(mux *http.ServeMux) {
 	}
 	if a.Homes != nil {
 		a.registerHome(mux)
+	}
+	if a.Devices != nil {
+		a.registerDevices(mux)
 	}
 }
 

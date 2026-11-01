@@ -60,6 +60,9 @@ class PlayerConnection(private val context: Context) {
     private val prefs = context.getSharedPreferences("player", Context.MODE_PRIVATE)
     /** The account whose songs are playing: the last one to start something. */
     private var playingFor: String? = prefs.getString("account", null)
+
+    /** The account whose songs are playing, if any has played here. */
+    val playingAccount: String? get() = playingFor
     private val _last = MutableStateFlow(readLast())
     val last: StateFlow<LastPlayed?> = _last.asStateFlow()
 

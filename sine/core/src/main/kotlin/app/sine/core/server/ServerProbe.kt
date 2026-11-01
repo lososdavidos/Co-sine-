@@ -61,6 +61,8 @@ object Capability {
     const val STATS = "stats"
     /** Files uploaded from the phone (§4). */
     const val UPLOAD = "upload"
+    /** Each install keeps its queue and position on Cosine, to pick up on another (§4A). */
+    const val SESSIONS = "sessions"
 }
 
 sealed interface ProbeResult {

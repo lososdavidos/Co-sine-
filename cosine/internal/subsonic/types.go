@@ -32,6 +32,7 @@ type Response struct {
 	Playlists     *Playlists     `xml:"playlists,omitempty" json:"playlists,omitempty"`
 	Playlist      *Playlist      `xml:"playlist,omitempty" json:"playlist,omitempty"`
 	User          *User          `xml:"user,omitempty" json:"user,omitempty"`
+	PlayQueue     *PlayQueue     `xml:"playQueue,omitempty" json:"playQueue,omitempty"`
 }
 
 type Error struct {

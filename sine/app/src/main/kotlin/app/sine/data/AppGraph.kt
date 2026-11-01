@@ -1,6 +1,10 @@
 package app.sine.data
 
 import android.content.Context
+import java.util.UUID
+import app.sine.playback.SessionReporter
+import app.sine.core.cosine.DeviceInfo
+import android.os.Build
 import app.sine.core.account.Account
 import app.sine.core.account.AccountStore
 import app.sine.core.account.SettingsStore
@@ -36,6 +40,15 @@ class AppGraph(private val context: Context) {
     val probe = ServerProbe(http)
     val player = PlayerConnection(context)
     val pendingShares = PendingShares(File(context.filesDir, "pending-shares.json"))
+
+    /**
+     * This install, as a Device of its accounts (§4A, §4B): an id of its own,
+     * made once, and the phone's name, so another device can say "from Pixel 8".
+     */
+    val device: DeviceInfo = context.getSharedPreferences("device", Context.MODE_PRIVATE).let { p ->
+        val id = p.getString("id", null) ?: ("sine-" + UUID.randomUUID()).also { p.edit().putString("id", it).apply() }
+        DeviceInfo(id, Build.MODEL.ifBlank { "Phone" }, "phone")
+    }
 
     /** Text shared into Sine from another app, waiting to be opened in Add (§6.10). */
     val incomingShare = MutableStateFlow<String?>(null)
@@ -82,6 +95,7 @@ class AppGraph(private val context: Context) {
     }
 
     init {
+        SessionReporter(this).start(scope)
         // Offline work goes up as soon as there is a network again.
         scope.launch {
             network.state.collect { state ->

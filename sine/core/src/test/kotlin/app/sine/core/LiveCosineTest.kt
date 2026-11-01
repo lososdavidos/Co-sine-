@@ -207,6 +207,18 @@ class LiveCosineTest {
         assertTrue(!mirror.library.value.track(tides.id)!!.liked)
         assertEquals(emptyList(), mirror.library.value.playlist(Playlist.LIKED)!!.tracks)
 
+        // This phone's session (§4A): kept on Cosine, listed with its song,
+        // and what a Subsonic app's getPlayQueue picks up.
+        assertTrue(Capability.SESSIONS in kind.capabilities, "$kind")
+        val me = app.sine.core.cosine.DeviceInfo("sine-contract", "Contract phone", "phone")
+        cosine.saveSession(me, app.sine.core.cosine.PlaySession(listOf(tides.id), 0, 42_000, playing = true))
+        val kept = cosine.session(me.id)
+        assertEquals(listOf(tides.id), kept.queue)
+        assertEquals(42_000, kept.positionMs)
+        val now = cosine.devices().first { it.device.id == me.id }
+        assertEquals("Tides", now.title)
+        assertEquals("Contract phone", now.device.name)
+
         // Shared with a second account (§2.3), who accepts it and gets its songs.
         assertTrue(Capability.SHARED_PLAYLISTS in kind.capabilities, "$kind")
         val friendCreds = SubsonicCredentials.fromPassword(System.getenv("COSINE_FRIEND_USER"), System.getenv("COSINE_FRIEND_PASS"))

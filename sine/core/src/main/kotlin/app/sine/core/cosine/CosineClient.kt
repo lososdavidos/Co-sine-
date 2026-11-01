@@ -144,6 +144,10 @@ data class IngestJob(
     val from: String? = null,
     val playlist: Boolean? = null,
 )
+@Serializable private data class DevicesResponse(val devices: List<DeviceNow> = emptyList())
+@Serializable private data class SaveSession(
+    val name: String, val kind: String, val queue: List<String>, val current: Int, val positionMs: Long, val playing: Boolean,
+)
 @Serializable private data class YearsResponse(val years: List<StatsYear> = emptyList())
 @Serializable private data class SmartResponse(val playlists: List<SmartPlaylist> = emptyList())
 @Serializable private data class RetryRequest(val force: Boolean)
@@ -269,6 +273,19 @@ class CosineClient(
 
     suspend fun retry(jobId: Long, force: Boolean = false): IngestJob =
         send(post("ingest/jobs/$jobId/retry", RetryRequest.serializer(), RetryRequest(force)), JobResponse.serializer()).job
+
+    /** The account's Devices with a session, the most recently changed first (§4A). */
+    suspend fun devices(): List<DeviceNow> = send(get("devices"), DevicesResponse.serializer()).devices
+
+    /** One Device's session. */
+    suspend fun session(deviceId: String): PlaySession = send(get("devices/$deviceId/session"), PlaySession.serializer())
+
+    /** Keeps what this Device is playing, naming it, so another can pick it up. */
+    suspend fun saveSession(device: DeviceInfo, session: PlaySession) {
+        val body = SaveSession(device.name, device.kind, session.queue, session.current, session.positionMs, session.playing)
+        val json = WireJson.encodeToString(SaveSession.serializer(), body).toRequestBody(JSON)
+        send(Request.Builder().url(url("devices/${device.id}/session")).put(json), OkResponse.serializer())
+    }
 
     /** Listening in [window] (30d, year, a year such as 2025, or all), the top [limit] of each kind (§6.13). */
     suspend fun stats(window: String = "30d", limit: Int = 10): Stats =

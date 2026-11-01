@@ -17,6 +17,7 @@ import (
 	"github.com/lososdavidos/Co-sine-/cosine/internal/dashboard"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/deezer"
+	"github.com/lososdavidos/Co-sine-/cosine/internal/devices"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/discogs"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/fetch"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/homes"
@@ -121,8 +122,10 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	s.scrobbler = &scrobble.Service{DB: d, HTTP: &http.Client{Timeout: 30 * time.Second}, Version: cfg.Version,
 		Log: log.With("component", "scrobble")}
 	dash := &dashboard.Dashboard{DB: d, Auth: as, Ingester: s.ingester, Stats: listening, OnInboxChange: s.startInbox, Log: log}
+	// Each client's playback session, shared by both protocols (§4A).
+	players := &devices.Service{DB: d}
 	nativeAPI := &native.API{Auth: as, Review: reviews, Stats: listening, Mirror: &mirror.Service{DB: d, Playlists: lists},
-		Ingester: s.ingester, Playlists: lists, Scrobbler: s.scrobbler, Homes: &homes.Service{DB: d}, Version: cfg.Version, Log: log}
+		Ingester: s.ingester, Playlists: lists, Scrobbler: s.scrobbler, Homes: &homes.Service{DB: d}, Devices: players, Version: cfg.Version, Log: log}
 	dash.Review = reviews
 
 	// URL ingest exists only with yt-dlp; without it the capability is not
@@ -180,7 +183,7 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	}
 
 	api := &subsonic.API{DB: d, Auth: as, DataDir: cfg.DataDir, Version: cfg.Version, Log: log, Playlists: lists,
-		OnPlay: s.scrobbler.Nudge}
+		OnPlay: s.scrobbler.Nudge, Devices: players}
 	mux := http.NewServeMux()
 	mux.Handle("/rest/", api.Handler())
 	nativeAPI.Register(mux)

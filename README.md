@@ -41,6 +41,8 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Adding music from links:** paste a link or search in Sine's Add screen (the Library's + on a Cosine account; hold it to choose adding music, making a playlist, or uploading files from the phone) or with the + in Search's field, share a link to Sine from any app (it goes to the account you're in), or use the dashboard. It looks up as you type: a link at once, a search from the third letter. Each result has its own add button, and an album or playlist can be added whole from the top. Cosine fetches it with yt-dlp and files it. Links shared while offline are kept and sent on reconnect.
 
+**Resume anywhere:** every phone with Sine, and every Subsonic app, keeps its queue and where it got to on Cosine. Sine's Resume tile on Home shows what your other device was playing; tap it to carry on here from that moment. Other apps pick it up through Subsonic's play queue.
+
 **Uploading from the phone:** hold the Library's + and choose Upload, then pick audio files. Each goes up to Cosine, is identified and filed like anything else, and lands in your library only (the Inbox folder is the way to give everyone something).
 
 **Identifying music:** Cosine cleans uploader noise out of titles ("[HD Upgrade]", "(Official Video)", "PREMIERE:"), then looks everything up in MusicBrainz, Discogs and Bandcamp, in that order, and files it under the first confident match's artist and release, with that catalogue's cover. Anything none of them is sure of goes to the review queue (Sine: Library → Review; also in the dashboard). There you pick a match or type the details yourself. Every correction is logged and can be reverted.
