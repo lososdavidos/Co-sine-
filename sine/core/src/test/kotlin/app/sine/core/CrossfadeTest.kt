@@ -9,20 +9,24 @@ import kotlin.test.assertTrue
 class CrossfadeTest {
     @Test
     fun offMeansNever() {
-        assertFalse(Crossfade.startsNow(0, 199_000, 200_000, hasNext = true, sameAlbum = false))
+        assertFalse(Crossfade.armsNow(0, 185_000, 200_000, hasNext = true, sameAlbum = false))
     }
 
     @Test
-    fun startsWhenWhatsLeftIsTheFade() {
-        assertFalse(Crossfade.startsNow(6, 193_000, 200_000, hasNext = true, sameAlbum = false))
-        assertTrue(Crossfade.startsNow(6, 194_000, 200_000, hasNext = true, sameAlbum = false))
-        assertTrue(Crossfade.startsNow(6, 199_999, 200_000, hasNext = true, sameAlbum = false))
-        assertFalse(Crossfade.startsNow(6, 200_000, 200_000, hasNext = true, sameAlbum = false))
+    fun itsEndIsLoadedAheadOfTheFade() {
+        // A 6 s fade from 194 s: loaded from 184 s, not before, and not later than 193 s.
+        assertFalse(Crossfade.armsNow(6, 183_999, 200_000, hasNext = true, sameAlbum = false))
+        assertTrue(Crossfade.armsNow(6, 184_000, 200_000, hasNext = true, sameAlbum = false))
+        assertTrue(Crossfade.armsNow(6, 192_999, 200_000, hasNext = true, sameAlbum = false))
+        // Seeked into the last seconds: too late to load, played out unfaded rather than cut.
+        assertFalse(Crossfade.armsNow(6, 193_000, 200_000, hasNext = true, sameAlbum = false))
+        assertFalse(Crossfade.armsNow(6, 196_000, 200_000, hasNext = true, sameAlbum = false))
+        assertEquals(194_000, Crossfade.fadeFrom(6, 200_000))
     }
 
     @Test
     fun oneAlbumStaysGapless() {
-        assertFalse(Crossfade.startsNow(6, 196_000, 200_000, hasNext = true, sameAlbum = true))
+        assertFalse(Crossfade.armsNow(6, 188_000, 200_000, hasNext = true, sameAlbum = true))
         assertTrue(Crossfade.sameAlbum("Tides", "Skeler", "Tides", "Skeler"))
         assertFalse(Crossfade.sameAlbum("Greatest Hits", "A", "Greatest Hits", "B"))
         assertFalse(Crossfade.sameAlbum("", "A", "", "A"))
@@ -30,9 +34,17 @@ class CrossfadeTest {
 
     @Test
     fun theLastSongAndShortOnesAreNotFaded() {
-        assertFalse(Crossfade.startsNow(6, 196_000, 200_000, hasNext = false, sameAlbum = false))
-        assertFalse(Crossfade.startsNow(6, 8_000, 11_000, hasNext = true, sameAlbum = false))
-        assertFalse(Crossfade.startsNow(6, 0, 0, hasNext = true, sameAlbum = false))
+        assertFalse(Crossfade.armsNow(6, 188_000, 200_000, hasNext = false, sameAlbum = false))
+        assertFalse(Crossfade.armsNow(6, 0, 11_000, hasNext = true, sameAlbum = false))
+        assertFalse(Crossfade.armsNow(6, 0, 0, hasNext = true, sameAlbum = false))
+    }
+
+    @Test
+    fun progressFollowsTheSongGoing() {
+        assertEquals(0f, Crossfade.progress(194_000, 194_000, 200_000))
+        assertEquals(0.5f, Crossfade.progress(197_000, 194_000, 200_000))
+        assertEquals(1f, Crossfade.progress(205_000, 194_000, 200_000))
+        assertEquals(0f, Crossfade.progress(190_000, 194_000, 200_000))
     }
 
     @Test

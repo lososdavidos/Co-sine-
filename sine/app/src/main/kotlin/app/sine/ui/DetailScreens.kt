@@ -89,6 +89,7 @@ fun ArtistScreen(session: AccountSession, id: String, nav: Pages) {
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
     val liking by session.liking.collectAsStateWithLifecycle()
     val like = rememberLike(session)
+    val queue = rememberQueue(session)
     val load = rememberLoad(session, id, refreshOn = mirrored) {
         session.artist(id).let { s ->
             Sourced(s.value to ArtistPage.entries(s.value.albums) { session.knownTracks(it, s.fromDownloads) }, s.fromDownloads)
@@ -150,6 +151,7 @@ fun ArtistScreen(session: AccountSession, id: String, nav: Pages) {
                             dimmed = !playable,
                             liked = liking[track.id] ?: track.liked,
                             onLike = { like(track.id, track.title, it) },
+                            onQueue = if (selected.isEmpty()) ({ queue(track) }) else null,
                             onLongClick = { selected = selected.toggle(track.id) },
                         ) {
                             when {
@@ -232,6 +234,7 @@ internal fun TrackListScreen(
     val downloads by session.downloads.tracks.collectAsStateWithLifecycle()
     val liking by session.liking.collectAsStateWithLifecycle()
     val like = rememberLike(session)
+    val queue = rememberQueue(session)
     var selected by remember(tracks) { mutableStateOf(setOf<String>()) }
     val canRemove = removable && session.can(Capability.REMOVE)
     val downloadedHere = tracks.count { it.id in downloads }
@@ -325,6 +328,7 @@ internal fun TrackListScreen(
                 dimmed = !playable,
                 liked = liking[track.id] ?: track.liked,
                 onLike = { like(track.id, track.title, it) },
+                onQueue = if (selected.isEmpty()) ({ queue(track) }) else null,
                 onLongClick = { selected = selected.toggle(track.id) },
             ) {
                 when {
@@ -448,28 +452,11 @@ internal fun trackSelection(
     val player = context.graph.player
     val actions = buildList {
         add(ShelfAction("Play", icon = PhaseIcons.Play) { player.play(session, chosen); onClear() })
+        // In a jam, the queue is the jam's (§4C): the same action puts them there.
         add(ShelfAction("Add to queue", icon = PhaseIcons.QueueAdd) {
-            val n = player.addToQueue(session, chosen)
-            say(if (n == 0) Voice.TRACK_UNAVAILABLE else if (n == 1) "Added to the queue." else "$n songs added to the queue.")
+            queueSongs(context, session, chosen, scope)
             onClear()
         })
-        // In a jam: into its one queue, for everyone (§4C).
-        context.graph.jam.jam.value?.let { jam ->
-            add(ShelfAction("Add to jam", icon = PhaseIcons.Jam) {
-                scope.launch {
-                    try {
-                        session.cosine?.addToJam(jam.id, chosen.map { it.id })
-                        context.graph.jam.refresh()
-                        say(if (chosen.size == 1) "Added to the jam." else "${chosen.size} songs added to the jam.")
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        say("The jam didn't take it.", Signal.Server)
-                    }
-                }
-                onClear()
-            })
-        }
         add(ShelfAction("Download", icon = PhaseIcons.OnPhone) {
             chosen.filterNot { it.id in session.downloads }.forEach {
                 startDownload(context, session, DownloadNode.OfTrack(it.id), chosen, nav, quiet = true)

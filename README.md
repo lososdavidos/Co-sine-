@@ -28,6 +28,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 - Browse Artists / Albums / Playlists, search, artist and album pages; pull any list down to refresh it
 - Search keeps its results up while you type, and an empty search shows what you opened from it before
 - Hold any song, in a list, in search or in the queue, to select it: play, add to the queue, download, add to a playlist
+- Swipe a song from right to left to add it to the queue
 - Streaming playback of the original files (`format=raw`, no transcoding), with the media notification, lockscreen, Bluetooth and headset controls from Media3
 - Shuffle that plays every song once, from the start of each, and Repeat (the queue, or one song); Up next shows the order they'll play in
 - Like a song with two taps, in any list, in search, in the queue, or on Add to playlist in Now playing (one tap there picks a playlist); a heart says so, and two more taps take it back. It's Subsonic's star, so other apps see it
@@ -49,7 +50,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Remote control:** Settings → Devices (or the device mark in Now playing) lists your phones and Subsonic apps with what each is playing. Tap one that's listening to control it from here: play, pause, skip, seek, jump to a song, set its volume. Play here moves its music to this phone; Play there sends this phone's music to it. It goes through Cosine, so it works anywhere you can reach the server.
 
-**Jam:** listen together with other accounts on your server, wherever they are. Start one from the people mark in Now playing (or Settings → Jam) and pick who to ask; they join from their Jam page. A Jam tile on Home shows the jam you're in, or an invitation. Anyone adds songs (hold a song anywhere, then Add to jam); the host plays, pauses and skips, and everyone hears the same moment within about a second. A song you don't have plays anyway, and Keep it adds it to your library.
+**Jam:** listen together with other accounts on your server, wherever they are. Start one from the people mark in Now playing (or Settings → Jam) and pick who to ask; they join from their Jam page. A Jam tile on Home shows the jam you're in, or an invitation. In a jam the queue is the jam's: anyone adds songs the usual way (swipe one left, or hold it and Add to queue); the host plays, pauses and skips, and everyone hears the same moment within about a second. A song you don't have plays anyway, and Keep it adds it to your library.
 
 **Uploading from the phone:** hold the Library's + and choose Upload, then pick audio files. Each goes up to Cosine, is identified and filed like anything else, and lands in your library only (the Inbox folder is the way to give everyone something).
 

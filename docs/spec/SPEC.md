@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 197 resolved decisions · last updated 2026-11-01 (Android Auto, §5.2a; the widget, §6.19; crossfade, Q69; the prefetch, §2.5; a device's volume, §4B; the Jam tile, §6.4.1; keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 199 resolved decisions · last updated 2026-11-01 (a swipe adds a song to the queue, §6.6; in a jam the queue is the jam's, §4C; Android Auto, §5.2a; the widget, §6.19; crossfade, Q69; the prefetch, §2.5; a device's volume, §4B; the Jam tile, §6.4.1; keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -898,8 +898,13 @@ it and the song is in its queue; Keep it puts it in their library
 starting or joining another leaves the one you were in. Sine's Jam page
 (the people mark in Now playing, or Settings) starts one with the
 accounts you pick, shows the jams you're asked to, and in one, who's
-there, what plays and who added it, the queue, and the host's transport;
-any song held anywhere offers Add to jam.
+there, what plays and who added it, the queue, and the host's transport.
+
+`REVISED` (0.9.1; was: a song held anywhere offered Add to jam, beside Add
+to queue.) **In a jam, the queue is the jam's.** There is no separate way
+to add to it: Add to queue, from a selection or a swipe, puts songs in the
+jam's queue for everyone while you're in one, and in your own queue
+otherwise.
 
 ### 4C.1a Rules
 
@@ -1597,6 +1602,15 @@ the order you added them, shuffled or not; they stay next when you jump ahead
 in Up next or play something else. The panel shows them all, under Queued,
 then Up next: the next ten of what's playing ("10 of 42"). Played songs
 aren't listed.
+
+`RESOLVED` **Swiping a song from right to left adds it to the queue**
+(0.9.1), in any list of songs: an album, a playlist, search. The row
+follows the finger and uncovers the queue mark on Sine; past 96dp the mark
+grows and the phone ticks, and letting go there adds it. The row springs
+back, since it's still there. Left to right is left alone, for going back,
+and a drag that starts more up or down than sideways scrolls. On a song's
+row the swipe is the row's, so a destination swipe (§6.2) starts from
+anywhere else; a screen reader has Add to queue as an action.
 
 `RESOLVED` **The queue's songs are held to select them,** as anywhere (§6.5).
 Now playing has no shelf, so their actions float at the foot of the sheet, in
@@ -2320,6 +2334,8 @@ not silently keep gigabytes.
 | — | Tile sizes | 1×1 the cover or count; 2×2 adds the name; 4×2 a second line |
 | — | Tiles not yet possible | Resume and Jam aren't offered until their features exist; both are now |
 | — | Crossfade and albums | Songs from one album are never faded into each other: a live record or a mix plays as made |
+| — | Swipe to queue | A song's row, swiped right to left, goes in the queue; the row springs back |
+| — | Jam's queue | In a jam, Add to queue is the jam's queue; no separate Add to jam |
 | — | Remote volume | The device's media volume, the one its own buttons change; each Device says it with its session |
 | — | Tile cycling | Every 8 to 10 seconds, staggered, only while Home is on screen; with animations removed, content changes without moving |
 | — | Tile motion | Home is the one place motion is for liveliness; Phase's colour and scrim rules still hold inside a tile |
@@ -2390,7 +2406,7 @@ decided.
 | Q75 | SD card downloads | Yes. The visible download folder is chosen through SAF, so an SD card is just another location the picker offers. No extra mechanism. |
 | Q37 | Merging plays across devices | Plays are append-only events with timestamps, not a counter that gets overwritten. Merging is a union; the play count is derived. This also makes offline plays trivially correct. |
 | Q70 | Timestamps on late offline plays | Sine records the real time of play and sends it with the event. Cosine trusts it. Clock skew on your own phone is not worth defending against. |
-| Q69 | Crossfade | Offered, off by default, with a configurable duration. Gapless remains the behaviour when crossfade is off — they are alternatives, not layers. Built (0.9.0): 3, 6 or 12 s, equal-power, the end of the song going on in a second player; never between two songs of one album, never in a jam (held to its clock), never on repeat-one. |
+| Q69 | Crossfade | Offered, off by default, with a configurable duration. Gapless remains the behaviour when crossfade is off — they are alternatives, not layers. Built (0.9.0): 3, 6 or 12 s, equal-power, the end of the song going on in a second player; never between two songs of one album, never in a jam (held to its clock), never on repeat-one. Fixed (0.9.1): the fade started with a cut, the song going silent while the second player loaded its end; now that end is loaded 10 s ahead, starts silent under the playing song at the fade's start, and the two swap only once it truly plays. Not ready in time, the song plays out unfaded rather than cut. |
 
 ---
 

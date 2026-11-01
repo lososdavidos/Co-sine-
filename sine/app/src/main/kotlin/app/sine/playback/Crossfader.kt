@@ -1,8 +1,11 @@
 package app.sine.playback
 
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.sine.core.play.Crossfade
+import app.sine.core.play.CrossfadePlan
+import app.sine.core.play.CrossfadePlan.Action
 import kotlinx.coroutines.delay
 
 /**
@@ -11,6 +14,11 @@ import kotlinx.coroutines.delay
  * ever sees [player], so the notification, the car and Now playing show
  * the next song from the moment it starts to rise. Off, the default, and
  * nothing here runs: songs play gapless.
+ *
+ * What to do when is [CrossfadePlan]'s: the song's end is loaded in the
+ * tail ahead of time, starts silent under the player at the fade's start,
+ * and the two swap only once it's truly playing, so the fade never starts
+ * with a cut. This does what the plan says, and tells it how things are.
  */
 class Crossfader(
     private val player: ExoPlayer,
@@ -20,67 +28,78 @@ class Crossfader(
     /** Held to another clock (a jam, §4C): no fading. */
     private val held: () -> Boolean,
 ) {
-    private var fadeMs = 0L
-    private var doneMs = 0L
+    private val plan = CrossfadePlan()
 
     suspend fun run() {
         while (true) {
-            delay(TICK_MS)
-            if (fadeMs > 0) step() else maybeStart()
+            val now = now()
+            delay(if (plan.close(now)) FINE_TICK_MS else TICK_MS)
+            apply(plan.next(now()))
         }
     }
 
-    private fun maybeStart() {
-        if (!player.isPlaying || held() || player.repeatMode == Player.REPEAT_MODE_ONE) return
-        val next = player.nextMediaItemIndex.takeIf { it != androidx.media3.common.C.INDEX_UNSET } ?: return
-        val current = player.currentMediaItem ?: return
-        val following = player.getMediaItemAt(next)
-        val same = Crossfade.sameAlbum(
+    private fun now(): CrossfadePlan.Now {
+        val next = player.nextMediaItemIndex
+        val current = player.currentMediaItem
+        val following = if (next != C.INDEX_UNSET) player.getMediaItemAt(next) else null
+        val same = current != null && following != null && Crossfade.sameAlbum(
             current.mediaMetadata.albumTitle?.toString(), current.mediaMetadata.artist?.toString(),
             following.mediaMetadata.albumTitle?.toString(), following.mediaMetadata.artist?.toString(),
         )
-        val position = player.currentPosition
-        val duration = player.duration
-        if (!Crossfade.startsNow(seconds(), position, duration, hasNext = true, sameAlbum = same)) return
-        // What's left of this song goes on in the tail; the player moves on, silent, and rises.
-        tail.setMediaItem(current, position)
-        tail.volume = 1f
-        tail.prepare()
-        tail.play()
-        player.volume = 0f
-        player.seekToNextMediaItem()
-        fadeMs = (duration - position).coerceAtLeast(TICK_MS)
-        doneMs = 0
+        return CrossfadePlan.Now(
+            seconds = seconds(),
+            index = player.currentMediaItemIndex,
+            positionMs = player.currentPosition,
+            durationMs = player.duration.takeIf { it != C.TIME_UNSET } ?: 0,
+            playing = player.isPlaying,
+            hasNext = following != null,
+            sameAlbum = same,
+            repeatOne = player.repeatMode == Player.REPEAT_MODE_ONE,
+            held = held() || player.playerError != null,
+            tailReady = tail.playbackState == Player.STATE_READY,
+            tailPlaying = tail.isPlaying,
+            tailPositionMs = tail.currentPosition,
+            tailEnded = tail.playbackState == Player.STATE_ENDED,
+            clockMs = System.currentTimeMillis(),
+        )
     }
 
-    private fun step() {
-        // Paused mid-fade: both wait.
-        if (!player.isPlaying) {
-            if (tail.isPlaying) tail.pause()
-            if (player.playbackState == Player.STATE_IDLE || player.mediaItemCount == 0) finish()
-            return
+    private fun apply(actions: List<Action>) {
+        for (a in actions) when (a) {
+            is Action.Arm -> {
+                // The song's end, loaded and waiting at the fade's start, silent.
+                val item = player.currentMediaItem ?: continue
+                tail.volume = 0f
+                tail.playWhenReady = false
+                tail.setMediaItem(item, a.fromMs)
+                tail.prepare()
+            }
+            Action.StartTail -> tail.play()
+            Action.Swap -> {
+                tail.volume = 1f
+                player.volume = 0f
+                player.seekToNextMediaItem()
+            }
+            is Action.Levels -> {
+                tail.volume = a.tail
+                player.volume = a.player
+            }
+            Action.PauseTail -> tail.pause()
+            Action.ResumeTail -> tail.play()
+            Action.Drop -> {
+                tail.stop()
+                tail.clearMediaItems()
+                player.volume = 1f
+            }
         }
-        if (!tail.isPlaying && tail.playbackState == Player.STATE_READY) tail.play()
-        doneMs += TICK_MS
-        val (out, inn) = Crossfade.gains(doneMs.toFloat() / fadeMs)
-        tail.volume = out
-        player.volume = inn
-        if (doneMs >= fadeMs || tail.playbackState == Player.STATE_ENDED) finish()
     }
 
-    private fun finish() {
-        tail.stop()
-        tail.clearMediaItems()
-        player.volume = 1f
-        fadeMs = 0
-    }
-
-    /** Stops a fade at once, at full volume: the player let go, or the setting turned off. */
-    fun cancel() {
-        if (fadeMs > 0) finish()
-    }
+    /** Stops at once, at full volume: the player let go, or the setting turned off. */
+    fun cancel() = apply(plan.cancel())
 
     private companion object {
         const val TICK_MS = 50L
+        /** Near the fade's start, and while the tail starts: watched closely, so the swap is on time. */
+        const val FINE_TICK_MS = 10L
     }
 }
