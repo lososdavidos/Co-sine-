@@ -2390,7 +2390,7 @@ decided.
 | Q75 | SD card downloads | Yes. The visible download folder is chosen through SAF, so an SD card is just another location the picker offers. No extra mechanism. |
 | Q37 | Merging plays across devices | Plays are append-only events with timestamps, not a counter that gets overwritten. Merging is a union; the play count is derived. This also makes offline plays trivially correct. |
 | Q70 | Timestamps on late offline plays | Sine records the real time of play and sends it with the event. Cosine trusts it. Clock skew on your own phone is not worth defending against. |
-| Q69 | Crossfade | Offered, off by default, with a configurable duration. Gapless remains the behaviour when crossfade is off — they are alternatives, not layers. Built (0.9.0): 3, 6 or 12 s, equal-power, the end of the song going on in a second player; never between two songs of one album, never in a jam (held to its clock), never on repeat-one. |
+| Q69 | Crossfade | Offered, off by default, with a configurable duration. Gapless remains the behaviour when crossfade is off — they are alternatives, not layers. Built (0.9.0): 3, 6 or 12 s, equal-power, the end of the song going on in a second player; never between two songs of one album, never in a jam (held to its clock), never on repeat-one. Fixed (0.9.1): the fade started with a cut, the song going silent while the second player loaded its end; now that end is loaded 10 s ahead, starts silent under the playing song at the fade's start, and the two swap only once it truly plays. Not ready in time, the song plays out unfaded rather than cut. |
 
 ---
 
