@@ -5,6 +5,7 @@ package inbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -116,6 +117,9 @@ func (w *Watcher) track(path string, queue map[string]*pending) {
 
 func (w *Watcher) settle(ctx context.Context, now time.Time, queue map[string]*pending) {
 	for path, p := range queue {
+		if ctx.Err() != nil {
+			return // stopping: the rest stay in the Inbox for next time
+		}
 		fi, err := os.Stat(path)
 		if err != nil {
 			delete(queue, path) // gone before it settled
@@ -140,6 +144,8 @@ func (w *Watcher) process(ctx context.Context, path string) {
 		w.Log.Info("ingested", "file", path)
 		w.pruneUp(filepath.Dir(path))
 	case errors.Is(err, ingest.ErrNotAudio):
+	case ctx.Err() != nil:
+		// Stopped mid-way, not the file's fault: it stays for next time.
 	case errors.Is(err, ingest.ErrNoStore):
 		// Nothing to file into yet: leave it for when the Store is configured.
 		w.Log.Warn("inbox file waiting for a Store path", "file", path)
@@ -147,7 +153,7 @@ func (w *Watcher) process(ctx context.Context, path string) {
 		w.Log.Error("ingest failed", "file", path, "err", err)
 		failed := filepath.Join(w.Dir, FailedDir)
 		os.MkdirAll(failed, 0o755)
-		os.Rename(path, filepath.Join(failed, filepath.Base(path)))
+		os.Rename(path, freeName(filepath.Join(failed, filepath.Base(path))))
 	}
 }
 
@@ -174,4 +180,17 @@ func ignored(name string) bool {
 		}
 	}
 	return false
+}
+
+// freeName is path, or path with " (2)", " (3)"… before its extension when
+// that name is taken: two failed Track01.flac must not overwrite each other.
+func freeName(path string) string {
+	ext := filepath.Ext(path)
+	base := strings.TrimSuffix(path, ext)
+	for n := 2; ; n++ {
+		if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+			return path
+		}
+		path = fmt.Sprintf("%s (%d)%s", base, n, ext)
+	}
 }

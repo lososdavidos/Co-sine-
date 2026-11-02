@@ -270,6 +270,7 @@ func merge(ctx context.Context, tx *sql.Tx, from, to int64) error {
 		"UPDATE playlist_entries SET track_id = ?2 WHERE track_id = ?1",
 		"UPDATE ingest_jobs SET track_id = ?2 WHERE track_id = ?1",
 		"UPDATE corrections SET track_id = ?2 WHERE track_id = ?1",
+		"UPDATE jam_queue SET track_id = ?2 WHERE track_id = ?1",
 		"DELETE FROM tracks WHERE id = ?1",
 	} {
 		if _, err := tx.ExecContext(ctx, q, from, to); err != nil {

@@ -151,10 +151,21 @@ func (s *Service) UserByName(ctx context.Context, name string) (User, error) {
 }
 
 // DeleteUser removes an account's Pointers, never its Objects (§2.3).
-// Pointers, sessions, plays and playlists cascade.
+// Pointers, sessions, plays and playlists cascade; the songs they added to
+// jams (jam_queue has no cascade) go first, or the delete is refused.
 func (s *Service) DeleteUser(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "DELETE FROM jam_queue WHERE added_by = ?", id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) Users(ctx context.Context) ([]User, error) {
