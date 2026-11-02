@@ -361,3 +361,19 @@ func TestDeletedFilesLeaveTheLibraryAndReturn(t *testing.T) {
 		t.Fatal("after putting back:", a, al, r, p, c)
 	}
 }
+
+func TestChangePassword(t *testing.T) {
+	e := setup(t)
+	// Your own: the old password stops working at once, the new one works.
+	ok(t, e.get(t, "bob", "hunter2", "changePassword", url.Values{"username": {"bob"}, "password": {"enc:" + hex.EncodeToString([]byte("correct horse"))}}))
+	failed(t, e.get(t, "bob", "hunter2", "ping", nil), ErrWrongCreds)
+	ok(t, e.get(t, "bob", "correct horse", "ping", nil))
+
+	// Someone else's only as an admin.
+	failed(t, e.get(t, "bob", "correct horse", "changePassword", url.Values{"username": {"alice"}, "password": {"x"}}), ErrNotAuthorized)
+	ok(t, e.get(t, "alice", "sesame", "changePassword", url.Values{"username": {"bob"}, "password": {"reset"}}))
+	ok(t, e.get(t, "bob", "reset", "ping", nil))
+
+	failed(t, e.get(t, "alice", "sesame", "changePassword", url.Values{"username": {"nobody"}, "password": {"x"}}), ErrNotFound)
+	failed(t, e.get(t, "alice", "sesame", "changePassword", url.Values{"username": {"bob"}}), ErrMissingParam)
+}

@@ -5,6 +5,7 @@ package subsonic
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -71,6 +72,7 @@ func (a *API) Handler() http.Handler {
 		"getLicense":      func(*request) (*Response, error) { return &Response{License: &License{Valid: true}}, nil },
 		"getMusicFolders": getMusicFolders,
 		"getUser":         getUser,
+		"changePassword":  changePassword,
 		"getArtists":      getArtists,
 		"getIndexes":      getArtists,
 		"getArtist":       getArtist,
@@ -115,6 +117,40 @@ func (a *API) Handler() http.Handler {
 		}
 		a.write(r, resp, err)
 	})
+}
+
+// changePassword sets an account's password (Subsonic 1.1): your own, or as
+// an admin anyone's. The password comes plain or "enc:"-hex-encoded, as p= does.
+func changePassword(r *request) (*Response, error) {
+	name, password := r.FormValue("username"), r.FormValue("password")
+	if name == "" {
+		return nil, missing("username")
+	}
+	if password == "" {
+		return nil, missing("password")
+	}
+	if strings.HasPrefix(password, "enc:") {
+		b, err := hex.DecodeString(password[4:])
+		if err != nil {
+			return nil, apiError{ErrGeneric, "The password isn't valid hex."}
+		}
+		password = string(b)
+	}
+	target, err := r.api.Auth.UserByName(r.Context(), name)
+	if errors.Is(err, auth.ErrNoSuchUser) {
+		return nil, notFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if target.ID != r.user.ID && !r.user.IsAdmin {
+		return nil, apiError{ErrNotAuthorized, "Only an admin can change another account's password."}
+	}
+	if err := r.api.Auth.SetPassword(r.Context(), target.ID, password, ""); err != nil {
+		return nil, err
+	}
+	r.api.Log.Info("password changed", "account", target.Name, "by", r.user.Name)
+	return &Response{}, nil
 }
 
 func (a *API) authenticate(r *http.Request) (auth.User, error) {

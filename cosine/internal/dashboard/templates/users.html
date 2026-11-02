@@ -5,6 +5,16 @@
 <td>{{if not .Self}}<form method="post" action="/users/{{.ID}}/delete"><button class="destroy">Delete account {{.Name}}</button></form>{{end}}</td></tr>
 {{end}}</table>
 <p>Deleting an account removes its library, playlists and history. Its music stays in the Store.</p>
+<h2>Set a password</h2>
+<p>Its apps are refused until they sign in with the new one; Sine asks for it.</p>
+{{range .Data.Users}}<form method="post" action="/users/{{.ID}}/password">
+<h3>{{.Name}}{{if .Self}} (you){{end}}</h3>
+{{if .Self}}<label>Current password<br><input name="current" type="password" required autocomplete="current-password"></label>{{end}}
+<label>New password<br><input name="password" type="password" required autocomplete="new-password"></label>
+<label>Again<br><input name="password2" type="password" required autocomplete="new-password"></label>
+<button class="go">Set {{.Name}}'s password</button>
+</form>
+{{end}}
 <h2>New account</h2>
 <form method="post" action="/users">
 <label>Username<br><input name="username" required autocomplete="off"></label>

@@ -102,6 +102,7 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /users", d.admin(d.users))
 	mux.HandleFunc("POST /users", d.admin(d.createUser))
 	mux.HandleFunc("POST /users/{id}/delete", d.admin(d.deleteUser))
+	mux.HandleFunc("POST /users/{id}/password", d.admin(d.setPassword))
 	mux.HandleFunc("GET /settings", d.admin(d.settings))
 	mux.HandleFunc("POST /settings/store", d.admin(d.moveStore))
 	mux.HandleFunc("POST /settings/inbox", d.admin(d.changeInbox))
@@ -492,6 +493,41 @@ func (d *Dashboard) deleteUser(w http.ResponseWriter, r *http.Request, u auth.Us
 		return
 	}
 	done(w, r, "/users", "Account deleted. Its music stays in the Store.")
+}
+
+// setPassword sets an account's password. Your own asks for the one you have
+// first; anyone else's is an admin's reset. Their apps are refused until they
+// sign in with the new one.
+func (d *Dashboard) setPassword(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	password := r.FormValue("password")
+	if password != r.FormValue("password2") {
+		d.renderUsers(w, r, u, "The two new passwords aren't the same.")
+		return
+	}
+	keep := ""
+	if id == u.ID {
+		if _, err := d.Auth.CheckPassword(r.Context(), u.Name, r.FormValue("current")); err != nil {
+			d.renderUsers(w, r, u, "That isn't your current password.")
+			return
+		}
+		if c, err := r.Cookie(cookieName); err == nil {
+			keep = c.Value
+		}
+	}
+	if err := d.Auth.SetPassword(r.Context(), id, password, keep); err != nil {
+		d.renderUsers(w, r, u, err.Error())
+		return
+	}
+	if id == u.ID {
+		done(w, r, "/users", "Your password is changed. Sign in again in Sine with the new one.")
+		return
+	}
+	done(w, r, "/users", "Password changed. Their apps will ask for the new one.")
 }
 
 // ---------------------------------------------------------------- settings

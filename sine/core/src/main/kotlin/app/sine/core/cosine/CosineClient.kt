@@ -186,11 +186,21 @@ data class Uploaded(val track: String, val duplicate: Boolean = false)
  */
 class CosineClient(
     baseUrl: String,
-    private val credentials: SubsonicCredentials,
+    credentials: SubsonicCredentials,
     private val http: OkHttpClient,
 ) {
     private val base: HttpUrl = baseUrl.trimEnd('/').toHttpUrl()
     @Volatile private var session: String? = null
+
+    /** Who this signs in as: replaced in place when the password changes, which signs in afresh. */
+    @Volatile var credentials: SubsonicCredentials = credentials
+        set(value) {
+            field = value
+            session = null
+        }
+
+    /** Heard when Cosine refuses these credentials: the password changed elsewhere, say. */
+    @Volatile var onRefused: () -> Unit = {}
 
     suspend fun capabilities(): Set<String> = describe().capabilities
 
@@ -480,7 +490,12 @@ class CosineClient(
         val body = AuthRequest(credentials.username, credentials.token, credentials.salt)
         val request = Request.Builder().url(url("auth"))
             .post(WireJson.encodeToString(AuthRequest.serializer(), body).toRequestBody(JSON)).build()
-        execute(request, AuthResponse.serializer()).token.also { session = it }
+        try {
+            execute(request, AuthResponse.serializer()).token.also { session = it }
+        } catch (e: CosineException) {
+            if (e.status == 401) onRefused()
+            throw e
+        }
     }
 
     private fun <T> execute(request: Request, serializer: KSerializer<T>, via: OkHttpClient = http): T =

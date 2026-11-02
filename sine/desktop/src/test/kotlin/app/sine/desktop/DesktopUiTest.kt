@@ -144,4 +144,35 @@ class DesktopUiTest {
         waitFor("Add an account")
         shot("settings")
     }
+
+    @Test
+    fun `changes the password, and signs in again when it changed elsewhere`() = runDesktopComposeUiTest(1440, 900) {
+        server.password = "pw"
+        val g = graph()
+        setContent { SineDesktop(g) }
+        waitFor("Home")
+        onAllNodesWithText("me").onFirst().performClick()
+        waitFor("Change password")
+        onNodeWithText("Change password").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodesWithContentDescription("New password").fetchSemanticsNodes().isNotEmpty() }
+        val before = g.accounts.state.value.accounts.single().token
+        onNodeWithContentDescription("New password").performTextInput("correct horse")
+        onNodeWithContentDescription("Again").performTextInput("correct horse")
+        shot("password-change")
+        onNodeWithText("Change it").performClick()
+        waitUntil(timeoutMillis = 10_000) { server.password == "correct horse" }
+        waitUntil(timeoutMillis = 10_000) { g.accounts.state.value.accounts.single().token != before }
+
+        // Changed somewhere else: the next request is refused, and Sine asks.
+        server.password = "changed elsewhere"
+        onNodeWithText("Albums").performClick()
+        waitFor("Sign in again")
+        shot("password-refused")
+        onAllNodesWithText("Sign in again").onFirst().performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodesWithContentDescription("Password").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithContentDescription("Password").performTextInput("changed elsewhere")
+        onNodeWithText("Sign in").performClick()
+        waitUntil(timeoutMillis = 10_000) { !g.sessionById(g.accounts.state.value.accounts.single().id)!!.refused.value }
+        waitFor("Goldberg Variations")
+    }
 }

@@ -212,6 +212,16 @@ fun SettingsScreen(session: AccountSession, nav: Pages) {
                 end = if (active) ({ Tag("In use") }) else null,
             ) { if (!active) graph.accounts.setActive(a.id) }
         }
+        // The password of the account in use (§2.1): changed here, or asked for again when the server stopped taking it.
+        item {
+            val refused by session.refused.collectAsStateWithLifecycle()
+            ItemRow(
+                if (refused) "Sign in again" else "Change password",
+                if (refused) "The server no longer takes the password Sine kept" else "For ${session.account.username}",
+                null, showArt = false,
+                end = { PhaseIcon(PhaseIcons.Forward, null, size = 20.dp, tone = IconTone.Faint) },
+            ) { nav.form { PasswordForm(session, again = refused) } }
+        }
         item {
             Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Pill("Add account", { nav.navigate(Routes.ADD_ACCOUNT) }, icon = PhaseIcons.Plus, height = 44.dp)

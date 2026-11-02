@@ -25,6 +25,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -59,6 +60,7 @@ import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseShape
 import app.sine.ui.phase.PhaseType
+import app.sine.ui.phase.Signal
 import app.sine.ui.phase.StatusLine
 
 val LocalNav = staticCompositionLocalOf { Nav() }
@@ -104,10 +106,25 @@ fun Shell(session: AccountSession) {
                     if (e.type == KeyEventType.KeyDown && e.key == Key.Spacebar) { player.togglePlay(); true } else false
                 },
         ) {
+            // The server stopped taking the password kept here: changed elsewhere (§2.1).
+            val refused by session.refused.collectAsState()
+            var signingIn by remember { mutableStateOf(false) }
+            if (refused) {
+                Row(
+                    Modifier.fillMaxWidth().background(PhaseColor.Raised).padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    StatusLine("${session.account.displayName} no longer takes the password Sine kept.", Modifier.weight(1f), signal = Signal.Fault)
+                    app.sine.ui.phase.Pill("Sign in again", { signingIn = true }, kind = app.sine.ui.phase.PillKind.Primary, height = 40.dp)
+                }
+            }
+            if (signingIn) PasswordDialog(session, again = true, onDone = { signingIn = false })
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Sidebar(session, nav, searchFocus, Modifier.width(248.dp).fillMaxHeight())
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    Page(nav.current, session)
+                    // Signed in again (§2.1): the page asks the server afresh, with the new sign-in.
+                    val account by session.accountFlow.collectAsState()
+                    key(account.token) { Page(nav.current, session) }
                     val line = say.line
                     if (line != null) {
                         Box(

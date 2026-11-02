@@ -22,6 +22,7 @@ import (
 var (
 	ErrBadCredentials = errors.New("wrong username or password")
 	ErrUserExists     = errors.New("that username is taken")
+	ErrNoSuchUser     = errors.New("there's no such account")
 )
 
 type User struct {
@@ -116,6 +117,37 @@ func (s *Service) CreateUser(ctx context.Context, name, password string, admin b
 	}
 	id, _ := res.LastInsertId()
 	return User{ID: id, Name: name, IsAdmin: admin}, nil
+}
+
+// SetPassword replaces an account's password. Every client signed in with
+// the old one is refused from then on (Subsonic's token is worked out from
+// it), and so is every dashboard session but [keep], the one doing it.
+func (s *Service) SetPassword(ctx context.Context, id int64, password, keep string) error {
+	if password == "" {
+		return errors.New("the new password can't be empty")
+	}
+	enc, err := s.encrypt(password)
+	if err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx, "UPDATE users SET password_enc = ? WHERE id = ?", enc, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNoSuchUser
+	}
+	_, err = s.db.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ? AND token != ?", id, keep)
+	return err
+}
+
+// UserByName finds an account by its name, as Subsonic names them.
+func (s *Service) UserByName(ctx context.Context, name string) (User, error) {
+	u, _, err := s.lookup(ctx, name)
+	if errors.Is(err, ErrBadCredentials) {
+		return User{}, ErrNoSuchUser
+	}
+	return u, err
 }
 
 // DeleteUser removes an account's Pointers, never its Objects (§2.3).
