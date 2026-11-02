@@ -115,6 +115,12 @@ class DesktopGraph(
     companion object {
         /** The desktop keeps its own Home, apart from the phone's (§6.15). */
         const val HOME_DEVICE = "desktop"
+
+        /** For playing: a song streams for as long as it plays, so no read deadline beyond a stall. */
+        val streams: OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
     }
 }
 

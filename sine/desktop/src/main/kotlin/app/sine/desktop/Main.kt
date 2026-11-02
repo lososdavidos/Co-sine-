@@ -8,11 +8,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import app.sine.desktop.player.VlcEngine
+import app.sine.desktop.player.FfmpegEngine
 import app.sine.desktop.ui.SineDesktop
 
 fun main() {
-    val graph = DesktopGraph(Folders.app, Folders.music, VlcEngine.create())
+    val graph = DesktopGraph(Folders.app, Folders.music, FfmpegEngine.create(DesktopGraph.streams))
     graph.start()
     application {
         Window(

@@ -15,7 +15,7 @@ The full design is in [`docs/spec/SPEC.md`](docs/spec/SPEC.md), which is the sin
 | `sine/core` → `session/` | An account's session (library mirror, playlists, likes, Home and its sync): the same code on Android and the desktop. |
 | `sine/phase` | Phase, the design system: colours, type, icons, pills, rows, the wave. One source both apps compile; the fonts are `sine/app/src/main/res/font`. |
 | `sine/app` | The Android app: Compose UI in Phase, Media3 playback, WorkManager downloads. |
-| `sine/desktop` | Sine for the desktop: Compose for the desktop, the window of §6.15, playback through VLC (vlcj). |
+| `sine/desktop` | Sine for the desktop: Compose for the desktop, the window of §6.15, playback through FFmpeg, which comes inside it. |
 | `cosine/` | The server: Go + SQLite, one static binary. See [`cosine/README.md`](cosine/README.md). |
 | `deploy/` | `install.sh` for Proxmox LXC containers (privileged or unprivileged) and Debian/Ubuntu machines. See [`deploy/README.md`](deploy/README.md). |
 | `docs/spec/` | The spec and the script that renders it to HTML (`python3 build.py`, needs `pip install markdown`). |
@@ -85,7 +85,7 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Passwords:** change yours in Sine (Settings → Change password) on the phone or the desktop, and stay signed in with your downloads; an admin can also set or reset any account's in the dashboard (Accounts). Wherever it changed, Sine notices the old one is refused and asks for the new one (Sign in again) instead of dropping the account. Works with any Subsonic server that offers `changePassword`.
 
-**Desktop:** Sine for Windows, macOS and Linux, from the same core and the same design: destinations in a sidebar, the queue beside the page, the player docked along the bottom (§6.15). Click, Ctrl-click and Shift-click to select songs, double-click to play, right-click for what the phone's selection offers; Space plays and pauses, Q queues, Ctrl+K searches. Home is the desktop's own, in as many columns as the window holds. It plays through VLC, which you install alongside; downloads go to `~/Music/Sine`. Resume, the remote and Jam work as on the phone: the computer is one more of your devices. Not on the desktop yet: crossfade, keeping what you stream, the system's media keys and now-playing panel, and a tray icon.
+**Desktop:** Sine for Windows, macOS and Linux, from the same core and the same design: destinations in a sidebar, the queue beside the page, the player docked along the bottom (§6.15). Click, Ctrl-click and Shift-click to select songs, double-click to play, right-click for what the phone's selection offers; Space plays and pauses, Q queues, Ctrl+K searches. Home is the desktop's own, in as many columns as the window holds. It plays through FFmpeg, which comes inside it: nothing else to install. Downloads go to `~/Music/Sine`. Resume, the remote and Jam work as on the phone: the computer is one more of your devices. Not on the desktop yet: crossfade, keeping what you stream, the system's media keys and now-playing panel, and a tray icon.
 
 **Not yet built:** audio fingerprinting, the mirror's live push, Jam's multi-room mode, and iOS.
 
@@ -111,7 +111,7 @@ cd sine
 ./gradlew :core:test          # pure JVM, no Android SDK needed
 ./gradlew :app:assembleDebug  # needs the Android SDK
 ./gradlew :desktop:test       # the desktop app's tests, its pages driven against a small Subsonic server
-./gradlew :desktop:run        # Sine on this computer (install VLC to hear it)
+./gradlew :desktop:run        # Sine on this computer
 ./gradlew :desktop:packageDeb # or packageMsi, packageDmg, on that system
 ```
 

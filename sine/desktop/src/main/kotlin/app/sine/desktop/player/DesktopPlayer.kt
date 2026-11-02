@@ -27,7 +27,7 @@ data class PlayerState(
     val account: String? = null,
     /** Playing a jam's songs (§4C): held to its clock, not this queue's own. */
     val jam: Long? = null,
-    /** Why nothing plays, when something should: VLC missing, the song unreachable. */
+    /** Why nothing plays, when something should: its player not starting, the song unreachable. */
     val problem: String? = null,
     val volume: Float = 1f,
 ) {
@@ -55,7 +55,7 @@ class DesktopPlayer(
     private val sessionOf: (String) -> AccountSession?,
     lastFile: File,
 ) {
-    private val _state = MutableStateFlow(PlayerState(problem = if (engine == null) NO_VLC else null))
+    private val _state = MutableStateFlow(PlayerState(problem = if (engine == null) NO_ENGINE else null))
     val state: StateFlow<PlayerState> = _state.asStateFlow()
 
     private val lastStore = JsonFile(lastFile, LastPlayed.serializer().nullable) { null }
@@ -213,7 +213,7 @@ class DesktopPlayer(
         val track = s.current ?: return
         val session = s.account?.let(sessionOf) ?: return
         if (engine == null) {
-            _state.update { it.copy(isPlaying = false, problem = NO_VLC) }
+            _state.update { it.copy(isPlaying = false, problem = NO_ENGINE) }
             return
         }
         val source = if (s.jam != null) session.jamSource(track, s.jam) else session.playSource(track)
@@ -294,7 +294,7 @@ class DesktopPlayer(
     fun release() = engine?.release()
 
     companion object {
-        const val NO_VLC = "Sine plays through VLC, which isn't installed here. Install VLC, then open Sine again."
+        const val NO_ENGINE = "Sine's player didn't start on this computer, so nothing can play. Reinstalling Sine may help."
         private const val TICK_MS = 500L
         private const val RESTART_MS = 3_000L
         private const val MAX_KEPT = 2_000

@@ -29,6 +29,21 @@ sourceSets {
     }
 }
 
+/**
+ * Which build of FFmpeg's libraries goes in: the one for the system this
+ * builds on, as each installer is built on its own system. -PsineNatives
+ * picks another (linux-arm64, say).
+ */
+val natives: String = (findProperty("sineNatives") as String?) ?: run {
+    val os = System.getProperty("os.name").lowercase()
+    val arm = System.getProperty("os.arch").let { it == "aarch64" || it == "arm64" }
+    when {
+        "win" in os -> "windows-x86_64"
+        "mac" in os -> if (arm) "macosx-arm64" else "macosx-x86_64"
+        else -> if (arm) "linux-arm64" else "linux-x86_64"
+    }
+}
+
 dependencies {
     implementation(project(":core"))
     implementation(compose.desktop.currentOs)
@@ -36,7 +51,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
-    implementation(libs.vlcj)
+    // FFmpeg plays the sound (Q84): its Java side, and its libraries for the system this builds on, inside the installer.
+    implementation(libs.ffmpeg)
+    implementation(variantOf(libs.ffmpeg) { classifier(natives) })
+    implementation(variantOf(libs.javacpp) { classifier(natives) })
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
@@ -63,7 +81,7 @@ compose.desktop {
             packageVersion = sineVersion
             description = "Sine: music from your Cosine or Subsonic server"
             vendor = "Sine"
-            modules("java.naming", "jdk.unsupported")
+            modules("java.instrument", "java.management", "java.naming", "jdk.unsupported")
             linux {
                 iconFile.set(project.file("src/main/resources/sine/icon.png"))
                 debMaintainer = "sine@localhost"
