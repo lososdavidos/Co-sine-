@@ -44,9 +44,15 @@ enum class AlbumListType(val wire: String) {
  */
 class SubsonicClient(
     baseUrl: String,
-    private val credentials: SubsonicCredentials,
+    credentials: SubsonicCredentials,
     private val http: OkHttpClient,
 ) {
+    /** Who this signs in as: replaced in place when the password changes, so nothing has to be rebuilt. */
+    @Volatile var credentials: SubsonicCredentials = credentials
+
+    /** Heard when the server refuses these credentials: the password changed elsewhere, say. */
+    @Volatile var onRefused: () -> Unit = {}
+
     private val base: HttpUrl = baseUrl.trimEnd('/').toHttpUrl()
 
     internal fun url(method: String, vararg params: Pair<String, Any?>): HttpUrl =
@@ -65,6 +71,15 @@ class SubsonicClient(
                 for ((k, v) in params) if (v != null) addQueryParameter(k, v.toString())
             }
             .build()
+
+    /**
+     * Sets [username]'s password (Subsonic 1.1): your own, or as an admin
+     * anyone's. Sent hex-encoded, as Subsonic allows. These credentials stop
+     * working at once: replace them with the new ones.
+     */
+    suspend fun changePassword(username: String, password: String) {
+        call("changePassword", "username" to username, "password" to "enc:" + password.toByteArray().joinToString("") { "%02x".format(it) })
+    }
 
     suspend fun ping() {
         call("ping")
@@ -181,7 +196,12 @@ class SubsonicClient(
                 if (!response.isSuccessful && body.isBlank()) {
                     throw IOException("HTTP ${response.code} from $method")
                 }
-                parseEnvelope(body)
+                try {
+                    parseEnvelope(body)
+                } catch (e: SubsonicException) {
+                    if (e.isAuthFailure) onRefused()
+                    throw e
+                }
             }
         }
 

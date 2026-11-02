@@ -155,6 +155,47 @@ func TestAdminOnlyAndAccounts(t *testing.T) {
 	}
 }
 
+func TestSetPasswords(t *testing.T) {
+	e := setup(t)
+	e.post(t, "/setup", e.setupForm(filepath.Join(e.dir, "s"), filepath.Join(e.dir, "i")))
+	e.post(t, "/users", url.Values{"username": {"bob"}, "password": {"x"}})
+	ids := map[string]string{}
+	users, _ := e.auth.Users(context.Background())
+	for _, u := range users {
+		ids[u.Name] = itoa(u.ID)
+	}
+
+	// An admin resets someone else's.
+	_, body := e.post(t, "/users/"+ids["bob"]+"/password", url.Values{"password": {"y"}, "password2": {"y"}})
+	if !strings.Contains(body, "Password changed") {
+		t.Fatal(body)
+	}
+	if _, err := e.auth.CheckPassword(context.Background(), "bob", "y"); err != nil {
+		t.Fatal("bob's new password doesn't work")
+	}
+
+	// Your own needs the one you have, and the new one twice.
+	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"wrong"}, "password": {"z"}, "password2": {"z"}})
+	if !strings.Contains(body, "current password") {
+		t.Fatal(body)
+	}
+	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"pw"}, "password": {"z"}, "password2": {"q"}})
+	if !strings.Contains(body, "aren") {
+		t.Fatal(body)
+	}
+	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"pw"}, "password": {"z"}, "password2": {"z"}})
+	if !strings.Contains(body, "Your password is changed") {
+		t.Fatal(body)
+	}
+	// Still signed in here; the old password no longer opens it.
+	if res, _ := e.get(t, "/users"); res.Request.URL.Path != "/users" {
+		t.Fatal("changing your own password signed you out")
+	}
+	if _, err := e.auth.CheckPassword(context.Background(), "admin", "pw"); err == nil {
+		t.Fatal("the old password still works")
+	}
+}
+
 func TestCrossSitePostRefused(t *testing.T) {
 	e := setup(t)
 	req, _ := http.NewRequest("POST", e.srv.URL+"/setup", strings.NewReader("x=1"))

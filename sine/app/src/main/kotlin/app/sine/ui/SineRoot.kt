@@ -31,6 +31,7 @@ import app.sine.ui.phase.PhaseColor
 import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.Ambient
 import app.sine.ui.phase.PhaseTheme
+import app.sine.ui.phase.PillKind
 import app.sine.ui.phase.Signal
 import kotlinx.coroutines.delay
 
@@ -152,6 +153,20 @@ private fun MainScaffold(session: AccountSession) {
 
     // A question belongs to the page that asked it.
     LaunchedEffect(pages.top.id) { shelf.question = null }
+
+    // The server stopped taking the password kept here: it was changed elsewhere (§2.1). Ask once, at once.
+    val refused by session.refused.collectAsStateWithLifecycle()
+    LaunchedEffect(refused) {
+        if (!refused) return@LaunchedEffect
+        shelf.ask(
+            ShelfQuestion(
+                "Sign in to ${account.username} again?",
+                "The server no longer takes the password Sine kept. It was changed somewhere else.",
+                listOf(ShelfAction("Sign in again", PillKind.Primary) { pages.form { PasswordForm(session, again = true) } }),
+                cancel = true,
+            ),
+        )
+    }
     // Sideways goes nowhere while something is selected or asked (§6.16).
     SideEffect { pages.swipes = shelf.selection == null && shelf.question == null }
     // Losing the server is said once, in the shelf; the Offline mark stays in the top bar.

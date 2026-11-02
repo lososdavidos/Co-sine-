@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 199 resolved decisions · last updated 2026-11-02 (Sine on the desktop, §6.15; a swipe adds a song to the queue, §6.6; in a jam the queue is the jam's, §4C; Android Auto, §5.2a; the widget, §6.19; crossfade, Q69; the prefetch, §2.5; a device's volume, §4B; the Jam tile, §6.4.1; keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 199 resolved decisions · last updated 2026-11-02 (changing a password, and signing in again after it changed elsewhere, §2.3; Sine on the desktop, §6.15; a swipe adds a song to the queue, §6.6; in a jam the queue is the jam's, §4C; Android Auto, §5.2a; the widget, §6.19; crossfade, Q69; the prefetch, §2.5; a device's volume, §4B; the Jam tile, §6.4.1; keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -273,6 +273,17 @@ they'd be state nobody ever changes.
 `RESOLVED` **Accounts are created two ways:** the admin creates them directly
 from the dashboard, or issues an **invite code** that the new user redeems in
 the app and sets their own password against. No open registration.
+
+`NOTE` Built: a password can be changed. In Sine (Settings, Change password)
+for the account in use, on Android and the desktop: it goes to the server as
+Subsonic's `changePassword`, which Cosine serves too, and Sine keeps the new
+token and salt, never the password, so the account stays signed in with its
+downloads. In the dashboard (Accounts) an admin sets their own, asked for the
+current one first, or resets anyone's. Over Subsonic an account changes its
+own and an admin anyone's. A change ends every other session of that account,
+the apps' and the dashboard's; an app still holding the old password is
+refused, and Sine asks for the new one (Sign in again) rather than dropping
+the account.
 
 `RESOLVED` **Deleting an account removes its Pointers, never its Objects.**
 Music that entered the system stays in the Store regardless of who fetched it;

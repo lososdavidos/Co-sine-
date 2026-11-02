@@ -1,5 +1,7 @@
 package app.sine.desktop.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -144,6 +147,8 @@ fun SettingsPage(session: AccountSession) {
     val settings by graph.settings.state.collectAsState()
     var adding by remember { mutableStateOf(false) }
     var forgetting by remember { mutableStateOf<Account?>(null) }
+    var password by remember { mutableStateOf(false) }
+    val refused by session.refused.collectAsState()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 32.dp, vertical = 28.dp)) {
         Column(Modifier.widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             PageTitle("Settings")
@@ -160,6 +165,13 @@ fun SettingsPage(session: AccountSession) {
                     else Pill("Use", { graph.accounts.setActive(a.id) }, kind = PillKind.Secondary, height = 40.dp)
                     Pill("Sign out", { forgetting = a }, kind = PillKind.QuietFault, height = 40.dp)
                 }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill(
+                    if (refused) "Sign in again" else "Change password", { password = true },
+                    kind = if (refused) PillKind.Primary else PillKind.Outline, height = 44.dp,
+                )
+                if (refused) StatusLine("The server no longer takes the password Sine kept.", signal = Signal.Fault)
             }
             if (adding) {
                 Column(Modifier.widthIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { AddAccount { adding = false } }
@@ -188,6 +200,7 @@ fun SettingsPage(session: AccountSession) {
             }
         }
     }
+    if (password) PasswordDialog(session, again = refused, onDone = { password = false })
     forgetting?.let { a ->
         Confirm(
             question = "Sign out of ${a.displayName}?",
@@ -212,3 +225,87 @@ val Shortcuts = listOf(
     "Double-click" to "Play from that song",
     "Right-click" to "What you can do with the songs selected",
 )
+
+/**
+ * An account's password (§2.1). [again]: the server stopped taking the one
+ * kept here, so this asks for it; otherwise it changes it on the server.
+ * The account stays signed in with its downloads either way.
+ */
+@Composable
+fun PasswordDialog(session: AccountSession, again: Boolean, onDone: () -> Unit) {
+    val graph = LocalGraph.current
+    val say = LocalSay.current
+    val scope = rememberCoroutineScope()
+    var password by remember { mutableStateOf("") }
+    var repeat by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val account = session.account
+    val ready = password.isNotEmpty() && (again || password == repeat) && !busy
+
+    fun go() {
+        if (!ready) return
+        busy = true
+        problem = null
+        scope.launch {
+            try {
+                val updated = if (again) session.signInAgain(password) else session.changePassword(password)
+                graph.accounts.update(updated)
+                say(if (again) "Signed in again." else "Password changed.")
+                onDone()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: app.sine.core.subsonic.SubsonicException) {
+                problem = when {
+                    e.isAuthFailure && again -> "That isn't it. The server still says no."
+                    e.code == 50 -> "This server lets only an admin change passwords."
+                    e.code == 0 && !again -> "This server can't change passwords from an app. Change it on the server."
+                    else -> e.message
+                }
+            } catch (e: java.io.IOException) {
+                problem = "Can't reach ${account.serverUrl.substringAfter("://")}."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDone) {
+        Column(
+            Modifier.width(440.dp)
+                .clip(app.sine.ui.phase.PhaseShape.Floating)
+                .background(PhaseColor.Float)
+                .border(1.dp, PhaseColor.LineFloat, app.sine.ui.phase.PhaseShape.Floating)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(if (again) "Sign in again" else "Change password", color = PhaseColor.Text1, style = PhaseType.Title)
+            Text(
+                if (again) "${account.displayName} no longer takes the password Sine kept: it was changed somewhere else. Its downloads stay."
+                else "For ${account.displayName}. Your other apps and devices will ask for the new one.",
+                color = PhaseColor.Text2, style = PhaseType.Body,
+            )
+            PhaseField(
+                password, { password = it; problem = null }, Modifier.fillMaxWidth(),
+                label = if (again) "Password" else "New password",
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = if (again) ImeAction.Go else ImeAction.Next),
+                keyboardActions = KeyboardActions(onGo = { go() }),
+            )
+            if (!again) {
+                PhaseField(
+                    repeat, { repeat = it; problem = null }, Modifier.fillMaxWidth(), label = "Again",
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { go() }),
+                )
+                if (repeat.isNotEmpty() && repeat != password) StatusLine("The two aren't the same yet.", color = PhaseColor.Text2)
+            }
+            problem?.let { StatusLine(it, signal = Signal.Fault) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill(if (again) "Sign in" else "Change it", ::go, kind = PillKind.Primary, enabled = ready, height = 44.dp)
+                Pill("Cancel", onDone, kind = PillKind.Quiet, height = 44.dp)
+            }
+        }
+    }
+}

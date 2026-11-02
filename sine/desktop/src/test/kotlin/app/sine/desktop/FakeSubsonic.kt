@@ -17,6 +17,9 @@ import javax.imageio.ImageIO
  */
 class FakeSubsonic {
     val server = MockWebServer()
+
+    /** When set, the account's password: sign-ins are checked against it, and changePassword changes it. */
+    @Volatile var password: String? = null
     val url: String get() = server.url("/").toString().trimEnd('/')
 
     private data class Album(val id: String, val name: String, val artist: String, val artistId: String, val year: Int, val colour: Color, val songs: List<Pair<String, Int>>)
@@ -67,6 +70,12 @@ class FakeSubsonic {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val url = request.url
                 val id = url.queryParameter("id").orEmpty()
+                password?.let { pw ->
+                    val md5 = java.security.MessageDigest.getInstance("MD5").digest((pw + url.queryParameter("s")).toByteArray()).joinToString("") { "%02x".format(it) }
+                    if (url.queryParameter("t") != md5) {
+                        return MockResponse.Builder().body("""{"subsonic-response":{"status":"failed","version":"1.16.1","error":{"code":40,"message":"Wrong username or password."}}}""").build()
+                    }
+                }
                 return when (url.encodedPath.substringAfterLast('/').removeSuffix(".view")) {
                     "ping" -> ok("")
                     "getArtists" -> ok(""""artists":{"index":[{"name":"A","artist":[${albums.joinToString(",") { """{"id":"${it.artistId}","name":${q(it.artist)},"albumCount":1,"coverArt":"${it.id}"}""" }}]}]}""")
@@ -86,6 +95,10 @@ class FakeSubsonic {
                     }
                     "getCoverArt" -> cover(id)
                     "star", "unstar", "scrobble" -> ok("")
+                    "changePassword" -> {
+                        password = String(url.queryParameter("password")!!.removePrefix("enc:").chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+                        ok("")
+                    }
                     else -> MockResponse.Builder().code(404).build()
                 }
             }

@@ -29,6 +29,7 @@ import app.sine.core.play.PlaySource
 import app.sine.core.server.Capability
 import app.sine.core.subsonic.AlbumListType
 import app.sine.core.subsonic.SubsonicClient
+import app.sine.core.subsonic.SubsonicCredentials
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -115,6 +116,50 @@ class AccountSession(
     fun replaceAccount(updated: Account) {
         require(updated.id == account.id)
         _account.value = updated
+        if (updated.credentials != client.credentials) {
+            client.credentials = updated.credentials
+            cosine?.credentials = updated.credentials
+            _refused.value = false
+        }
+    }
+
+    private val _refused = MutableStateFlow(false)
+    /**
+     * The server no longer takes this account's saved sign-in: its password
+     * was changed elsewhere. Asking for the new one ([signInAgain]) clears it.
+     */
+    val refused: StateFlow<Boolean> = _refused.asStateFlow()
+
+    init {
+        client.onRefused = { _refused.value = true }
+        cosine?.onRefused = { _refused.value = true }
+    }
+
+    /**
+     * Changes this account's password on its server, and returns the account
+     * with its new sign-in for the caller to keep: it stays signed in, with
+     * its downloads. Only the token and salt are kept, never the password.
+     */
+    suspend fun changePassword(newPassword: String): Account {
+        require(newPassword.isNotEmpty()) { "The new password can't be empty." }
+        val next = SubsonicCredentials.fromPassword(account.username, newPassword)
+        client.changePassword(account.username, newPassword)
+        val updated = account.copy(token = next.token, salt = next.salt)
+        replaceAccount(updated)
+        return updated
+    }
+
+    /**
+     * After the password changed elsewhere: tries [password] and, if the
+     * server takes it, returns the account with it for the caller to keep.
+     * Throws if it's refused too.
+     */
+    suspend fun signInAgain(password: String): Account {
+        val next = SubsonicCredentials.fromPassword(account.username, password)
+        SubsonicClient(account.serverUrl, next, http).ping()
+        val updated = account.copy(token = next.token, salt = next.salt)
+        replaceAccount(updated)
+        return updated
     }
     fun offline() = OfflineLibrary(downloads.tracks.value.values)
 

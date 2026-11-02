@@ -59,6 +59,7 @@ import app.sine.ui.phase.PhaseIcons
 import app.sine.ui.phase.PhaseLabel
 import app.sine.ui.phase.PhaseShape
 import app.sine.ui.phase.PhaseType
+import app.sine.ui.phase.Signal
 import app.sine.ui.phase.StatusLine
 
 val LocalNav = staticCompositionLocalOf { Nav() }
@@ -104,6 +105,19 @@ fun Shell(session: AccountSession) {
                     if (e.type == KeyEventType.KeyDown && e.key == Key.Spacebar) { player.togglePlay(); true } else false
                 },
         ) {
+            // The server stopped taking the password kept here: changed elsewhere (§2.1).
+            val refused by session.refused.collectAsState()
+            var signingIn by remember { mutableStateOf(false) }
+            if (refused) {
+                Row(
+                    Modifier.fillMaxWidth().background(PhaseColor.Raised).padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    StatusLine("${session.account.displayName} no longer takes the password Sine kept.", Modifier.weight(1f), signal = Signal.Fault)
+                    app.sine.ui.phase.Pill("Sign in again", { signingIn = true }, kind = app.sine.ui.phase.PillKind.Primary, height = 40.dp)
+                }
+            }
+            if (signingIn) PasswordDialog(session, again = true, onDone = { signingIn = false })
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Sidebar(session, nav, searchFocus, Modifier.width(248.dp).fillMaxHeight())
                 Box(Modifier.weight(1f).fillMaxHeight()) {
