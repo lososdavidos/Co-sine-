@@ -199,7 +199,8 @@ private fun MainScaffold(session: AccountSession) {
             )
             CompositionLocalProvider(LocalChrome provides chrome) {
                 Box(Modifier.fillMaxSize().background(PhaseColor.Ground)) {
-                    Screen(session, pages, page)
+                    // Signed in again (§2.1): the page asks the server afresh, with the new sign-in.
+                    key(account.token) { Screen(session, pages, page) }
                     if (page.route !in pages.destinations && !page.isSheet && page.route != Routes.ADD_ACCOUNT) {
                         DetailBar(
                             back = backLabel(pages.below(page)?.route),

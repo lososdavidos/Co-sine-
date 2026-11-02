@@ -25,6 +25,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -121,7 +122,9 @@ fun Shell(session: AccountSession) {
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Sidebar(session, nav, searchFocus, Modifier.width(248.dp).fillMaxHeight())
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    Page(nav.current, session)
+                    // Signed in again (§2.1): the page asks the server afresh, with the new sign-in.
+                    val account by session.accountFlow.collectAsState()
+                    key(account.token) { Page(nav.current, session) }
                     val line = say.line
                     if (line != null) {
                         Box(
