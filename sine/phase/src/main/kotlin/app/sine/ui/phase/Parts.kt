@@ -46,7 +46,6 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import java.util.Locale
 
@@ -584,7 +584,7 @@ fun Ambience(
     Box(modifier) {
         if (model != null) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(model).size(24).build(),
+                model = ImageRequest.Builder(LocalPlatformContext.current).data(model).size(24).build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 filterQuality = FilterQuality.High,

@@ -27,8 +27,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Core tests
-        run: ./gradlew :core:test --stacktrace
+      - name: VLC, for the desktop's playback tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libvlc5 vlc-plugin-base
+
+      - name: Core and desktop tests
+        run: ./gradlew :core:test :desktop:test --stacktrace
 
       - name: Build APKs
         run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace
@@ -40,9 +43,19 @@ jobs:
           path: sine/app/build/outputs/apk/*/*.apk
           if-no-files-found: error
 
+      - name: Upload desktop screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sine-desktop-screens
+          path: sine/desktop/build/screens/
+          if-no-files-found: ignore
+
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: sine/core/build/reports/tests/
+          path: |
+            sine/core/build/reports/tests/
+            sine/desktop/build/reports/tests/

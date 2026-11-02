@@ -1,7 +1,8 @@
 name: Release
 
-# Publishes a release: static Cosine binaries, the installer, and an
-# installable Sine APK, with one checksum file for all. The installer
+# Publishes a release: static Cosine binaries, the installer, an
+# installable Sine APK, and Sine for the desktop (a .deb, an .msi and a
+# .dmg), with one checksum file for all. The installer
 # downloads from here. Start it by pushing a tag like v0.2.0, or from the
 # Actions tab ("Run workflow") with a version, which creates the tag.
 on:
@@ -84,8 +85,50 @@ jobs:
           name: sine
           path: dist/
 
+  desktop:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            task: packageDeb
+            ext: deb
+          - os: windows-latest
+            task: packageMsi
+            ext: msi
+          - os: macos-latest
+            task: packageDmg
+            ext: dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: jpackage's tools for a .deb
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fakeroot
+
+      - name: Build the ${{ matrix.ext }}
+        working-directory: sine
+        shell: bash
+        run: |
+          ./gradlew :desktop:${{ matrix.task }} -PsineVersion="${TAG}"
+          mkdir -p ../dist
+          cp "$(find desktop/build/compose/binaries -name "*.${{ matrix.ext }}" | head -n 1)" "../dist/sine-desktop-${TAG}.${{ matrix.ext }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sine-desktop-${{ matrix.ext }}
+          path: dist/
+
   publish:
-    needs: [cosine, sine]
+    needs: [cosine, sine, desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -110,5 +153,7 @@ jobs:
             then open `http://<container-ip>:4534/` to set it up. Guide: [deploy/README.md](https://github.com/${{ github.repository }}/blob/${{ env.TAG }}/deploy/README.md).
 
             **Android:** download `sine-${{ env.TAG }}.apk` on the phone and install it (allow installs from your browser when asked). Later releases install over it.
+
+            **Desktop:** `sine-desktop-${{ env.TAG }}.deb` (Debian, Ubuntu), `.msi` (Windows) or `.dmg` (macOS). Sine plays through VLC: install [VLC](https://www.videolan.org/vlc/) too. The macOS build isn't notarised yet: open it with right-click, Open, the first time.
 
             This is a testing build: signed with a key committed to the repository, not a store key.

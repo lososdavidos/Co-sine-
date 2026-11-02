@@ -51,6 +51,9 @@ android {
         compose = true
     }
 
+    // Phase, shared with Sine on the desktop (§6.15): one source of the design system.
+    sourceSets["main"].java.srcDir("../phase/src/main/kotlin")
+
     packaging {
         resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
     }
