@@ -2,7 +2,7 @@
 
 A self-hosted music system in two parts:
 
-- **Sine**: the client. Android first; desktop and iOS later.
+- **Sine**: the client, for Android and the desktop (Windows, macOS, Linux); iOS later.
 - **Cosine**: the server. Go + SQLite, replacing Navidrome.
 
 The full design is in [`docs/spec/SPEC.md`](docs/spec/SPEC.md), which is the single source of truth.
@@ -12,7 +12,10 @@ The full design is in [`docs/spec/SPEC.md`](docs/spec/SPEC.md), which is the sin
 | Path | What |
 |---|---|
 | `sine/core` | Pure Kotlin/JVM: Subsonic client, server probe, accounts, downloads index, play log, search ranking. No Android dependency, so it can move to Kotlin Multiplatform later (§5.2a). |
-| `sine/app` | The Android app: Compose UI in Phase (`ui/phase`), Media3 playback, WorkManager downloads. |
+| `sine/core` → `session/` | An account's session (library mirror, playlists, likes, Home and its sync): the same code on Android and the desktop. |
+| `sine/phase` | Phase, the design system: colours, type, icons, pills, rows, the wave. One source both apps compile; the fonts are `sine/app/src/main/res/font`. |
+| `sine/app` | The Android app: Compose UI in Phase, Media3 playback, WorkManager downloads. |
+| `sine/desktop` | Sine for the desktop: Compose for the desktop, the window of §6.15, playback through VLC (vlcj). |
 | `cosine/` | The server: Go + SQLite, one static binary. See [`cosine/README.md`](cosine/README.md). |
 | `deploy/` | `install.sh` for Proxmox LXC containers (privileged or unprivileged) and Debian/Ubuntu machines. See [`deploy/README.md`](deploy/README.md). |
 | `docs/spec/` | The spec and the script that renders it to HTML (`python3 build.py`, needs `pip install markdown`). |
@@ -80,7 +83,9 @@ The first slice is **Sine in compatibility mode**, against a stock Subsonic serv
 
 **Artist pictures:** Cosine finds a picture for each artist from Deezer, matched through MusicBrainz or by a shared song, and Sine shows it round.
 
-**Not yet built:** audio fingerprinting, the mirror's live push, Jam's multi-room mode, the desktop client, and iOS.
+**Desktop:** Sine for Windows, macOS and Linux, from the same core and the same design: destinations in a sidebar, the queue beside the page, the player docked along the bottom (§6.15). Click, Ctrl-click and Shift-click to select songs, double-click to play, right-click for what the phone's selection offers; Space plays and pauses, Q queues, Ctrl+K searches. Home is the desktop's own, in as many columns as the window holds. It plays through VLC, which you install alongside; downloads go to `~/Music/Sine`. Resume, the remote and Jam work as on the phone: the computer is one more of your devices. Not on the desktop yet: crossfade, keeping what you stream, the system's media keys and now-playing panel, and a tray icon.
+
+**Not yet built:** audio fingerprinting, the mirror's live push, Jam's multi-room mode, and iOS.
 
 ## Design
 
@@ -103,6 +108,9 @@ Sine's implementation is `sine/app/src/main/kotlin/app/sine/ui/phase` (tokens, t
 cd sine
 ./gradlew :core:test          # pure JVM, no Android SDK needed
 ./gradlew :app:assembleDebug  # needs the Android SDK
+./gradlew :desktop:test       # the desktop app's tests, its pages driven against a small Subsonic server
+./gradlew :desktop:run        # Sine on this computer (install VLC to hear it)
+./gradlew :desktop:packageDeb # or packageMsi, packageDmg, on that system
 ```
 
 ```sh

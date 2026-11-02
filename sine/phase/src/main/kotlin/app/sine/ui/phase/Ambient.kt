@@ -1,12 +1,9 @@
 package app.sine.ui.phase
 
-import android.content.Context
-import android.graphics.Bitmap
 import androidx.compose.animation.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,17 +19,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import app.sine.core.color.Accents
-import coil3.imageLoader
-import coil3.request.ImageRequest
-import coil3.request.SuccessResult
-import coil3.request.allowHardware
-import coil3.toBitmap
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * The accent follows what's on screen (#39): Sine takes its colour, a
@@ -97,25 +86,20 @@ object Ambient {
     // In the order they came: the latest page's art wins, then the latest weak one.
     internal val sources = mutableStateListOf<Source>()
 
-    private val known = object : LinkedHashMap<String, Colors?>(32, 0.75f, true) {
+    /** The accent of a palette worked out from artwork (Accents). */
+    internal fun of(accent: Accents.Accent): Colors = accent.colors()
+
+    /** Colours already worked out, by artwork: each platform reads artwork its own way (AmbientHost). */
+    internal val known = object : LinkedHashMap<String, Colors?>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Colors?>?) = size > 64
     }
 
-    /** The colours of [model]'s artwork; null when it has none to give. */
-    internal suspend fun colorsOf(context: Context, model: Any): Colors? {
-        val key = model.toString()
-        synchronized(known) { if (known.containsKey(key)) return known[key] }
-        val request = ImageRequest.Builder(context).data(model).size(48).allowHardware(false).build()
-        val bitmap = (context.imageLoader.execute(request) as? SuccessResult)?.image?.toBitmap() ?: return null
-        val colors = withContext(Dispatchers.Default) { pick(bitmap) }
-        synchronized(known) { known[key] = colors }
-        return colors
-    }
-
-    private fun pick(bitmap: Bitmap): Colors? {
-        val pixels = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        return Accents.accent(Accents.hues(pixels) ?: return null).colors()
+    /** What AmbientHost eases to: the fixed colour, else the latest page's art, else the latest weak one. */
+    internal fun wanted(): Pair<Colors?, Any?> {
+        val f = fixed
+        val model = if (f != null) null else sources.lastOrNull { !it.weak && it.model != null }?.model
+            ?: sources.lastOrNull { it.model != null }?.model
+        return f to model
     }
 }
 
@@ -155,17 +139,4 @@ fun AmbientSource(model: Any?, weak: Boolean = false) {
     }
 }
 
-/** Works out the accent from the sources, or the fixed colour, and eases into it. Once, at the root. */
-@Composable
-fun AmbientHost() {
-    val context = LocalContext.current.applicationContext
-    val fixed = Ambient.fixed
-    val model = if (fixed != null) null else Ambient.sources.lastOrNull { !it.weak && it.model != null }?.model
-        ?: Ambient.sources.lastOrNull { it.model != null }?.model
-    LaunchedEffect(model, fixed) {
-        val target = fixed ?: model?.let { runCatching { Ambient.colorsOf(context, it) }.getOrNull() } ?: Ambient.Blue
-        Ambient.easeTo(target)
-    }
-}
-
-private const val EASE_MS = 700
+internal const val EASE_MS = 700

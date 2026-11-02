@@ -20,10 +20,11 @@ internal fun queueSongs(context: Context, session: AccountSession, tracks: List<
     if (tracks.isEmpty()) return
     val graph = context.graph
     val jam = graph.jam.jam.value
-    if (jam != null && session.cosine != null) {
+    val cosine = session.cosine
+    if (jam != null && cosine != null) {
         scope.launch {
             try {
-                session.cosine.addToJam(jam.id, tracks.map { it.id })
+                cosine.addToJam(jam.id, tracks.map { it.id })
                 graph.jam.refresh()
                 say(if (tracks.size == 1) "Added to the jam's queue." else "${tracks.size} songs added to the jam's queue.")
             } catch (e: CancellationException) {

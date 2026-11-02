@@ -15,7 +15,7 @@ internal val StoreJson = Json {
  * so a crash mid-write never leaves half a file behind. A corrupt or missing
  * file reads as [default].
  */
-internal class JsonFile<T>(
+class JsonFile<T>(
     private val file: File,
     private val serializer: KSerializer<T>,
     private val default: () -> T,

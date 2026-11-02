@@ -60,7 +60,12 @@ class AppGraph(private val context: Context) {
 
     /** One session per account for the app's lifetime: two would race on the same files. */
     fun session(account: Account): AccountSession =
-        sessions.getOrPut(account.id) { AccountSession(context, account, http, network) }
+        sessions.getOrPut(account.id) {
+            AccountSession(
+                File(context.filesDir, "accounts"), account, http,
+                connected = { network.state.value.connected }, homeDevice = HOME_DEVICE, cached = StreamCache::has,
+            )
+        }
             .also { if (it.account != account) it.replaceAccount(account) }
 
     fun sessionById(accountId: String): AccountSession? =
@@ -145,5 +150,10 @@ class AppGraph(private val context: Context) {
         scope.launch {
             activeSession.collect { s -> if (s != null) refreshCapabilities(s) }
         }
+    }
+
+    private companion object {
+        /** Sine on Android keeps the phone's Home; the desktop keeps its own (§6.15). */
+        const val HOME_DEVICE = "phone"
     }
 }

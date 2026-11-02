@@ -63,6 +63,8 @@ object PhaseIcons {
     val Playlist = icon("playlist", line("M4.5 6.5h15M4.5 12h15M4.5 17.5h9", 2.5f))
     /** A smart playlist: worked out, not chosen. */
     val Wave = icon("wave", line("M2.5 12C5.3 6 8.2 6 11 12s8.2 6 11 0", 2.4f))
+    /** A computer: Sine on the desktop, as a device (§6.15). */
+    val Computer = icon("computer", line("M4.5 4.5h15a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 15V6a1.5 1.5 0 0 1 1.5-1.5z M8.5 20h7M12 16.5V20", 2f))
     val Device = icon("device", line("M9 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M11 18h2", 2f))
     val Offline = icon(
         "offline",

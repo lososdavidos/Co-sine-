@@ -6,6 +6,7 @@ import androidx.media3.common.MediaMetadata
 import app.sine.core.model.Track
 import app.sine.core.play.PlaySource
 import app.sine.data.AccountSession
+import app.sine.data.artworkUri
 
 /**
  * A song as the player takes it: from the phone when it's downloaded or

@@ -8,14 +8,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import app.sine.R
 
 /*
  * Phase, Sine's design language (§6). Monochrome, with two blues of one hue:
@@ -23,7 +20,12 @@ import app.sine.R
  * one action a screen is for); Cosine, the deep one, is the server at work
  * (fetching, matching, syncing, waiting for your review). Red is for faults.
  * Everything else is grey or artwork. No glass: surfaces step up in
- * lightness, so every Android version, the widget and the web look the same.
+ * lightness, so every Android version, the widget, the web and the desktop
+ * look the same.
+ *
+ * Shared by Sine on Android and on the desktop (§6.15): each gives it its
+ * fonts (PhaseFont, the same files) and its way of taking colour from
+ * artwork (AmbientHost).
  */
 
 object PhaseColor {
@@ -72,22 +74,6 @@ object PhaseColor {
 
     /** Over artwork, always at this strength; never adapted to the image. */
     val Scrim = Ground.copy(alpha = 0.64f)
-}
-
-object PhaseFont {
-    val Display = FontFamily(Font(R.font.phase_display, FontWeight.Bold))
-    val Title = FontFamily(Font(R.font.phase_title, FontWeight.SemiBold))
-    val Sans = FontFamily(
-        Font(R.font.phase_sans_regular, FontWeight.Normal),
-        Font(R.font.phase_sans_medium, FontWeight.Medium),
-        Font(R.font.phase_sans_semibold, FontWeight.SemiBold),
-        Font(R.font.phase_sans_semibold, FontWeight.Bold),
-    )
-    val Mono = FontFamily(
-        Font(R.font.phase_mono_regular, FontWeight.Normal),
-        Font(R.font.phase_mono_medium, FontWeight.Medium),
-        Font(R.font.phase_mono_semibold, FontWeight.SemiBold),
-    )
 }
 
 /** Type carries the interface: names large and condensed, data small and mono. */

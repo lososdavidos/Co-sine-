@@ -1,7 +1,5 @@
-package app.sine.data
+package app.sine.core.session
 
-import android.content.Context
-import android.net.Uri
 import app.sine.core.account.Account
 import app.sine.core.cosine.CosineClient
 import app.sine.core.download.DownloadIndex
@@ -28,7 +26,6 @@ import app.sine.core.model.PlaylistDetail
 import app.sine.core.model.Track
 import app.sine.core.play.PlayLog
 import app.sine.core.play.PlaySource
-import app.sine.playback.StreamCache
 import app.sine.core.server.Capability
 import app.sine.core.subsonic.AlbumListType
 import app.sine.core.subsonic.SubsonicClient
@@ -57,20 +54,27 @@ class PlaylistChanged : Exception("The playlist changed meanwhile. Try again.")
 
 /**
  * Everything belonging to one account: its client, downloads, play log and
- * cached artwork. Each account is fully separate (§2.1).
+ * cached artwork. Each account is fully separate (§2.1). The same on
+ * every platform: Android and the desktop give it their folder, network and cache.
  */
 class AccountSession(
-    context: Context,
+    /** Where this app keeps its accounts: each gets a folder of its own in it. */
+    accountsDir: File,
     initial: Account,
     val http: OkHttpClient,
-    private val network: NetworkMonitor,
+    /** Whether this device has a network at all. */
+    private val connected: () -> Boolean,
+    /** Which device's Home this keeps (§6.15): the phone's and the desktop's are each their own. */
+    private val homeDevice: String,
+    /** Whether a song is in the stream cache here (G3), so it plays without the server. */
+    private val cached: (String) -> Boolean = { false },
 ) {
     private val _account = MutableStateFlow(initial)
     /** The account as currently known; its capabilities can change while the app runs. */
     val accountFlow: StateFlow<Account> = _account.asStateFlow()
     val account: Account get() = _account.value
 
-    val dir = File(context.filesDir, "accounts/${initial.id}").apply { mkdirs() }
+    val dir = File(accountsDir, initial.id).apply { mkdirs() }
     val client = SubsonicClient(initial.serverUrl, initial.credentials, http)
     /** Cosine's native protocol; null for a plain Subsonic server (compat mode). */
     val cosine: CosineClient? =
@@ -103,12 +107,12 @@ class AccountSession(
     val reachable: StateFlow<Boolean> = _reachable.asStateFlow()
     @Volatile private var lastFailureAt = 0L
 
-    val isOnline: Boolean get() = network.state.value.connected && _reachable.value
+    val isOnline: Boolean get() = connected() && _reachable.value
 
     /** Native-only features are hidden entirely unless the server declares them (§2.1). */
     fun can(capability: String) = cosine != null && capability in account.kind.capabilities
 
-    internal fun replaceAccount(updated: Account) {
+    fun replaceAccount(updated: Account) {
         require(updated.id == account.id)
         _account.value = updated
     }
@@ -121,7 +125,7 @@ class AccountSession(
      */
     suspend fun <T> fetch(offline: (OfflineLibrary) -> T, remote: suspend (SubsonicClient) -> T): Sourced<T> {
         val recentlyFailed = !_reachable.value && System.currentTimeMillis() - lastFailureAt < RETRY_AFTER_MS
-        if (!network.state.value.connected || recentlyFailed) return Sourced(offline(offline()), true)
+        if (!connected() || recentlyFailed) return Sourced(offline(offline()), true)
         return try {
             val v = remote(client)
             _reachable.value = true
@@ -146,7 +150,7 @@ class AccountSession(
     suspend fun sync(wait: Boolean = false) {
         val m = mirror ?: return
         val c = cosine ?: return
-        if (!can(Capability.DELTA_SYNC) || !network.state.value.connected || (!wait && syncing.isLocked)) return
+        if (!can(Capability.DELTA_SYNC) || !connected() || (!wait && syncing.isLocked)) return
         syncing.withLock {
             try {
                 // Playlist edits made here go first, so this sync brings back what they did.
@@ -172,10 +176,10 @@ class AccountSession(
     private suspend fun syncHome(c: CosineClient) {
         val local = home.layout.value
         if (home.unsent && local != null) {
-            c.saveHome(HOME_DEVICE, local)
+            c.saveHome(homeDevice, local)
             withContext(Dispatchers.IO) { home.sent(local) }
         } else {
-            val remote = c.home(HOME_DEVICE)
+            val remote = c.home(homeDevice)
             withContext(Dispatchers.IO) { home.received(remote) }
         }
     }
@@ -481,11 +485,11 @@ class AccountSession(
     suspend fun disconnectScrobbler(service: String) = native().disconnectScrobbler(service)
 
     fun playSource(track: Track): PlaySource =
-        PlaySource.resolve(downloads[track.id], isOnline, StreamCache.has(track.id)) { client.streamUrl(track.id) }
+        PlaySource.resolve(downloads[track.id], isOnline, cached(track.id)) { client.streamUrl(track.id) }
 
     /** A song in a jam: downloaded, from here; else through the jam, which lets you hear what you don't have (§4C). */
     fun jamSource(track: Track, jam: Long): PlaySource =
-        PlaySource.resolve(downloads[track.id], isOnline, StreamCache.has(track.id)) { client.streamUrl(track.id, jam) }
+        PlaySource.resolve(downloads[track.id], isOnline, cached(track.id)) { client.streamUrl(track.id, jam) }
 
     fun coverFile(coverArt: String) = File(coversDir, DownloadLayout.sanitize(coverArt) + ".img")
 
@@ -497,12 +501,6 @@ class AccountSession(
         return if (isOnline) client.coverArtUrl(coverArt, size) else null
     }
 
-    fun artworkUri(coverArt: String?): Uri? = when (val a = artwork(coverArt)) {
-        is File -> Uri.fromFile(a)
-        is String -> Uri.parse(a)
-        else -> null
-    }
-
     suspend fun flushPlays() {
         if (!isOnline) return
         plays.flush { client.scrobble(it.trackId, it.playedAt) }
@@ -510,7 +508,5 @@ class AccountSession(
 
     companion object {
         private const val RETRY_AFTER_MS = 30_000L
-        /** Sine on Android keeps the phone's Home; the desktop will keep its own (§6.15). */
-        private const val HOME_DEVICE = "phone"
     }
 }

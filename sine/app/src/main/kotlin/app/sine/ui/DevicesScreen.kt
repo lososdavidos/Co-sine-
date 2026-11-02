@@ -111,7 +111,7 @@ fun DevicesScreen(session: AccountSession, nav: Pages) {
             }
             else -> items(others, key = { it.device.id }) { d ->
                 DeviceRow(
-                    d.device.name, PhaseIcons.Device, here = false,
+                    d.device.name, if (d.device.kind == "desktop") PhaseIcons.Computer else PhaseIcons.Device, here = false,
                     line = d.title?.let { listOfNotNull(it, d.artist).joinToString(" · ") } ?: if (d.listening) "Ready" else "Away",
                     listening = d.listening,
                 ) { nav.navigate(Routes.remote(d.device.id)) }

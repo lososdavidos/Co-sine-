@@ -2,7 +2,7 @@
 
 Single working document. Everything lives here; sections grow as decisions land.
 
-**Status:** COMPLETE DRAFT · 199 resolved decisions · last updated 2026-11-01 (a swipe adds a song to the queue, §6.6; in a jam the queue is the jam's, §4C; Android Auto, §5.2a; the widget, §6.19; crossfade, Q69; the prefetch, §2.5; a device's volume, §4B; the Jam tile, §6.4.1; keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
+**Status:** COMPLETE DRAFT · 199 resolved decisions · last updated 2026-11-02 (Sine on the desktop, §6.15; a swipe adds a song to the queue, §6.6; in a jam the queue is the jam's, §4C; Android Auto, §5.2a; the widget, §6.19; crossfade, Q69; the prefetch, §2.5; a device's volume, §4B; the Jam tile, §6.4.1; keeping what you stream, §2.5; Jam's party mode, §4C; devices and their sessions, Resume, §4A, §4B; remote control through Cosine, §4B; uploading from the phone, §4; Sine's Listening page and its tile, §6.13; holding the Library's + offers Add music or New playlist; the icon is the button, lit in the artwork's colours, and the shelf wears them too; a fixed colour in Settings, §6.1; Liked songs is a playlist of its own, and Favourites is worked out from plays, §2.4; two taps like a song in any list, §6.5; songs added to the queue play next, §6.6; the accent follows the artwork on screen, §6.1, §6.7; a share stays in the account you're in, §6.10; the first release is the original, a credit asked for two ways, §3.2; a site's refusal is waited out, §3.1a; shuffle, repeat, liking, the queue's selection and a fuller ambience in now playing, §6.6, §6.7; Liked songs and Favourites, §2.4, §6.4.1; search history, adding from Search, per-song add, §6.8, §6.10; the pill and the sheet follow the finger, §6.16; icons carry the actions, slightly 3D, §6.1)
 
 **The system is greenfield.** Nothing in this document is built yet. The status
 tags below exist for later, as construction starts; today everything is
@@ -1979,6 +1979,43 @@ The consequence is that **a phone arrangement does not transfer**: desktop keeps
 its own Home layout. That is two Home screens to maintain per account, which is
 the honest cost of a canvas rather than a designed screen — and probably correct,
 since what you want at a desk is not what you want on a phone.
+
+`NOTE` Built: Sine for Windows, macOS and Linux, in Compose for the desktop.
+Nothing is ported: the account session (the library mirror, playlists and
+their edits made here, likes, Home and its sync) moved into core and is the
+same code on both, and Phase is one source both apps compile, its fonts the
+same files and its icons the same drawings, lit the same way. What the desktop
+adds is the window and the audio:
+
+- **The window**, as above: destinations down the sidebar (where you are is the
+  light pill), the page, the queue beside it (Queued, then Up next, as on the
+  phone) and the player docked along the bottom, the wave its scrubber. In a jam
+  the panel is the jam's queue, with who added each song, and the page beside it
+  is the jam: the phone has to choose between them.
+- **Selection is the desktop's**: a click picks a song, Ctrl-click adds,
+  Shift-click a run, a double click plays from there. Right-click opens the
+  phone's selection actions, the same words and icons; Enter, Q, Ctrl+A and Esc
+  work on a list, Space plays and pauses, Ctrl+K searches.
+- **Home** is the desktop's own (device `desktop`), its tiles the phone's size
+  in as many columns as the window holds; right-click a tile to resize, move or
+  remove it, and pin from a page as on the phone.
+- **Playback** is libVLC through vlcj (Q84), which plays every format the
+  library holds as stored. VLC is installed separately; without it Sine says so
+  and plays nothing. The queue follows the phone's rules, played songs go in the
+  play log, and the last queue is picked up, paused, on the next start.
+- **Downloads** go to `~/Music/Sine`, Artist / Album / Track under a folder per
+  account, and play from there with no server (G1).
+- **Cosine's half** is the same as the phone's: the session (Resume), the
+  remote, and the jam's clock, so the computer is one more of your devices
+  (kind `desktop`, named after the computer), shown as a computer on the
+  phone's Devices.
+- **Releases** carry a `.deb`, an `.msi` and a `.dmg`.
+
+Not yet on the desktop: crossfade and keeping what you stream, the system's
+media keys and now-playing panel (MPRIS, the Windows overlay, macOS's Now
+Playing; the keys work while Sine has focus), a tray icon, dragging songs onto
+the queue, review and statistics (their tiles open Cosine's dashboard), and a
+signed, notarised macOS build.
 
 ### 6.16 Motion
 
