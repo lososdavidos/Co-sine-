@@ -901,11 +901,13 @@ everyone on without a message. A listener waits on the jam (`GET
 /cosine/v1/jams/{id}?since=VERSION`, held open up to 25 s) and hears a
 change the moment there is one; between changes Sine checks every few
 seconds and puts back anything more than 0.9 s off. Anyone in it adds
-songs (any song in the Store: a jam is heard, not browsed); only the host
+songs (one they have, or one already in the jam: a jam is heard, not
+browsed, and never reaches songs nobody in it brought); only the host
 plays, pauses, seeks and skips (403 otherwise). Someone without a song
 streams it through the jam (`stream?jam=`), allowed only while they're in
 it and the song is in its queue; Keep it puts it in their library
-(`POST /cosine/v1/library/add`). The host leaving ends it for everyone;
+(`POST /cosine/v1/library/add`, which takes only songs in the queue of the
+jam they're in). The host leaving ends it for everyone;
 starting or joining another leaves the one you were in. Sine's Jam page
 (the people mark in Now playing, or Settings) starts one with the
 accounts you pick, shows the jams you're asked to, and in one, who's

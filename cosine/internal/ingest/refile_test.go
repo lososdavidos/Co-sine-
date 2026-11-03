@@ -63,6 +63,8 @@ func TestRefileOntoAnExistingTrackMergesThem(t *testing.T) {
 	f.db.Exec("INSERT INTO plays(user_id, track_id, played_at) VALUES(?, ?, 1)", f.users[1], rip.TrackID)
 	f.db.Exec("INSERT INTO playlists(id, owner_id, name, created_at, updated_at) VALUES(1, ?, 'p', 0, 0)", f.users[1])
 	f.db.Exec("INSERT INTO playlist_entries(playlist_id, position, track_id) VALUES(1, 0, ?)", rip.TrackID)
+	f.db.Exec("INSERT INTO jams(id, host_id, started_at, anchor_at) VALUES(1, ?, 0, 0)", f.users[1])
+	f.db.Exec("INSERT INTO jam_queue(jam_id, pos, track_id, added_by, added_at) VALUES(1, 0, ?, ?, 0)", rip.TrackID, f.users[1])
 
 	target, _ := f.g.Identity(ctx, good.TrackID)
 	id, merged, err := f.g.Refile(ctx, rip.TrackID, Identity{Result: target.Result, Reviewed: true})
@@ -75,7 +77,8 @@ func TestRefileOntoAnExistingTrackMergesThem(t *testing.T) {
 	}
 	if count(t, f.db, "SELECT COUNT(*) FROM pointers WHERE track_id = ?", id) != 2 ||
 		count(t, f.db, "SELECT COUNT(*) FROM plays WHERE track_id = ?", id) != 1 ||
-		count(t, f.db, "SELECT COUNT(*) FROM playlist_entries WHERE track_id = ?", id) != 1 {
+		count(t, f.db, "SELECT COUNT(*) FROM playlist_entries WHERE track_id = ?", id) != 1 ||
+		count(t, f.db, "SELECT COUNT(*) FROM jam_queue WHERE track_id = ?", id) != 1 {
 		t.Fatal("state did not follow the merge")
 	}
 	var a, b string

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lososdavidos/Co-sine-/cosine/internal/auth"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 )
 
@@ -43,6 +44,8 @@ func setup(t *testing.T) *env {
 		return "tr-" + itoa(id)
 	}
 	e.t1, e.t2, e.t3 = track(1, "One", 100), track(2, "Two", 200), track(3, "Three", 50)
+	// Alice and Bob have every song; Carol has none.
+	d.Exec("INSERT INTO pointers(user_id, track_id, added_at) SELECT u.id, t.id, 0 FROM users u, tracks t WHERE u.id IN (?, ?)", e.alice, e.bob)
 	now := int64(1_000_000)
 	e.clock = &now
 	e.s = &Service{DB: d, Now: func() time.Time { return time.UnixMilli(*e.clock) }}
@@ -123,6 +126,31 @@ func TestAJamFromStartToEnd(t *testing.T) {
 	}
 }
 
+func TestAJamOnlyTakesSongsSomeoneInItBrought(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	jam, _ := e.s.Start(ctx, e.carol, []string{"alice"})
+	// Carol has no songs: guessing ids gets her nothing.
+	e.s.Add(ctx, jam, e.carol, []string{e.t1, e.t2, e.t3})
+	if j, _ := e.s.State(ctx, jam, e.carol, 0, 0); len(j.Queue) != 0 || e.s.InMine(ctx, e.carol, 1) {
+		t.Fatalf("carol added songs she doesn't have: %+v", j.Queue)
+	}
+	// Alice brings one; Carol may add it again, and keep it.
+	e.s.Join(ctx, jam, e.alice)
+	e.s.Add(ctx, jam, e.alice, []string{e.t1})
+	e.s.Add(ctx, jam, e.carol, []string{e.t1, e.t2})
+	if j, _ := e.s.State(ctx, jam, e.carol, 0, 0); len(j.Queue) != 2 || j.Queue[1].AddedBy != "carol" {
+		t.Fatalf("%+v", j.Queue)
+	}
+	if !e.s.InMine(ctx, e.carol, 1) || e.s.InMine(ctx, e.carol, 2) {
+		t.Fatal("keep it: only a song in her jam")
+	}
+	e.s.Leave(ctx, jam, e.carol)
+	if e.s.InMine(ctx, e.carol, 1) {
+		t.Fatal("keep it after the jam ended")
+	}
+}
+
 func TestAWaitingListenerHearsAChangeAtOnce(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
@@ -142,5 +170,21 @@ func TestAWaitingListenerHearsAChangeAtOnce(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("waited it out")
+	}
+}
+
+func TestDeletingAnAccountThatAddedToAJam(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	jam, _ := e.s.Start(ctx, e.alice, []string{"bob"})
+	e.s.Join(ctx, jam, e.bob)
+	e.s.Add(ctx, jam, e.bob, []string{e.t1})
+	e.s.End(ctx, jam, e.alice)
+	as, err := auth.New(e.db, make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := as.DeleteUser(ctx, e.bob); err != nil {
+		t.Fatal("an account that once added to a jam can't be deleted:", err)
 	}
 }

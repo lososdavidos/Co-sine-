@@ -370,8 +370,9 @@ func (s *Service) ready(ctx context.Context, jam, user int64) error {
 	return nil
 }
 
-// Add puts songs at the end of the queue; anyone in the jam may. Any song
-// in the Store will do: a jam is heard, not browsed (§4C).
+// Add puts songs at the end of the queue; anyone in the jam may. A song is
+// one the adder has, or one already in this jam: a jam is heard, not
+// browsed (§4C), so it never reaches songs nobody in it brought.
 func (s *Service) Add(ctx context.Context, jam, user int64, tracks []string) error {
 	if err := s.ready(ctx, jam, user); err != nil {
 		return err
@@ -386,7 +387,8 @@ func (s *Service) Add(ctx context.Context, jam, user int64, tracks []string) err
 			continue
 		}
 		var exists bool
-		s.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM tracks WHERE id = ?)", id).Scan(&exists)
+		s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pointers WHERE user_id = ? AND track_id = ?)
+			OR EXISTS(SELECT 1 FROM jam_queue WHERE jam_id = ? AND track_id = ?)`, user, id, jam, id).Scan(&exists)
 		if !exists {
 			continue
 		}
@@ -593,6 +595,18 @@ func (s *Service) Hears(ctx context.Context, jam, user, track int64) bool {
 	}
 	var ok bool
 	s.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM jam_queue WHERE jam_id = ? AND track_id = ?)", jam, track).Scan(&ok)
+	return ok
+}
+
+// InMine reports whether track is in the queue of the jam user is in now:
+// what Keep it may put in their library (§4C).
+func (s *Service) InMine(ctx context.Context, user, track int64) bool {
+	var ok bool
+	s.DB.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM jam_queue q JOIN jams j ON j.id = q.jam_id
+		JOIN jam_members m ON m.jam_id = q.jam_id AND m.user_id = ?
+		WHERE q.track_id = ? AND j.ended_at IS NULL AND m.joined_at IS NOT NULL AND m.left_at IS NULL)`,
+		user, track).Scan(&ok)
 	return ok
 }
 

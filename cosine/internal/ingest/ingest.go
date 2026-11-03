@@ -95,6 +95,9 @@ func (g *Ingester) Ingest(ctx context.Context, req Request) (Outcome, error) {
 	if root == "" {
 		return Outcome{}, ErrNoStore
 	}
+	if g.storeGone(ctx, root) {
+		return Outcome{}, fmt.Errorf("%w: %s is missing or empty, though the library has files (an unmounted disk?)", ErrNoStore, root)
+	}
 
 	jobID := req.JobID
 	if jobID == 0 {
@@ -105,6 +108,25 @@ func (g *Ingester) Ingest(ctx context.Context, req Request) (Outcome, error) {
 	out, err := g.ingest(ctx, req, root, suffix, contentType)
 	g.finishJob(ctx, jobID, out, err)
 	return out, err
+}
+
+// storeGone reports a Store folder that is missing or empty while the
+// library has files: an unmounted disk, whose mount point is an empty folder.
+// Filing then would write onto the system disk, hidden once the disk is back.
+// shortcut: a Store emptied by hand blocks ingest too, as it blocks Forget;
+// upgrade to a marker file in the Store if that case turns up.
+func (g *Ingester) storeGone(ctx context.Context, root string) bool {
+	f, err := os.Open(root)
+	if err == nil {
+		_, err = f.Readdirnames(1)
+		f.Close()
+	}
+	if err == nil {
+		return false
+	}
+	var any bool
+	g.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM objects)").Scan(&any)
+	return any
 }
 
 func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, contentType string) (Outcome, error) {

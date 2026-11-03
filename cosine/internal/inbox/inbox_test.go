@@ -106,3 +106,36 @@ func TestFailuresMoveAside(t *testing.T) {
 		t.Fatalf("failed file retried %d times", n)
 	}
 }
+
+func TestFailuresWithTheSameNameAreAllKept(t *testing.T) {
+	dir := t.TempDir()
+	start(t, dir, &recorder{fail: true})
+	for _, sub := range []string{"A", "B"} {
+		os.MkdirAll(filepath.Join(dir, sub), 0o755)
+		os.WriteFile(filepath.Join(dir, sub, "Track01.mp3"), []byte(sub), 0o644)
+	}
+	failed := filepath.Join(dir, FailedDir)
+	waitFor(t, func() bool {
+		_, err := os.Stat(filepath.Join(failed, "Track01 (2).mp3"))
+		return err == nil
+	})
+	a, _ := os.ReadFile(filepath.Join(failed, "Track01.mp3"))
+	b, _ := os.ReadFile(filepath.Join(failed, "Track01 (2).mp3"))
+	if string(a)+string(b) != "AB" && string(a)+string(b) != "BA" {
+		t.Fatalf("one overwrote the other: %q %q", a, b)
+	}
+}
+
+func TestStoppingLeavesFilesInTheInbox(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "song.mp3")
+	os.WriteFile(path, []byte("x"), 0o644)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	w := &Watcher{Dir: dir, Ingest: func(ctx context.Context, _ string) error { return ctx.Err() },
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	w.process(ctx, path)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("a stopped ingest moved the file aside:", err)
+	}
+}

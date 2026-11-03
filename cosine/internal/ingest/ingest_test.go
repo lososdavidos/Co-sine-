@@ -396,3 +396,31 @@ func TestRemovedSongsStayRemovedAndUnusedFilesCanGo(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAnUnmountedStoreIsNotFiledInto(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	first := testutil.MP3{Title: "One", Artist: "Skeler", Album: "Tides", Body: "a"}.Write(t, filepath.Join(f.drop, "one.mp3"))
+	if _, err := f.g.Ingest(ctx, Request{Path: first, Source: "inbox"}); err != nil {
+		t.Fatal(err)
+	}
+	// The disk goes; its mount point stays behind, empty.
+	disk := f.root + "-disk"
+	if err := os.Rename(f.root, disk); err != nil {
+		t.Fatal(err)
+	}
+	os.Mkdir(f.root, 0o755)
+	second := testutil.MP3{Title: "Two", Artist: "Skeler", Album: "Tides", Body: "b"}.Write(t, filepath.Join(f.drop, "two.mp3"))
+	if _, err := f.g.Ingest(ctx, Request{Path: second, Source: "inbox"}); !errors.Is(err, ErrNoStore) {
+		t.Fatal("filed into an empty mount point:", err)
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatal("the source must stay where it was:", err)
+	}
+	// The disk is back: it files as usual.
+	os.Remove(f.root)
+	os.Rename(disk, f.root)
+	if _, err := f.g.Ingest(ctx, Request{Path: second, Source: "inbox"}); err != nil {
+		t.Fatal(err)
+	}
+}

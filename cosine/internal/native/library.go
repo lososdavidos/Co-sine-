@@ -40,8 +40,8 @@ func (a *API) addToLibrary(w http.ResponseWriter, r *http.Request, u auth.User) 
 	n := 0
 	for _, t := range req.Tracks {
 		id, ok := review.ParseTrack(t)
-		if !ok {
-			continue
+		if !ok || a.Jams == nil || !a.Jams.InMine(r.Context(), u.ID, id) {
+			continue // only a song heard in your jam: never any id in the Store
 		}
 		if err := a.Ingester.Undismiss(r.Context(), id, []int64{u.ID}); err != nil {
 			a.fail(w, err)
