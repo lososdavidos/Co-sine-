@@ -2012,9 +2012,9 @@ adds is the window and the audio:
 - **Home** is the desktop's own (device `desktop`), its tiles the phone's size
   in as many columns as the window holds; right-click a tile to resize, move or
   remove it, and pin from a page as on the phone.
-- **Playback** is libVLC through vlcj (Q84), which plays every format the
-  library holds as stored. VLC is installed separately; without it Sine says so
-  and plays nothing. The queue follows the phone's rules, played songs go in the
+- **Playback** is FFmpeg, built into Sine (Q84), which plays every format the
+  library holds as stored, through the system's sound output. Nothing is
+  installed alongside; with no sound output Sine says so and plays nothing. The queue follows the phone's rules, played songs go in the
   play log, and the last queue is picked up, paused, on the next start.
 - **Downloads** go to `~/Music/Sine`, Artist / Album / Track under a folder per
   account, and play from there with no server (G1).
@@ -2445,7 +2445,7 @@ decided.
 |---|---|---|
 | Q78 | Server-relayed remote control off-LAN | **Overturned**: control goes through Cosine always (§4B), so it works off-LAN by design. |
 | Q82 | Do Jam plays count for everyone? | A play is recorded for every participant who holds a Pointer for that Track. Someone hearing it without having it records nothing — there is nothing to attach it to. If they add it during the jam, it counts from then on. |
-| Q84 | Desktop playback backend | VLCJ. libVLC decodes everything yt-dlp can produce, it's a single dependency, and it saves writing format handling twice. GStreamer is the alternative if VLCJ's licensing or footprint becomes a problem. |
+| Q84 | Desktop playback backend | `REVISED` (was: VLCJ, with VLC installed separately.) FFmpeg, bundled through javacv (LGPL build), decoding to PCM for Java's own sound output. It decodes everything yt-dlp can produce, as libVLC did, and ships inside the installer, so there is nothing to install alongside. |
 | Q85 | Which session does "resume" pick? | The current device's own session by default. When another Device has a more recent session, offer "continue from <device>" rather than asking every time. |
 
 ### Client

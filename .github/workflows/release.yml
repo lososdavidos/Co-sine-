@@ -154,6 +154,6 @@ jobs:
 
             **Android:** download `sine-${{ env.TAG }}.apk` on the phone and install it (allow installs from your browser when asked). Later releases install over it.
 
-            **Desktop:** `sine-desktop-${{ env.TAG }}.deb` (Debian, Ubuntu), `.msi` (Windows) or `.dmg` (macOS). Sine plays through VLC: install [VLC](https://www.videolan.org/vlc/) too. The macOS build isn't notarised yet: open it with right-click, Open, the first time.
+            **Desktop:** `sine-desktop-${{ env.TAG }}.deb` (Debian, Ubuntu), `.msi` (Windows) or `.dmg` (macOS). The macOS build isn't notarised yet: open it with right-click, Open, the first time.
 
             This is a testing build: signed with a key committed to the repository, not a store key.
