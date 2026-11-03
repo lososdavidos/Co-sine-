@@ -27,9 +27,6 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: VLC, for the desktop's playback tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libvlc5 vlc-plugin-base
-
       - name: Core and desktop tests
         run: ./gradlew :core:test :desktop:test --stacktrace
 

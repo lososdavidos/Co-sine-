@@ -96,12 +96,12 @@ class DesktopPlayerTest {
     }
 
     @Test
-    fun `without VLC it says so and plays nothing`() {
+    fun `without a sound output it says so and plays nothing`() {
         val g = graph(null)
-        assertEquals(DesktopPlayer.NO_VLC, g.player.state.value.problem)
+        assertEquals(DesktopPlayer.NO_SOUND, g.player.state.value.problem)
         g.player.play(g.session(account), album, 0)
         assertFalse(g.player.state.value.isPlaying)
-        assertEquals(DesktopPlayer.NO_VLC, g.player.state.value.problem)
+        assertEquals(DesktopPlayer.NO_SOUND, g.player.state.value.problem)
     }
 
     @Test

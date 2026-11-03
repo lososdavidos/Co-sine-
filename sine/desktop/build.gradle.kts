@@ -29,6 +29,17 @@ sourceSets {
     }
 }
 
+/** This machine as JavaCPP names it (windows-x86_64, macosx-arm64, linux-x86_64…). */
+val nativePlatform: String = run {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = if (System.getProperty("os.arch") in listOf("aarch64", "arm64")) "arm64" else "x86_64"
+    when {
+        "win" in os -> "windows-$arch"
+        "mac" in os -> "macosx-$arch"
+        else -> "linux-$arch"
+    }
+}
+
 dependencies {
     implementation(project(":core"))
     implementation(compose.desktop.currentOs)
@@ -36,7 +47,16 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
-    implementation(libs.vlcj)
+    // Playback decodes with FFmpeg, inside Sine: nothing to install (§6.15).
+    // javacv for its grabber only; the rest of what it brings is left out.
+    implementation(libs.javacv) {
+        listOf("openblas", "opencv", "flycapture", "libdc1394", "libfreenect", "libfreenect2", "librealsense",
+            "librealsense2", "videoinput", "artoolkitplus", "flandmark", "leptonica", "tesseract")
+            .forEach { exclude(group = "org.bytedeco", module = it) }
+    }
+    // FFmpeg's own libraries, for the system this builds on: each installer is built on its own.
+    implementation(libs.ffmpeg) { artifact { classifier = nativePlatform } }
+    implementation(libs.javacpp) { artifact { classifier = nativePlatform } }
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
