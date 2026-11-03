@@ -26,7 +26,7 @@ func TestSyncAPI(t *testing.T) {
 	d.SetSetting(ctx, db.SettingStorePath, filepath.Join(dir, "store"))
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	as.CreateUser(ctx, "alice", "sesame", false)
+	as.CreateUser(ctx, "alice", "open sesame", false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	g := &ingest.Ingester{DB: d, DataDir: dir, ReviewThreshold: 0.8, Log: log,
 		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}, Probe: func(string) int { return 200 }}

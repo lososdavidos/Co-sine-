@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
 	"github.com/lososdavidos/Co-sine-/cosine/internal/ingest"
@@ -338,5 +339,36 @@ func TestAnOlderAccountGetsTheNewDefaultsOnce(t *testing.T) {
 	p.DeleteSmart(ctx, e.alice, lists[6].ID)
 	if again, _ := p.SmartLists(ctx, e.alice); len(again) != 6 {
 		t.Fatal("a deleted default came back")
+	}
+}
+
+func TestSmartPlaylistsAreWorkedOutAgainOnlyWhenSomethingChanged(t *testing.T) {
+	e := setup(t)
+	clock := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	e.s.Playlists = &playlists.Service{DB: e.db, Stats: &stats.Service{DB: e.db, Now: func() time.Time { return clock }}}
+	ctx := context.Background()
+	a := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "a"}, e.alice).TrackID
+	first, _ := e.s.Since(ctx, e.alice, 0, "")
+	recent := func(c Changes) []string {
+		for _, sm := range *c.Smart {
+			if sm.Rule == "recent" {
+				return sm.Tracks
+			}
+		}
+		t.Fatal("no Recently played")
+		return nil
+	}
+	if len(recent(first)) != 0 {
+		t.Fatal("played before any play")
+	}
+	// Nothing changed: the phone's copy is current.
+	if same, _ := e.s.Since(ctx, e.alice, first.Cursor, first.SmartTag); same.Smart != nil || same.SmartTag != first.SmartTag {
+		t.Fatal("sent again with nothing changed")
+	}
+	// A play changes them at once, cached or not.
+	e.db.Exec("INSERT INTO plays(user_id, track_id, played_at) VALUES(?, ?, ?)", e.alice, a, clock.UnixMilli())
+	played, _ := e.s.Since(ctx, e.alice, first.Cursor, first.SmartTag)
+	if played.Smart == nil || len(recent(played)) != 1 {
+		t.Fatal("a play didn't reach Recently played")
 	}
 }

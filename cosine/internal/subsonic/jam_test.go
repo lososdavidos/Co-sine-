@@ -20,7 +20,7 @@ func TestAJamLetsItsPeopleHearWhatTheyDontHave(t *testing.T) {
 	ctx := context.Background()
 	song := "tr-" + strconv.FormatInt(e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "a"}, e.alice.ID).TrackID, 10)
 	status := func(params url.Values) int {
-		res, err := http.Get(e.url("bob", "hunter2", "stream", params))
+		res, err := http.Get(e.url("bob", "hunter22", "stream", params))
 		if err != nil {
 			t.Fatal(err)
 		}

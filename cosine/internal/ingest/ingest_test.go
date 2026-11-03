@@ -424,3 +424,36 @@ func TestAnUnmountedStoreIsNotFiledInto(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAnEmptyFileIsRefused(t *testing.T) {
+	f := setup(t)
+	p := filepath.Join(f.drop, "empty.mp3")
+	os.WriteFile(p, nil, 0o644)
+	if _, err := f.g.Ingest(context.Background(), Request{Path: p, Source: "inbox"}); !errors.Is(err, ErrEmpty) {
+		t.Fatal(err)
+	}
+}
+
+func TestTwoSongsWithOneTitleOnARelease(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	add := func(name, track, body string) Outcome {
+		out, err := f.g.Ingest(ctx, Request{Path: testutil.MP3{Title: "Skit", Artist: "Deadcrow", Album: "Hollow", Track: track, Body: body}.
+			Write(t, filepath.Join(f.drop, name)), Source: "inbox"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	four, eleven := add("a.mp3", "4", "a"), add("b.mp3", "11", "b")
+	if four.TrackID == eleven.TrackID {
+		t.Fatal("track 4 and track 11 became one song")
+	}
+	// A rip with no number is a version of one of them, not a third song.
+	if rip := add("c.mp3", "", "c"); rip.TrackID != four.TrackID {
+		t.Fatal("an untagged copy became a song of its own")
+	}
+	if n := count(t, f.db, "SELECT COUNT(*) FROM tracks"); n != 2 {
+		t.Fatal("tracks:", n)
+	}
+}

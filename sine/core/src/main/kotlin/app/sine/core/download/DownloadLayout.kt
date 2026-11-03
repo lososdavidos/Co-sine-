@@ -11,7 +11,9 @@ object DownloadLayout {
     const val NOMEDIA = ".nomedia"
 
     fun segments(accountFolder: String, track: Track): List<String> {
-        val number = track.trackNumber?.let { "%02d ".format(it) } ?: ""
+        // Past disc 1 the disc leads, so disc 2's "01 Intro" can't land on disc 1's.
+        val disc = track.discNumber?.takeIf { it > 1 }?.let { "$it-" } ?: ""
+        val number = track.trackNumber?.let { "$disc%02d ".format(it) } ?: ""
         val ext = track.suffix?.takeIf { it.isNotBlank() }?.let { ".${sanitize(it)}" } ?: ""
         return listOf(
             sanitize(accountFolder),

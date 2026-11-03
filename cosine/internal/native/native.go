@@ -178,6 +178,10 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := a.Auth.CheckSubsonic(r.Context(), body.Username, body.Token, body.Salt, "")
+	if errors.Is(err, auth.ErrTooManyTries) {
+		writeError(w, http.StatusTooManyRequests, "Too many wrong passwords. Try again in a minute.")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "Wrong username or password.")
 		return

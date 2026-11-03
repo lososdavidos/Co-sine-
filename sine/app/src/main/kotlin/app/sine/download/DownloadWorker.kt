@@ -16,6 +16,7 @@ import app.sine.core.download.DownloadPlanner
 import app.sine.core.model.DownloadNode
 import app.sine.core.download.DownloadedTrack
 import app.sine.core.model.Track
+import app.sine.core.subsonic.SubsonicClient
 import app.sine.data.AccountSession
 import app.sine.graph
 import kotlinx.coroutines.Dispatchers
@@ -93,8 +94,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             val request = Request.Builder().url(session.client.downloadUrl(track.id)).build()
             val bytes = try {
                 session.http.newCall(request).execute().use { response ->
-                    val type = response.header("Content-Type").orEmpty()
-                    if (!response.isSuccessful || type.startsWith("application/json") || type.startsWith("text/xml")) {
+                    if (!SubsonicClient.isFile(response.code, response.header("Content-Type"))) {
                         throw IOException("Server refused ${track.title}: HTTP ${response.code}")
                     }
                     val out = applicationContext.contentResolver.openOutputStream(part.uri)

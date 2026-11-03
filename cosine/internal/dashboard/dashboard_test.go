@@ -83,7 +83,7 @@ func (e *env) get(t *testing.T, path string) (*http.Response, string) {
 }
 
 func (e *env) setupForm(store, inbox string) url.Values {
-	return url.Values{"store": {store}, "inbox": {inbox}, "username": {"admin"}, "password": {"pw"}, "password2": {"pw"}}
+	return url.Values{"store": {store}, "inbox": {inbox}, "username": {"admin"}, "password": {"pw-password"}, "password2": {"pw-password"}}
 }
 
 func TestFirstRunSetup(t *testing.T) {
@@ -126,22 +126,22 @@ func TestAdminOnlyAndAccounts(t *testing.T) {
 	store, inbox := filepath.Join(e.dir, "s"), filepath.Join(e.dir, "i")
 	e.post(t, "/setup", e.setupForm(store, inbox))
 
-	_, body := e.post(t, "/users", url.Values{"username": {"bob"}, "password": {"x"}})
+	_, body := e.post(t, "/users", url.Values{"username": {"bob"}, "password": {"x-password"}})
 	if !strings.Contains(body, "Created account bob") {
 		t.Fatal(body)
 	}
-	_, body = e.post(t, "/users", url.Values{"username": {"BOB"}, "password": {"x"}})
+	_, body = e.post(t, "/users", url.Values{"username": {"BOB"}, "password": {"x-password"}})
 	if !strings.Contains(body, "taken") {
 		t.Fatal("usernames are case-insensitive")
 	}
 
 	e.post(t, "/logout", nil)
-	res, body := e.post(t, "/login", url.Values{"username": {"bob"}, "password": {"x"}})
+	res, body := e.post(t, "/login", url.Values{"username": {"bob"}, "password": {"x-password"}})
 	if !strings.Contains(body, "admin accounts") {
 		t.Fatalf("a member reached the dashboard: %s", res.Request.URL)
 	}
 
-	e.post(t, "/login", url.Values{"username": {"admin"}, "password": {"pw"}})
+	e.post(t, "/login", url.Values{"username": {"admin"}, "password": {"pw-password"}})
 	users, _ := e.auth.Users(context.Background())
 	var bobID string
 	for _, u := range users {
@@ -158,7 +158,7 @@ func TestAdminOnlyAndAccounts(t *testing.T) {
 func TestSetPasswords(t *testing.T) {
 	e := setup(t)
 	e.post(t, "/setup", e.setupForm(filepath.Join(e.dir, "s"), filepath.Join(e.dir, "i")))
-	e.post(t, "/users", url.Values{"username": {"bob"}, "password": {"x"}})
+	e.post(t, "/users", url.Values{"username": {"bob"}, "password": {"x-password"}})
 	ids := map[string]string{}
 	users, _ := e.auth.Users(context.Background())
 	for _, u := range users {
@@ -166,24 +166,24 @@ func TestSetPasswords(t *testing.T) {
 	}
 
 	// An admin resets someone else's.
-	_, body := e.post(t, "/users/"+ids["bob"]+"/password", url.Values{"password": {"y"}, "password2": {"y"}})
+	_, body := e.post(t, "/users/"+ids["bob"]+"/password", url.Values{"password": {"y-password"}, "password2": {"y-password"}})
 	if !strings.Contains(body, "Password changed") {
 		t.Fatal(body)
 	}
-	if _, err := e.auth.CheckPassword(context.Background(), "bob", "y"); err != nil {
+	if _, err := e.auth.CheckPassword(context.Background(), "bob", "y-password"); err != nil {
 		t.Fatal("bob's new password doesn't work")
 	}
 
 	// Your own needs the one you have, and the new one twice.
-	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"wrong"}, "password": {"z"}, "password2": {"z"}})
+	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"wrong"}, "password": {"z-password"}, "password2": {"z-password"}})
 	if !strings.Contains(body, "current password") {
 		t.Fatal(body)
 	}
-	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"pw"}, "password": {"z"}, "password2": {"q"}})
+	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"pw-password"}, "password": {"z-password"}, "password2": {"q-password"}})
 	if !strings.Contains(body, "aren") {
 		t.Fatal(body)
 	}
-	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"pw"}, "password": {"z"}, "password2": {"z"}})
+	_, body = e.post(t, "/users/"+ids["admin"]+"/password", url.Values{"current": {"pw-password"}, "password": {"z-password"}, "password2": {"z-password"}})
 	if !strings.Contains(body, "Your password is changed") {
 		t.Fatal(body)
 	}
@@ -191,7 +191,7 @@ func TestSetPasswords(t *testing.T) {
 	if res, _ := e.get(t, "/users"); res.Request.URL.Path != "/users" {
 		t.Fatal("changing your own password signed you out")
 	}
-	if _, err := e.auth.CheckPassword(context.Background(), "admin", "pw"); err == nil {
+	if _, err := e.auth.CheckPassword(context.Background(), "admin", "pw-password"); err == nil {
 		t.Fatal("the old password still works")
 	}
 }
@@ -410,7 +410,7 @@ func TestListeningPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, _ := e.auth.CreateUser(context.Background(), "bob", "pw", false)
+	other, _ := e.auth.CreateUser(context.Background(), "bob", "pw-password", false)
 	for i, at := range []time.Time{now.AddDate(0, 0, -1), now.AddDate(0, 0, -3), now.AddDate(-1, 0, 0)} {
 		user := int64(1) // the admin made at setup
 		if i == 1 {

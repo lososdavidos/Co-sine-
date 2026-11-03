@@ -3,6 +3,9 @@ package app.sine.core.persist
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 internal val StoreJson = Json {
     ignoreUnknownKeys = true
@@ -20,10 +23,14 @@ class JsonFile<T>(
     private val serializer: KSerializer<T>,
     private val default: () -> T,
 ) {
+    private val tmp get() = File(file.parentFile, file.name + ".tmp")
+
     fun read(): T {
-        if (!file.exists()) return default()
+        // No file but a whole temp one: a write that stopped just before its move.
+        val from = if (!file.exists() && tmp.exists()) tmp else file
+        if (!from.exists()) return default()
         return try {
-            StoreJson.decodeFromString(serializer, file.readText())
+            StoreJson.decodeFromString(serializer, from.readText())
         } catch (e: Exception) {
             default()
         }
@@ -31,11 +38,13 @@ class JsonFile<T>(
 
     fun write(value: T) {
         file.parentFile?.mkdirs()
-        val tmp = File(file.parentFile, file.name + ".tmp")
+        val tmp = tmp
         tmp.writeText(StoreJson.encodeToString(serializer, value))
-        if (!tmp.renameTo(file)) {
-            file.delete()
-            check(tmp.renameTo(file)) { "Could not replace $file" }
+        // One step, even on Windows, where renameTo won't replace a file: never a moment with neither.
+        try {
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: AtomicMoveNotSupportedException) {
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
     }
 }

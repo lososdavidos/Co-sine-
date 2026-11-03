@@ -39,7 +39,7 @@ func server(t *testing.T, withYtDlp bool) *httptest.Server {
 	d.SetSetting(ctx, db.SettingStorePath, filepath.Join(dir, "store"))
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	as.CreateUser(ctx, "alice", "sesame", false)
+	as.CreateUser(ctx, "alice", "open sesame", false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	api := &API{Auth: as, Version: "test", Log: log}
 	if withYtDlp {
@@ -89,7 +89,7 @@ func call(t *testing.T, srv *httptest.Server, method, path, token string, body a
 }
 
 func login(t *testing.T, srv *httptest.Server) string {
-	sum := md5.Sum([]byte("sesame" + "salt1"))
+	sum := md5.Sum([]byte("open sesame" + "salt1"))
 	code, out := call(t, srv, "POST", "/cosine/v1/auth", "", map[string]string{
 		"username": "alice", "token": hex.EncodeToString(sum[:]), "salt": "salt1"})
 	if code != 200 {

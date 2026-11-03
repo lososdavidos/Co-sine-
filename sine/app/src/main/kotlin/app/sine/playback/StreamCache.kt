@@ -49,11 +49,11 @@ object StreamCache {
         cache?.let { evictor.trim(it) }
     }
 
-    /** Whether a song is kept whole, so it plays offline. */
-    fun has(trackId: String): Boolean {
+    /** Whether a song is kept whole, so it plays offline; [key] is its [cacheKey]. */
+    fun has(key: String): Boolean {
         val c = cache ?: return false
-        val length = ContentMetadata.getContentLength(c.getContentMetadata(trackId))
-        return length > 0 && c.isCached(trackId, 0, length)
+        val length = ContentMetadata.getContentLength(c.getContentMetadata(key))
+        return length > 0 && c.isCached(key, 0, length)
     }
 
     /** How much can be kept, in bytes; 0 keeps nothing. */
@@ -61,7 +61,7 @@ object StreamCache {
 
     /**
      * Keeps a song ahead of playing it (the prefetch, §2.5), through the
-     * same cache the player streams through, under its id. Stops between
+     * same cache the player streams through, under its [cacheKey]. Stops between
      * pieces as soon as [keepGoing] says so, or the caller is cancelled,
      * and what it got so far stays. False when it didn't get all of it.
      */
@@ -90,7 +90,7 @@ object StreamCache {
     }
 
     /**
-     * Streams through the cache, under the song's id; anything else (a
+     * Streams through the cache, under the song's [cacheKey]; anything else (a
      * download on the phone) straight from [upstream], as there's nothing
      * to keep.
      */

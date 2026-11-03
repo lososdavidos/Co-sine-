@@ -4,6 +4,7 @@ import app.sine.core.download.DownloadLayout
 import app.sine.core.download.DownloadedTrack
 import app.sine.core.model.Track
 import app.sine.core.session.AccountSession
+import app.sine.core.subsonic.SubsonicClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,7 +61,7 @@ class Downloads(private val graph: DesktopGraph) {
         target.parentFile.mkdirs()
         val part = File(target.parentFile, target.name + ".part")
         graph.http.newCall(Request.Builder().url(session.client.downloadUrl(track.id)).build()).execute().use { r ->
-            check(r.isSuccessful) { "HTTP ${r.code}" }
+            check(SubsonicClient.isFile(r.code, r.header("Content-Type"))) { "Server refused ${track.title}: HTTP ${r.code}" }
             part.outputStream().use { out -> r.body.byteStream().copyTo(out) }
         }
         if (!part.renameTo(target)) {

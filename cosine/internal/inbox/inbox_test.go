@@ -139,3 +139,17 @@ func TestStoppingLeavesFilesInTheInbox(t *testing.T) {
 		t.Fatal("a stopped ingest moved the file aside:", err)
 	}
 }
+
+func TestAnEmptyFileWaitsForItsBytes(t *testing.T) {
+	dir := t.TempDir()
+	r := &recorder{}
+	start(t, dir, r)
+	path := filepath.Join(dir, "copying.mp3")
+	os.WriteFile(path, nil, 0o644)
+	time.Sleep(600 * time.Millisecond)
+	if n := len(r.got()); n != 0 {
+		t.Fatal("an empty file was taken in")
+	}
+	os.WriteFile(path, []byte("audio"), 0o644)
+	waitFor(t, func() bool { return len(r.got()) == 1 })
+}

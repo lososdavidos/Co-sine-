@@ -23,6 +23,7 @@ import (
 
 var (
 	ErrNotAudio = errors.New("not an audio file")
+	ErrEmpty    = errors.New("the file is empty")
 	ErrNoStore  = errors.New("the Store path is not set")
 	errNoUsers  = errors.New("no accounts exist")
 )
@@ -134,6 +135,9 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 	if err != nil {
 		return Outcome{}, err
 	}
+	if size == 0 {
+		return Outcome{}, ErrEmpty
+	}
 
 	// Dedup is free: a known hash creates Pointers, never a second Object (§2.2).
 	var existingTrack int64
@@ -202,11 +206,13 @@ func (g *Ingester) ingest(ctx context.Context, req Request, root, suffix, conten
 	if res.TrackArtist != "" {
 		res.TrackArtist = id.trackArtistName
 	}
-	trackID, err := upsertID(ctx, tx,
-		`INSERT INTO tracks(release_id, artist_id, title, track_no, disc_no, resolver, tier, confidence, reviewed, mbid, created_at)
-		 VALUES(?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?, ?, NULLIF(?, ''), ?) ON CONFLICT(release_id, title) DO NOTHING`,
-		[]any{id.release, id.trackArtist, res.Title, res.TrackNo, res.DiscNo, res.Source, res.Tier, res.Confidence, reviewed, res.IDs.MBRecording, db.Now()},
-		"SELECT id FROM tracks WHERE release_id = ? AND title = ?", id.release, res.Title)
+	trackID, err := sameTrack(ctx, tx, id.release, res.Title, res.TrackNo, res.DiscNo, 0)
+	if errors.Is(err, sql.ErrNoRows) {
+		trackID, err = insertID(ctx, tx,
+			`INSERT INTO tracks(release_id, artist_id, title, track_no, disc_no, resolver, tier, confidence, reviewed, mbid, created_at)
+			 VALUES(?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?, ?, NULLIF(?, ''), ?)`,
+			id.release, id.trackArtist, res.Title, res.TrackNo, res.DiscNo, res.Source, res.Tier, res.Confidence, reviewed, res.IDs.MBRecording, db.Now())
+	}
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -608,4 +614,25 @@ func FFProbe() func(string) int {
 		}
 		return int(f + 0.5)
 	}
+}
+
+// sameTrack finds the Track on release that a song with this title and
+// numbers is a version of: same title, and track and disc numbers that don't
+// disagree (an untagged rip joins the album's track; track 4 and track 11,
+// both "Skit", stay two songs). except leaves one Track out (refiling it).
+func sameTrack(ctx context.Context, tx *sql.Tx, release int64, title string, trackNo, discNo int, except int64) (int64, error) {
+	var id int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT id FROM tracks WHERE release_id = ?1 AND title = ?2 AND id != ?5
+		AND (track_no IS NULL OR ?3 = 0 OR track_no = ?3) AND (disc_no IS NULL OR ?4 = 0 OR disc_no = ?4)
+		ORDER BY id LIMIT 1`, release, title, trackNo, discNo, except).Scan(&id)
+	return id, err
+}
+
+func insertID(ctx context.Context, tx *sql.Tx, insert string, args ...any) (int64, error) {
+	res, err := tx.ExecContext(ctx, insert, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
 }

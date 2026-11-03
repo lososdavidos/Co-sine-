@@ -3,6 +3,7 @@ package devices
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -65,5 +66,34 @@ func TestSessions(t *testing.T) {
 	}
 	if _, err := s.Session(ctx, alice, "sine-b"); err != ErrNotFound {
 		t.Fatal(err)
+	}
+}
+
+func TestTheCurrentSongSurvivesALongOrUntidyQueue(t *testing.T) {
+	d, err := db.Open(filepath.Join(t.TempDir(), "c.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	ctx := context.Background()
+	res, _ := d.Exec("INSERT INTO users(name, password_enc, created_at) VALUES('alice', x'00', 0)")
+	alice, _ := res.LastInsertId()
+	s := &Service{DB: d}
+	phone := Device{ID: "sine-a", Name: "Pixel 8", Kind: "phone"}
+
+	// An unknown entry before the current song doesn't move it.
+	s.Save(ctx, alice, phone, Session{Queue: []string{"tr-1", "nope", "tr-3"}, Current: 2})
+	if got, _ := s.Session(ctx, alice, "sine-a"); got.Queue[got.Current] != "tr-3" {
+		t.Fatal("current moved:", got.Queue, got.Current)
+	}
+	// Song 5500 of 6000 is still the one playing once the queue is cut.
+	long := make([]string, 6000)
+	for i := range long {
+		long[i] = "tr-" + strconv.Itoa(i+1)
+	}
+	s.Save(ctx, alice, phone, Session{Queue: long, Current: 5499})
+	got, _ := s.Session(ctx, alice, "sine-a")
+	if len(got.Queue) != MaxQueue || got.Queue[got.Current] != "tr-5500" {
+		t.Fatal(len(got.Queue), got.Current, got.Queue[got.Current])
 	}
 }

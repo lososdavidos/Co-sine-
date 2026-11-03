@@ -27,8 +27,8 @@ func TestStatsAPIIsOnesOwnListening(t *testing.T) {
 	d.SetSetting(ctx, db.SettingStorePath, filepath.Join(dir, "store"))
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	alice, _ := as.CreateUser(ctx, "alice", "sesame", false)
-	bob, _ := as.CreateUser(ctx, "bob", "x", false)
+	alice, _ := as.CreateUser(ctx, "alice", "open sesame", false)
+	bob, _ := as.CreateUser(ctx, "bob", "x-password", false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	g := &ingest.Ingester{DB: d, DataDir: dir, ReviewThreshold: 0.8, Log: log,
 		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}, Probe: func(string) int { return 200 }}

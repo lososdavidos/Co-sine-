@@ -47,8 +47,8 @@ func setup(t *testing.T) *env {
 	d.SetSetting(ctx, db.SettingStorePath, root)
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	admin, _ := as.CreateUser(ctx, "admin", "x", true)
-	alice, _ := as.CreateUser(ctx, "alice", "x", false)
+	admin, _ := as.CreateUser(ctx, "admin", "x-password", true)
+	alice, _ := as.CreateUser(ctx, "alice", "x-password", false)
 
 	mb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(strings.ToLower(r.URL.Query().Get("query")), `"tides"`) {

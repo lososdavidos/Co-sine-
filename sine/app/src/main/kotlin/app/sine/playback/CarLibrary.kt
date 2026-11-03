@@ -131,8 +131,8 @@ class CarLibrary(private val context: Context, private val scope: CoroutineScope
     }
 
     /**
-     * Sine's own screens send each song's address with it, since the
-     * session boundary strips it; anything else (the car, a voice ask)
+     * Sine's own screens send each song as a sine:// reference, since the
+     * session boundary strips its address; anything else (the car, a voice ask)
      * sends an id from the tree, or words to look for.
      */
     override fun onAddMediaItems(
@@ -140,10 +140,10 @@ class CarLibrary(private val context: Context, private val scope: CoroutineScope
         controller: MediaSession.ControllerInfo,
         mediaItems: MutableList<MediaItem>,
     ): ListenableFuture<MutableList<MediaItem>> {
-        if (mediaItems.all { it.requestMetadata.mediaUri != null }) return Futures.immediateFuture(mediaItems.map(::restored).toMutableList())
+        if (mediaItems.all { it.requestMetadata.mediaUri != null }) return Futures.immediateFuture(mediaItems.mapNotNull(::restored).toMutableList())
         return later {
             mediaItems.flatMap { item ->
-                if (item.requestMetadata.mediaUri != null) listOf(restored(item))
+                if (item.requestMetadata.mediaUri != null) listOfNotNull(restored(item))
                 else resolve(item)?.let { (s, play) -> items(s, play.tracks) }.orEmpty()
             }.toMutableList()
         }
@@ -157,7 +157,7 @@ class CarLibrary(private val context: Context, private val scope: CoroutineScope
         startPositionMs: Long,
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
         if (mediaItems.all { it.requestMetadata.mediaUri != null }) {
-            return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(mediaItems.map(::restored), startIndex, startPositionMs))
+            return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(mediaItems.mapNotNull(::restored), startIndex, startPositionMs))
         }
         // From the car: one id, or words; what it stands for plays, from the song picked.
         return later {
@@ -199,10 +199,11 @@ class CarLibrary(private val context: Context, private val scope: CoroutineScope
 
     private fun items(s: AccountSession, tracks: List<Track>) = tracks.mapNotNull { s.mediaItem(it) }
 
-    private fun restored(item: MediaItem): MediaItem {
-        val uri = item.requestMetadata.mediaUri ?: return item
-        // Kept under the song's id, so a changed stream address still finds it.
-        return item.buildUpon().setUri(uri).setCustomCacheKey(item.mediaId).build()
+    /** A song from Sine's screens, played from where it is now; anything else (a made-up address) is refused. */
+    private fun restored(item: MediaItem): MediaItem? {
+        val (account, track, jam) = parseSongUri(item.requestMetadata.mediaUri) ?: return null
+        val uri = graph.sessionById(account)?.playUri(track, jam) ?: return null
+        return item.buildUpon().setUri(uri).setCustomCacheKey(cacheKey(account, track)).build()
     }
 
     private fun <T> paged(all: List<T>, page: Int, size: Int): List<T> {

@@ -9,12 +9,14 @@ import app.sine.core.download.DownloadedTrack
 import app.sine.core.download.OfflineLibrary
 import app.sine.core.download.PinnedBudget
 import app.sine.core.model.Track
+import app.sine.core.persist.JsonFile
 import app.sine.core.play.PlayEvent
 import app.sine.core.play.PlayLog
 import app.sine.core.play.PlaySource
 import app.sine.core.server.ServerKind
 import app.sine.core.subsonic.SubsonicCredentials
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -109,6 +111,25 @@ class LocalStateTest {
     fun `layout mirrors Artist Album Track and is filesystem safe`() {
         val t = Track(id = "9", title = "What? / Why: VIP", artist = "AC/DC", album = "Live.", trackNumber = 3, suffix = "m4a")
         assertEquals(listOf("u @ nas", "AC_DC", "Live", "03 What_ _ Why_ VIP.m4a"), DownloadLayout.segments("u @ nas", t))
+    }
+
+    @Test
+    fun `a second disc's songs never land on the first's`() {
+        val one = Track(id = "1", title = "Intro", artist = "A", album = "B", trackNumber = 1, discNumber = 1, suffix = "flac")
+        val two = one.copy(id = "2", discNumber = 2)
+        assertEquals("01 Intro.flac", DownloadLayout.segments("x", one)[3])
+        assertEquals("2-01 Intro.flac", DownloadLayout.segments("x", two)[3])
+    }
+
+    @Test
+    fun `a json file is replaced whole, and a write cut short before its move is read back`() {
+        val file = File(dir, "state.json")
+        val store = JsonFile(file, String.serializer()) { "default" }
+        store.write("one")
+        store.write("two") // over an existing file: the delete-then-rename on Windows
+        assertEquals("two", store.read())
+        file.renameTo(File(dir, "state.json.tmp")) // as if stopped between writing and moving
+        assertEquals("two", store.read())
     }
 
     @Test

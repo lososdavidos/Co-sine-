@@ -113,9 +113,7 @@ func (g *Ingester) refile(ctx context.Context, trackID int64, to Identity, autho
 	}
 
 	finalID = trackID
-	var existing int64
-	err = tx.QueryRowContext(ctx, "SELECT id FROM tracks WHERE release_id = ? AND title = ? AND id != ?",
-		ids.release, to.Title, trackID).Scan(&existing)
+	existing, err := sameTrack(ctx, tx, ids.release, to.Title, to.TrackNo, to.DiscNo, trackID)
 	switch {
 	case err == nil:
 		if err := merge(ctx, tx, trackID, existing); err != nil {

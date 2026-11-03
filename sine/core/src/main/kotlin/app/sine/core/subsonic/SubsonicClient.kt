@@ -220,6 +220,12 @@ class SubsonicClient(
         const val API_VERSION = "1.16.1"
         const val CLIENT_NAME = "sine"
 
+        /** Whether a [downloadUrl] answer is the file: Subsonic refuses with a 200 and an error body. */
+        fun isFile(code: Int, contentType: String?): Boolean {
+            val type = contentType.orEmpty()
+            return code in 200..299 && !type.startsWith("application/json") && !type.startsWith("text/xml")
+        }
+
         internal val WireJson = Json {
             ignoreUnknownKeys = true
             isLenient = true

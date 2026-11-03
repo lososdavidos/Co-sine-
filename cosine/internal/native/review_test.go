@@ -29,7 +29,7 @@ func reviewServer(t *testing.T) (*httptest.Server, int64) {
 	d.SetSetting(ctx, db.SettingStorePath, filepath.Join(dir, "store"))
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	alice, _ := as.CreateUser(ctx, "alice", "sesame", false)
+	alice, _ := as.CreateUser(ctx, "alice", "open sesame", false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"recordings":[{"id":"rec","score":100,"title":"Tides","length":201000,

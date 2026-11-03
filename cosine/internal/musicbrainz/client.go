@@ -106,6 +106,9 @@ func (c *Client) attempt(ctx context.Context, u string) ([]byte, int, error) {
 		req.Header.Set("Accept", "application/json")
 		res, err := c.HTTP.Do(req)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, 0, ctx.Err() // the caller gave up: not an outage
+			}
 			return nil, 0, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
 		body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))

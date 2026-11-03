@@ -47,8 +47,8 @@ func setup(t *testing.T) *env {
 	d.SetSetting(ctx, db.SettingStorePath, filepath.Join(dir, "store"))
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "secret.key"))
 	as, _ := auth.New(d, key)
-	alice, _ := as.CreateUser(ctx, "alice", "sesame", true)
-	bob, _ := as.CreateUser(ctx, "bob", "hunter2", false)
+	alice, _ := as.CreateUser(ctx, "alice", "open sesame", true)
+	bob, _ := as.CreateUser(ctx, "bob", "hunter22", false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	g := &ingest.Ingester{DB: d, DataDir: dir, ReviewThreshold: 0.8, Log: log,
 		Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}, MinConfidence: 0.8},
@@ -116,7 +116,7 @@ func ok(t *testing.T, r map[string]any) map[string]any {
 
 func TestAuth(t *testing.T) {
 	e := setup(t)
-	r := ok(t, e.get(t, "alice", "sesame", "ping", nil))
+	r := ok(t, e.get(t, "alice", "open sesame", "ping", nil))
 	if r["type"] != "cosine" || r["openSubsonic"] != true {
 		t.Fatalf("server identity: %v", r)
 	}
@@ -125,7 +125,7 @@ func TestAuth(t *testing.T) {
 		t.Fatalf("%v", bad)
 	}
 	// Legacy p=enc:hex also works.
-	res, _ := http.Get(e.srv.URL + "/rest/ping?f=json&u=bob&p=enc:" + hex.EncodeToString([]byte("hunter2")))
+	res, _ := http.Get(e.srv.URL + "/rest/ping?f=json&u=bob&p=enc:" + hex.EncodeToString([]byte("hunter22")))
 	var body map[string]map[string]any
 	json.NewDecoder(res.Body).Decode(&body)
 	if body["subsonic-response"]["status"] != "ok" {
@@ -151,7 +151,7 @@ func TestBrowseIsScopedToTheAccountsLibrary(t *testing.T) {
 	e.add(t, testutil.MP3{Title: "Surge", Artist: "Skeler", Album: "Tides EP", Track: "2", Body: "2"}, e.alice.ID, e.bob.ID)
 	e.add(t, testutil.MP3{Title: "glass", Artist: "plenka", Body: "3"}, e.bob.ID)
 
-	idx := ok(t, e.get(t, "alice", "sesame", "getArtists", nil))["artists"].(map[string]any)["index"].([]any)
+	idx := ok(t, e.get(t, "alice", "open sesame", "getArtists", nil))["artists"].(map[string]any)["index"].([]any)
 	if len(idx) != 1 {
 		t.Fatalf("alice should see only Skeler: %v", idx)
 	}
@@ -160,10 +160,10 @@ func TestBrowseIsScopedToTheAccountsLibrary(t *testing.T) {
 		t.Fatalf("%v", skeler)
 	}
 
-	artist := ok(t, e.get(t, "alice", "sesame", "getArtist", url.Values{"id": {skeler["id"].(string)}}))["artist"].(map[string]any)
+	artist := ok(t, e.get(t, "alice", "open sesame", "getArtist", url.Values{"id": {skeler["id"].(string)}}))["artist"].(map[string]any)
 	albumID := artist["album"].([]any)[0].(map[string]any)["id"].(string)
 
-	album := ok(t, e.get(t, "alice", "sesame", "getAlbum", url.Values{"id": {albumID}}))["album"].(map[string]any)
+	album := ok(t, e.get(t, "alice", "open sesame", "getAlbum", url.Values{"id": {albumID}}))["album"].(map[string]any)
 	songs := album["song"].([]any)
 	if len(songs) != 2 || songs[0].(map[string]any)["title"] != "Tides" {
 		t.Fatalf("album songs: %v", songs)
@@ -178,13 +178,13 @@ func TestBrowseIsScopedToTheAccountsLibrary(t *testing.T) {
 		t.Errorf("duration %v", s0["duration"])
 	}
 
-	bobAlbum := ok(t, e.get(t, "bob", "hunter2", "getAlbum", url.Values{"id": {albumID}}))["album"].(map[string]any)
+	bobAlbum := ok(t, e.get(t, "bob", "hunter22", "getAlbum", url.Values{"id": {albumID}}))["album"].(map[string]any)
 	if n := len(bobAlbum["song"].([]any)); n != 1 {
 		t.Fatalf("bob holds one track of that release, saw %d", n)
 	}
 
 	// Bob cannot stream Alice's track.
-	res, _ := http.Get(e.url("bob", "hunter2", "stream", url.Values{"id": {s0["id"].(string)}}))
+	res, _ := http.Get(e.url("bob", "hunter22", "stream", url.Values{"id": {s0["id"].(string)}}))
 	var body map[string]map[string]any
 	json.NewDecoder(res.Body).Decode(&body)
 	if body["subsonic-response"]["status"] != "failed" {
@@ -198,24 +198,24 @@ func TestAlbumListsSearchAndSong(t *testing.T) {
 	e.add(t, testutil.MP3{Title: "drift", Artist: "barnacle boi", Body: "2"}, e.alice.ID)
 
 	for _, typ := range []string{"newest", "alphabeticalByName", "alphabeticalByArtist", "random"} {
-		l := ok(t, e.get(t, "alice", "sesame", "getAlbumList2", url.Values{"type": {typ}, "size": {"10"}}))
+		l := ok(t, e.get(t, "alice", "open sesame", "getAlbumList2", url.Values{"type": {typ}, "size": {"10"}}))
 		if n := len(l["albumList2"].(map[string]any)["album"].([]any)); n != 2 {
 			t.Errorf("%s: %d albums", typ, n)
 		}
 	}
-	res := ok(t, e.get(t, "alice", "sesame", "search3", url.Values{"query": {"holl"}}))["searchResult3"].(map[string]any)
+	res := ok(t, e.get(t, "alice", "open sesame", "search3", url.Values{"query": {"holl"}}))["searchResult3"].(map[string]any)
 	if n := len(res["song"].([]any)); n != 1 {
 		t.Fatalf("search songs: %v", res)
 	}
-	all := ok(t, e.get(t, "alice", "sesame", "search3", url.Values{"query": {""}, "songCount": {"50"}}))["searchResult3"].(map[string]any)
+	all := ok(t, e.get(t, "alice", "open sesame", "search3", url.Values{"query": {""}, "songCount": {"50"}}))["searchResult3"].(map[string]any)
 	if n := len(all["song"].([]any)); n != 2 {
 		t.Fatalf("empty query should list everything, got %d", n)
 	}
-	song := ok(t, e.get(t, "alice", "sesame", "getSong", url.Values{"id": {"tr-" + itoa(out.TrackID)}}))["song"].(map[string]any)
+	song := ok(t, e.get(t, "alice", "open sesame", "getSong", url.Values{"id": {"tr-" + itoa(out.TrackID)}}))["song"].(map[string]any)
 	if song["title"] != "Hollow" {
 		t.Fatal(song)
 	}
-	nf := e.get(t, "alice", "sesame", "getSong", url.Values{"id": {"tr-9999"}})
+	nf := e.get(t, "alice", "open sesame", "getSong", url.Values{"id": {"tr-9999"}})
 	if nf["error"].(map[string]any)["code"] != float64(70) {
 		t.Fatal(nf)
 	}
@@ -224,7 +224,7 @@ func TestAlbumListsSearchAndSong(t *testing.T) {
 func TestStreamServesOriginalBytesWithRanges(t *testing.T) {
 	e := setup(t)
 	out := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "0123456789"}, e.alice.ID)
-	req, _ := http.NewRequest("GET", e.url("alice", "sesame", "stream", url.Values{"id": {"tr-" + itoa(out.TrackID)}, "format": {"raw"}}), nil)
+	req, _ := http.NewRequest("GET", e.url("alice", "open sesame", "stream", url.Values{"id": {"tr-" + itoa(out.TrackID)}, "format": {"raw"}}), nil)
 	req.Header.Set("Range", "bytes=-4")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -245,9 +245,9 @@ func TestScrobbleIsIdempotentAndFeedsRecent(t *testing.T) {
 	heard := 0
 	e.api.OnPlay = func() { heard++ } // the scrobbler is told
 	params := url.Values{"id": {"tr-" + itoa(out.TrackID)}, "time": {"1700000000000"}, "submission": {"true"}}
-	ok(t, e.get(t, "alice", "sesame", "scrobble", params))
-	ok(t, e.get(t, "alice", "sesame", "scrobble", params)) // an offline resend
-	ok(t, e.get(t, "bob", "hunter2", "scrobble", params))  // no Pointer: nothing recorded
+	ok(t, e.get(t, "alice", "open sesame", "scrobble", params))
+	ok(t, e.get(t, "alice", "open sesame", "scrobble", params)) // an offline resend
+	ok(t, e.get(t, "bob", "hunter22", "scrobble", params))      // no Pointer: nothing recorded
 	if heard != 1 {
 		t.Fatal("told of each new play, not of resends:", heard)
 	}
@@ -257,11 +257,11 @@ func TestScrobbleIsIdempotentAndFeedsRecent(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("plays = %d", n)
 	}
-	recent := ok(t, e.get(t, "alice", "sesame", "getAlbumList2", url.Values{"type": {"recent"}}))
+	recent := ok(t, e.get(t, "alice", "open sesame", "getAlbumList2", url.Values{"type": {"recent"}}))
 	if len(recent["albumList2"].(map[string]any)["album"].([]any)) != 1 {
 		t.Fatal("recent should include the played album")
 	}
-	frequent := ok(t, e.get(t, "bob", "hunter2", "getAlbumList2", url.Values{"type": {"frequent"}}))
+	frequent := ok(t, e.get(t, "bob", "hunter22", "getAlbumList2", url.Values{"type": {"frequent"}}))
 	if a, _ := frequent["albumList2"].(map[string]any)["album"].([]any); len(a) != 0 {
 		t.Fatal("bob has no plays")
 	}
@@ -270,13 +270,13 @@ func TestScrobbleIsIdempotentAndFeedsRecent(t *testing.T) {
 func TestStarAndCoverArt(t *testing.T) {
 	e := setup(t)
 	out := e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Album: "EP", Picture: []byte("jpegbytes"), Body: "x"}, e.alice.ID)
-	ok(t, e.get(t, "alice", "sesame", "star", url.Values{"id": {"tr-" + itoa(out.TrackID)}}))
-	starred := ok(t, e.get(t, "alice", "sesame", "getStarred2", nil))["starred2"].(map[string]any)
+	ok(t, e.get(t, "alice", "open sesame", "star", url.Values{"id": {"tr-" + itoa(out.TrackID)}}))
+	starred := ok(t, e.get(t, "alice", "open sesame", "getStarred2", nil))["starred2"].(map[string]any)
 	if len(starred["song"].([]any)) != 1 {
 		t.Fatal(starred)
 	}
-	song := ok(t, e.get(t, "alice", "sesame", "getSong", url.Values{"id": {"tr-" + itoa(out.TrackID)}}))["song"].(map[string]any)
-	res, _ := http.Get(e.url("alice", "sesame", "getCoverArt", url.Values{"id": {song["coverArt"].(string)}}))
+	song := ok(t, e.get(t, "alice", "open sesame", "getSong", url.Values{"id": {"tr-" + itoa(out.TrackID)}}))["song"].(map[string]any)
+	res, _ := http.Get(e.url("alice", "open sesame", "getCoverArt", url.Values{"id": {song["coverArt"].(string)}}))
 	b, _ := io.ReadAll(res.Body)
 	if string(b) != "jpegbytes" {
 		t.Fatalf("%q", b)
@@ -284,7 +284,7 @@ func TestStarAndCoverArt(t *testing.T) {
 
 	// An artist shows one of their covers until their own picture is found.
 	artist := func() map[string]any {
-		idx := ok(t, e.get(t, "alice", "sesame", "getArtists", nil))["artists"].(map[string]any)["index"].([]any)
+		idx := ok(t, e.get(t, "alice", "open sesame", "getArtists", nil))["artists"].(map[string]any)["index"].([]any)
 		return idx[0].(map[string]any)["artist"].([]any)[0].(map[string]any)
 	}
 	if a := artist(); a["coverArt"] != song["coverArt"] {
@@ -298,7 +298,7 @@ func TestStarAndCoverArt(t *testing.T) {
 	if a["coverArt"] != "ar-"+itoa(aid) {
 		t.Fatal(a)
 	}
-	res, _ = http.Get(e.url("alice", "sesame", "getCoverArt", url.Values{"id": {a["coverArt"].(string)}}))
+	res, _ = http.Get(e.url("alice", "open sesame", "getCoverArt", url.Values{"id": {a["coverArt"].(string)}}))
 	if b, _ := io.ReadAll(res.Body); string(b) != "portrait" {
 		t.Fatalf("%q", b)
 	}
@@ -307,7 +307,7 @@ func TestStarAndCoverArt(t *testing.T) {
 func TestXMLFormat(t *testing.T) {
 	e := setup(t)
 	e.add(t, testutil.MP3{Title: "Tides", Artist: "Skeler", Body: "x"}, e.alice.ID)
-	res, _ := http.Get(e.url("alice", "sesame", "getArtists", url.Values{"f": {"xml"}}))
+	res, _ := http.Get(e.url("alice", "open sesame", "getArtists", url.Values{"f": {"xml"}}))
 	b, _ := io.ReadAll(res.Body)
 	s := string(b)
 	if !strings.Contains(s, `<subsonic-response xmlns="http://subsonic.org/restapi" status="ok"`) ||
@@ -327,13 +327,13 @@ func TestDeletedFilesLeaveTheLibraryAndReturn(t *testing.T) {
 	e.db.Exec("INSERT INTO playlist_entries(playlist_id, position, track_id) VALUES(1, 0, ?), (1, 1, ?)", gone.TrackID, keep.TrackID)
 
 	songs := func() (artists, albums, random, inPlaylist, playlistCount int) {
-		idx := ok(t, e.get(t, "alice", "sesame", "getArtists", nil))["artists"].(map[string]any)["index"].([]any)
+		idx := ok(t, e.get(t, "alice", "open sesame", "getArtists", nil))["artists"].(map[string]any)["index"].([]any)
 		for _, i := range idx {
 			artists += len(i.(map[string]any)["artist"].([]any))
 		}
-		albums = len(ok(t, e.get(t, "alice", "sesame", "getAlbumList2", url.Values{"type": {"alphabeticalByName"}}))["albumList2"].(map[string]any)["album"].([]any))
-		random = len(ok(t, e.get(t, "alice", "sesame", "getRandomSongs", nil))["randomSongs"].(map[string]any)["song"].([]any))
-		pl := ok(t, e.get(t, "alice", "sesame", "getPlaylist", url.Values{"id": {"pl-1"}}))["playlist"].(map[string]any)
+		albums = len(ok(t, e.get(t, "alice", "open sesame", "getAlbumList2", url.Values{"type": {"alphabeticalByName"}}))["albumList2"].(map[string]any)["album"].([]any))
+		random = len(ok(t, e.get(t, "alice", "open sesame", "getRandomSongs", nil))["randomSongs"].(map[string]any)["song"].([]any))
+		pl := ok(t, e.get(t, "alice", "open sesame", "getPlaylist", url.Values{"id": {"pl-1"}}))["playlist"].(map[string]any)
 		inPlaylist = len(pl["entry"].([]any))
 		playlistCount = int(pl["songCount"].(float64))
 		return
@@ -346,7 +346,7 @@ func TestDeletedFilesLeaveTheLibraryAndReturn(t *testing.T) {
 	moved := filepath.Join(t.TempDir(), "hollow.mp3")
 	os.Rename(filepath.Join(root, gone.RelPath), moved)
 	// Playing it notices at once, without waiting for the next check.
-	res, _ := http.Get(e.url("alice", "sesame", "stream", url.Values{"id": {"tr-" + strconv.FormatInt(gone.TrackID, 10)}}))
+	res, _ := http.Get(e.url("alice", "open sesame", "stream", url.Values{"id": {"tr-" + strconv.FormatInt(gone.TrackID, 10)}}))
 	res.Body.Close()
 	if a, al, r, p, c := songs(); a != 1 || al != 1 || r != 1 || p != 1 || c != 1 {
 		t.Fatal("after deleting:", a, al, r, p, c)
@@ -365,15 +365,16 @@ func TestDeletedFilesLeaveTheLibraryAndReturn(t *testing.T) {
 func TestChangePassword(t *testing.T) {
 	e := setup(t)
 	// Your own: the old password stops working at once, the new one works.
-	ok(t, e.get(t, "bob", "hunter2", "changePassword", url.Values{"username": {"bob"}, "password": {"enc:" + hex.EncodeToString([]byte("correct horse"))}}))
-	failed(t, e.get(t, "bob", "hunter2", "ping", nil), ErrWrongCreds)
+	ok(t, e.get(t, "bob", "hunter22", "changePassword", url.Values{"username": {"bob"}, "password": {"enc:" + hex.EncodeToString([]byte("correct horse"))}}))
+	failed(t, e.get(t, "bob", "hunter22", "ping", nil), ErrWrongCreds)
 	ok(t, e.get(t, "bob", "correct horse", "ping", nil))
 
 	// Someone else's only as an admin.
 	failed(t, e.get(t, "bob", "correct horse", "changePassword", url.Values{"username": {"alice"}, "password": {"x"}}), ErrNotAuthorized)
-	ok(t, e.get(t, "alice", "sesame", "changePassword", url.Values{"username": {"bob"}, "password": {"reset"}}))
-	ok(t, e.get(t, "bob", "reset", "ping", nil))
+	ok(t, e.get(t, "alice", "open sesame", "changePassword", url.Values{"username": {"bob"}, "password": {"reset-password"}}))
+	ok(t, e.get(t, "bob", "reset-password", "ping", nil))
 
-	failed(t, e.get(t, "alice", "sesame", "changePassword", url.Values{"username": {"nobody"}, "password": {"x"}}), ErrNotFound)
-	failed(t, e.get(t, "alice", "sesame", "changePassword", url.Values{"username": {"bob"}}), ErrMissingParam)
+	failed(t, e.get(t, "alice", "open sesame", "changePassword", url.Values{"username": {"nobody"}, "password": {"x"}}), ErrNotFound)
+	failed(t, e.get(t, "alice", "open sesame", "changePassword", url.Values{"username": {"bob"}}), ErrMissingParam)
+	failed(t, e.get(t, "alice", "open sesame", "changePassword", url.Values{"username": {"bob"}, "password": {"short"}}), ErrGeneric)
 }

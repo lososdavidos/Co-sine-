@@ -25,8 +25,8 @@ func TestHomeIsKeptPerAccountAndDevice(t *testing.T) {
 	ctx := context.Background()
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	as.CreateUser(ctx, "alice", "sesame", false)
-	bob, _ := as.CreateUser(ctx, "bob", "hunter2", false)
+	as.CreateUser(ctx, "alice", "open sesame", false)
+	bob, _ := as.CreateUser(ctx, "bob", "hunter22", false)
 	api := &API{Auth: as, Version: "t", Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Homes: &homes.Service{DB: d}}
 	mux := http.NewServeMux()
 	api.Register(mux)
@@ -37,7 +37,7 @@ func TestHomeIsKeptPerAccountAndDevice(t *testing.T) {
 	if !slices.Contains(caps["capabilities"].([]any), any("home-layout")) {
 		t.Fatal(caps)
 	}
-	alice := loginAs(t, srv, "alice", "sesame")
+	alice := loginAs(t, srv, "alice", "open sesame")
 	if code, out := call(t, srv, "GET", "/cosine/v1/home/phone", alice, nil); code != 200 || out["layout"] != nil {
 		t.Fatal("nothing yet:", code, out)
 	}
@@ -55,7 +55,7 @@ func TestHomeIsKeptPerAccountAndDevice(t *testing.T) {
 	if _, out := call(t, srv, "GET", "/cosine/v1/home/desktop", alice, nil); out["layout"] != nil {
 		t.Fatal(out)
 	}
-	bobs := loginAs(t, srv, "bob", "hunter2")
+	bobs := loginAs(t, srv, "bob", "hunter22")
 	if _, out := call(t, srv, "GET", "/cosine/v1/home/phone", bobs, nil); out["layout"] != nil {
 		t.Fatal("bob sees alice's Home:", out)
 	}
@@ -116,7 +116,7 @@ func deviceServer(t *testing.T) (*httptest.Server, *db.DB) {
 	t.Cleanup(func() { d.Close() })
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	as.CreateUser(context.Background(), "alice", "sesame", false)
+	as.CreateUser(context.Background(), "alice", "open sesame", false)
 	api := &API{Auth: as, Version: "t", Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Devices: &devices.Service{DB: d}}
 	mux := http.NewServeMux()
 	api.Register(mux)

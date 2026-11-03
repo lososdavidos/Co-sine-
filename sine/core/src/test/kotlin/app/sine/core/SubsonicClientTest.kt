@@ -188,4 +188,12 @@ class SubsonicClientTest {
         client.like("t5", false)
         assertEquals("/navidrome/rest/unstar.view", server.takeRequest().url.encodedPath)
     }
+
+    @Test
+    fun `a refusal with a 200 is not taken for the file`() {
+        assertTrue(SubsonicClient.isFile(200, "audio/flac"))
+        assertTrue(!SubsonicClient.isFile(200, "text/xml; charset=utf-8"))
+        assertTrue(!SubsonicClient.isFile(200, "application/json"))
+        assertTrue(!SubsonicClient.isFile(404, "audio/flac"))
+    }
 }
