@@ -126,10 +126,10 @@ class PlayerConnection(private val context: Context) {
      * and not downloaded) are left out of the queue rather than failing mid-way.
      */
     fun play(session: AccountSession, tracks: List<Track>, startIndex: Int = 0, shuffle: Boolean = false, startMs: Long = 0) {
-        val start = tracks.getOrNull(startIndex)
-        val items = tracks.mapNotNull { t -> mediaItem(session, t)?.let { t to it } }
+        // By row, not by song: a playlist can hold one song twice. Unplayable, the next one that plays.
+        val items = tracks.withIndex().mapNotNull { (i, t) -> mediaItem(session, t)?.let { i to it } }
         if (items.isEmpty()) return
-        val index = items.indexOfFirst { it.first == start }.coerceAtLeast(0)
+        val index = items.indexOfFirst { it.first >= startIndex }.coerceAtLeast(0)
         playingFor = session.account.id
         prefs.edit().putString("account", session.account.id).apply()
         withController { c ->

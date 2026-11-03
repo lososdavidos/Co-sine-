@@ -129,6 +129,9 @@ func (w *Watcher) settle(ctx context.Context, now time.Time, queue map[string]*p
 			p.size, p.stableAt = fi.Size(), now
 			continue
 		}
+		if fi.Size() == 0 {
+			continue // a copy that hasn't started writing yet: wait
+		}
 		if now.Sub(p.stableAt) < w.Settle || now.Sub(fi.ModTime()) < w.Settle {
 			continue
 		}

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
@@ -23,6 +24,8 @@ var (
 	ErrBadCredentials = errors.New("wrong username or password")
 	ErrUserExists     = errors.New("that username is taken")
 	ErrNoSuchUser     = errors.New("there's no such account")
+	ErrShortPassword  = fmt.Errorf("a password needs at least %d characters", MinPassword)
+	ErrTooManyTries   = errors.New("too many wrong passwords: try again in a minute")
 )
 
 type User struct {
@@ -38,6 +41,9 @@ type User struct {
 type Service struct {
 	db  *db.DB
 	gcm cipher.AEAD
+
+	mu    sync.Mutex
+	fails map[string]*tries // wrong passwords by account name, for the limit
 }
 
 // LoadOrCreateKey reads the 32-byte key at path, creating it (0600) if absent.
@@ -102,6 +108,9 @@ func (s *Service) CreateUser(ctx context.Context, name, password string, admin b
 	if name == "" || password == "" {
 		return User{}, errors.New("username and password are required")
 	}
+	if len([]rune(password)) < MinPassword {
+		return User{}, ErrShortPassword
+	}
 	enc, err := s.encrypt(password)
 	if err != nil {
 		return User{}, err
@@ -123,8 +132,8 @@ func (s *Service) CreateUser(ctx context.Context, name, password string, admin b
 // the old one is refused from then on (Subsonic's token is worked out from
 // it), and so is every dashboard session but [keep], the one doing it.
 func (s *Service) SetPassword(ctx context.Context, id int64, password, keep string) error {
-	if password == "" {
-		return errors.New("the new password can't be empty")
+	if len([]rune(password)) < MinPassword {
+		return ErrShortPassword
 	}
 	enc, err := s.encrypt(password)
 	if err != nil {
@@ -203,19 +212,25 @@ func (s *Service) lookup(ctx context.Context, name string) (User, string, error)
 
 // CheckPassword verifies a plain password.
 func (s *Service) CheckPassword(ctx context.Context, name, password string) (User, error) {
-	u, pw, err := s.lookup(ctx, name)
-	if err != nil {
-		return User{}, err
-	}
-	if subtle.ConstantTimeCompare([]byte(pw), []byte(password)) != 1 {
-		return User{}, ErrBadCredentials
-	}
-	return u, nil
+	return s.limited(name, func() (User, error) {
+		u, pw, err := s.lookup(ctx, name)
+		if err != nil {
+			return User{}, err
+		}
+		if subtle.ConstantTimeCompare([]byte(pw), []byte(password)) != 1 {
+			return User{}, ErrBadCredentials
+		}
+		return u, nil
+	})
 }
 
 // CheckSubsonic verifies Subsonic credentials: token+salt (preferred), or the
 // legacy p= parameter, plain or "enc:"-hex-encoded.
 func (s *Service) CheckSubsonic(ctx context.Context, name, token, salt, password string) (User, error) {
+	return s.limited(name, func() (User, error) { return s.checkSubsonic(ctx, name, token, salt, password) })
+}
+
+func (s *Service) checkSubsonic(ctx context.Context, name, token, salt, password string) (User, error) {
 	u, pw, err := s.lookup(ctx, name)
 	if err != nil {
 		return User{}, err
@@ -270,4 +285,54 @@ func (s *Service) Session(ctx context.Context, token string) (User, error) {
 func (s *Service) EndSession(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE token = ?", token)
 	return err
+}
+
+// MinPassword is the shortest password an account may be given.
+const MinPassword = 8
+
+// After maxTries wrong passwords for one account within tryWindow, every try
+// is refused until the window passes: guessing goes from thousands a second
+// to maxTries a minute.
+// shortcut: per account name, so a guesser can keep one account locked out;
+// upgrade to per-address limits if that is abused.
+const (
+	maxTries  = 10
+	tryWindow = time.Minute
+)
+
+type tries struct {
+	n     int
+	since time.Time
+}
+
+// limited runs check unless name is locked out, and counts its wrong passwords.
+func (s *Service) limited(name string, check func() (User, error)) (User, error) {
+	now := time.Now()
+	s.mu.Lock()
+	if t := s.fails[name]; t != nil && now.Sub(t.since) < tryWindow && t.n >= maxTries {
+		s.mu.Unlock()
+		return User{}, ErrTooManyTries
+	}
+	s.mu.Unlock()
+	u, err := check()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case err == nil:
+		delete(s.fails, name)
+	case errors.Is(err, ErrBadCredentials):
+		if s.fails == nil {
+			s.fails = map[string]*tries{}
+		}
+		t := s.fails[name]
+		if t == nil || now.Sub(t.since) >= tryWindow {
+			if len(s.fails) >= 10000 {
+				clear(s.fails) // made-up names must not grow it without end
+			}
+			t = &tries{since: now}
+			s.fails[name] = t
+		}
+		t.n++
+	}
+	return u, err
 }

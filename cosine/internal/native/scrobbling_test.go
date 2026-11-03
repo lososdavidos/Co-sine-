@@ -23,7 +23,7 @@ func TestConnectingScrobblers(t *testing.T) {
 	ctx := context.Background()
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	as.CreateUser(ctx, "alice", "sesame", false)
+	as.CreateUser(ctx, "alice", "open sesame", false)
 	lb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		valid := r.Header.Get("Authorization") == "Token good"
 		json.NewEncoder(w).Encode(map[string]any{"valid": valid, "user_name": "alice_lb"})

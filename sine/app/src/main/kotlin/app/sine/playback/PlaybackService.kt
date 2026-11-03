@@ -150,7 +150,9 @@ class PlaybackService : MediaLibraryService() {
             listenedMs += TICK_MS
             if (!recorded && PlayLog.counts(listenedMs, player.duration.coerceAtLeast(0))) {
                 recorded = true
-                val account = graph.activeSession.value ?: continue
+                // The song's own account: the one on screen may have changed since it started.
+                val owner = parseSongUri(item.requestMetadata.mediaUri)?.first ?: graph.player.playingAccount
+                val account = owner?.let(graph::sessionById) ?: continue
                 account.plays.record(PlayEvent(item.mediaId, startedAt))
                 scope.launch(Dispatchers.IO) { runCatching { account.flushPlays() } }
             }

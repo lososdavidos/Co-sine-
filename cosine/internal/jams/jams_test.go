@@ -188,3 +188,56 @@ func TestDeletingAnAccountThatAddedToAJam(t *testing.T) {
 		t.Fatal("an account that once added to a jam can't be deleted:", err)
 	}
 }
+
+func TestTheHostJoiningAgainKeepsTheJam(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	jam, _ := e.s.Start(ctx, e.alice, []string{"bob"})
+	if err := e.s.Join(ctx, jam, e.alice); err != nil {
+		t.Fatal(err)
+	}
+	if cur, _, _ := e.s.Mine(ctx, e.alice); cur == nil {
+		t.Fatal("joining her own jam again ended it")
+	}
+}
+
+func TestInvitationsCanBeDeclinedAndRepeated(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	jam, _ := e.s.Start(ctx, e.alice, []string{"bob"})
+	// Bob turns it down: it's gone, for him and from the member list.
+	e.s.Leave(ctx, jam, e.bob)
+	if _, invites, _ := e.s.Mine(ctx, e.bob); len(invites) != 0 {
+		t.Fatal("a declined invitation is still there:", invites)
+	}
+	if j, _ := e.s.State(ctx, jam, e.alice, 0, 0); len(j.Members) != 1 {
+		t.Fatalf("declined, still listed: %+v", j.Members)
+	}
+	// He joins after all, leaves, and is asked again: an invitation, not back in.
+	e.s.Invite(ctx, jam, e.alice, []string{"bob"})
+	e.s.Join(ctx, jam, e.bob)
+	e.s.Leave(ctx, jam, e.bob)
+	e.s.Invite(ctx, jam, e.alice, []string{"bob"})
+	if cur, invites, _ := e.s.Mine(ctx, e.bob); cur != nil || len(invites) != 1 {
+		t.Fatal("asked again should be an invitation:", cur, invites)
+	}
+}
+
+func TestAddingAtTheSameMomentLosesNothing(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	jam, _ := e.s.Start(ctx, e.alice, []string{"bob"})
+	e.s.Join(ctx, jam, e.bob)
+	errs := make(chan error, 2)
+	for _, u := range []int64{e.alice, e.bob} {
+		go func(u int64) { errs <- e.s.Add(ctx, jam, u, []string{e.t1, e.t2, e.t3}) }(u)
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if j, _ := e.s.State(ctx, jam, e.alice, 0, 0); len(j.Queue) != 6 {
+		t.Fatal("songs lost:", len(j.Queue))
+	}
+}

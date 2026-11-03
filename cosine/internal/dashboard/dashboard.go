@@ -339,7 +339,11 @@ func (d *Dashboard) login(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("username"))
 	u, err := d.Auth.CheckPassword(r.Context(), name, r.FormValue("password"))
 	if err != nil {
-		d.render(w, "login", page{Title: "Log in", Form: map[string]string{"username": name}, Error: "Wrong username or password."})
+		msg := "Wrong username or password."
+		if errors.Is(err, auth.ErrTooManyTries) {
+			msg = "Too many wrong passwords. Try again in a minute."
+		}
+		d.render(w, "login", page{Title: "Log in", Form: map[string]string{"username": name}, Error: msg})
 		return
 	}
 	if !u.IsAdmin {

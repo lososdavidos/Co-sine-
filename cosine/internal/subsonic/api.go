@@ -146,7 +146,9 @@ func changePassword(r *request) (*Response, error) {
 	if target.ID != r.user.ID && !r.user.IsAdmin {
 		return nil, apiError{ErrNotAuthorized, "Only an admin can change another account's password."}
 	}
-	if err := r.api.Auth.SetPassword(r.Context(), target.ID, password, ""); err != nil {
+	if err := r.api.Auth.SetPassword(r.Context(), target.ID, password, ""); errors.Is(err, auth.ErrShortPassword) {
+		return nil, apiError{ErrGeneric, err.Error()}
+	} else if err != nil {
 		return nil, err
 	}
 	r.api.Log.Info("password changed", "account", target.Name, "by", r.user.Name)
@@ -163,8 +165,11 @@ func (a *API) authenticate(r *http.Request) (auth.User, error) {
 		return auth.User{}, missing("t and s, or p")
 	}
 	u, err := a.Auth.CheckSubsonic(r.Context(), name, token, salt, pass)
-	if errors.Is(err, auth.ErrBadCredentials) {
+	switch {
+	case errors.Is(err, auth.ErrBadCredentials):
 		return auth.User{}, apiError{ErrWrongCreds, "Wrong username or password."}
+	case errors.Is(err, auth.ErrTooManyTries):
+		return auth.User{}, apiError{ErrWrongCreds, "Too many wrong passwords. Try again in a minute."}
 	}
 	return u, err
 }

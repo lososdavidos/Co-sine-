@@ -42,9 +42,13 @@ var schemaV9 string
 //go:embed schema_v10.sql
 var schemaV10 string
 
+//go:embed schema_v11.sql
+var schemaV11 string
+
 // migrations are applied in order; the index+1 is the schema version.
-// Additive only, like the wire protocol (§9.3).
-var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10}
+// Additive only, like the wire protocol (§9.3); v11 rebuilds tracks to drop a
+// constraint, keeping every row and id.
+var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11}
 
 type DB struct {
 	*sql.DB
@@ -68,12 +72,27 @@ func Open(path string) (*DB, error) {
 }
 
 func (d *DB) migrate(ctx context.Context) error {
-	var version int
-	if err := d.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+	// One connection throughout, with foreign keys paused on it, so a table
+	// can be rebuilt (SQLite allows that only outside a transaction). A
+	// rebuild copies every id, so what points at the table still finds it.
+	conn, err := d.Conn(ctx)
+	if err != nil {
 		return err
 	}
+	defer conn.Close()
+	var version int
+	if err := conn.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return err
+	}
+	if version == len(migrations) {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return err
+	}
+	defer conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
 	for i := version; i < len(migrations); i++ {
-		tx, err := d.BeginTx(ctx, nil)
+		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}

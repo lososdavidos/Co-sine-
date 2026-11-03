@@ -289,8 +289,12 @@ func (s *Service) Join(ctx context.Context, jam, user int64) error {
 	if r.ended {
 		return ErrEnded
 	}
-	if _, invited, err := s.membership(ctx, jam, user); err != nil || !invited {
+	in, invited, err := s.membership(ctx, jam, user)
+	if err != nil || !invited {
 		return errors.Join(err, ErrNotIn)
+	}
+	if in {
+		return nil // already in: leaving first would end it if they host it
 	}
 	if err := s.leaveAll(ctx, user); err != nil {
 		return err
@@ -344,7 +348,7 @@ func (s *Service) Invite(ctx context.Context, jam, user int64, names []string) e
 	for _, u := range ids {
 		if _, err := s.DB.ExecContext(ctx, `
 			INSERT INTO jam_members(jam_id, user_id, invited_at) VALUES(?, ?, ?)
-			ON CONFLICT(jam_id, user_id) DO UPDATE SET left_at = NULL, invited_at = excluded.invited_at`, jam, u, s.now()); err != nil {
+			ON CONFLICT(jam_id, user_id) DO UPDATE SET joined_at = NULL, left_at = NULL, invited_at = excluded.invited_at`, jam, u, s.now()); err != nil {
 			return err
 		}
 	}
@@ -378,7 +382,9 @@ func (s *Service) Add(ctx context.Context, jam, user int64, tracks []string) err
 		return err
 	}
 	var n int
-	s.DB.QueryRowContext(ctx, "SELECT COALESCE(MAX(pos) + 1, 0) FROM jam_queue WHERE jam_id = ?", jam).Scan(&n)
+	if err := s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM jam_queue WHERE jam_id = ?", jam).Scan(&n); err != nil {
+		return err
+	}
 	was, _ := s.durations(ctx, jam)
 	now := s.now()
 	for _, t := range tracks {
@@ -392,7 +398,9 @@ func (s *Service) Add(ctx context.Context, jam, user int64, tracks []string) err
 		if !exists {
 			continue
 		}
-		if _, err := s.DB.ExecContext(ctx, "INSERT INTO jam_queue(jam_id, pos, track_id, added_by, added_at) VALUES(?, ?, ?, ?, ?)", jam, n, id, user, now); err != nil {
+		// The slot is taken in the insert itself: two people adding at once both get one.
+		if _, err := s.DB.ExecContext(ctx, `INSERT INTO jam_queue(jam_id, pos, track_id, added_by, added_at)
+			VALUES(?1, (SELECT COALESCE(MAX(pos) + 1, 0) FROM jam_queue WHERE jam_id = ?1), ?2, ?3, ?4)`, jam, id, user, now); err != nil {
 			return err
 		}
 		n++
@@ -484,7 +492,7 @@ func (s *Service) state(ctx context.Context, jam, user int64) (Jam, error) {
 	if err != nil {
 		return Jam{}, err
 	}
-	in, invited, err := s.membership(ctx, jam, user)
+	_, invited, err := s.membership(ctx, jam, user)
 	if err != nil {
 		return Jam{}, err
 	}
@@ -501,21 +509,21 @@ func (s *Service) state(ctx context.Context, jam, user int64) (Jam, error) {
 	for rows.Next() {
 		var id int64
 		var m Member
-		rows.Scan(&id, &m.Name, &m.Joined, &m.Present)
+		var notLeft bool
+		rows.Scan(&id, &m.Name, &m.Joined, &notLeft)
 		m.Host = id == r.host
-		m.Present = m.Present && m.Joined
+		m.Present = notLeft && m.Joined
 		if m.Host {
 			j.Host = m.Name
 		}
 		if id == user {
 			j.You = m
 		}
-		if m.Present || !m.Joined {
+		if m.Present || (!m.Joined && notLeft) { // a declined invitation is gone
 			j.Members = append(j.Members, m)
 		}
 	}
 	rows.Close()
-	_ = in
 	q, err := s.DB.QueryContext(ctx, `
 		SELECT q.track_id, t.title, a.name, r.title, r.id, r.art_path IS NOT NULL,
 		       COALESCE((SELECT MAX(o.duration_sec) FROM objects o WHERE o.track_id = q.track_id), 0),
@@ -573,7 +581,7 @@ func (s *Service) Mine(ctx context.Context, user int64) (*Jam, []Invitation, err
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT j.id, h.name, (SELECT COUNT(*) FROM jam_members x WHERE x.jam_id = j.id AND x.joined_at IS NOT NULL AND x.left_at IS NULL)
 		FROM jams j JOIN jam_members m ON m.jam_id = j.id JOIN users h ON h.id = j.host_id
-		WHERE m.user_id = ? AND m.joined_at IS NULL AND j.ended_at IS NULL ORDER BY j.started_at DESC`, user)
+		WHERE m.user_id = ? AND m.joined_at IS NULL AND m.left_at IS NULL AND j.ended_at IS NULL ORDER BY j.started_at DESC`, user)
 	if err != nil {
 		return nil, nil, err
 	}

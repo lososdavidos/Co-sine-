@@ -42,8 +42,8 @@ func TestPlaylistsOfflineAndShared(t *testing.T) {
 	d.SetSetting(ctx, db.SettingStorePath, filepath.Join(dir, "store"))
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	alice, _ := as.CreateUser(ctx, "alice", "sesame", false)
-	as.CreateUser(ctx, "bob", "hunter2", false)
+	alice, _ := as.CreateUser(ctx, "alice", "open sesame", false)
+	as.CreateUser(ctx, "bob", "hunter22", false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	g := &ingest.Ingester{DB: d, DataDir: dir, Log: log, Resolver: resolve.Chain{Resolvers: []resolve.Resolver{resolve.SourceMetadata{}}}}
 	os.MkdirAll(filepath.Join(dir, "drop"), 0o755)
@@ -67,7 +67,7 @@ func TestPlaylistsOfflineAndShared(t *testing.T) {
 	if c := caps["capabilities"].([]any); !slices.Contains(c, any("playlist-sync")) || !slices.Contains(c, any("shared-playlists")) {
 		t.Fatal(caps)
 	}
-	tok, bobTok := login(t, srv), loginAs(t, srv, "bob", "hunter2")
+	tok, bobTok := login(t, srv), loginAs(t, srv, "bob", "hunter22")
 
 	// Made and filled offline, sent on reconnect.
 	ops := map[string]any{"ops": []map[string]any{

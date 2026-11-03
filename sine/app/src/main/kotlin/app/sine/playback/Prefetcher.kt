@@ -40,7 +40,8 @@ class Prefetcher(
             if (i == C.INDEX_UNSET) return out
             val item = player.getMediaItemAt(i)
             val uri = item.localConfiguration?.uri ?: return@repeat
-            if (uri.scheme == "http" || uri.scheme == "https") out += uri to item.mediaId
+            val key = item.localConfiguration?.customCacheKey ?: return@repeat
+            if (uri.scheme == "http" || uri.scheme == "https") out += uri to key
         }
         return out
     }

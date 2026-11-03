@@ -6,6 +6,7 @@ import app.sine.playback.JamFollower
 import app.sine.playback.RemoteListener
 import app.sine.playback.SessionReporter
 import app.sine.playback.StreamCache
+import app.sine.playback.cacheKey
 import app.sine.core.cosine.DeviceInfo
 import android.os.Build
 import app.sine.core.account.Account
@@ -63,7 +64,8 @@ class AppGraph(private val context: Context) {
         sessions.getOrPut(account.id) {
             AccountSession(
                 File(context.filesDir, "accounts"), account, http,
-                connected = { network.state.value.connected }, homeDevice = HOME_DEVICE, cached = StreamCache::has,
+                connected = { network.state.value.connected }, homeDevice = HOME_DEVICE,
+                cached = { StreamCache.has(cacheKey(account.id, it)) },
             )
         }
             .also { if (it.account != account) it.replaceAccount(account) }

@@ -152,6 +152,38 @@ func (s *Service) smart(ctx context.Context, user int64, tag string) (*[]Smart, 
 	if s.Playlists == nil || s.Playlists.Stats == nil {
 		return nil, "", nil
 	}
+	out, now, err := s.workOut(ctx, user)
+	if err != nil || now == tag {
+		return nil, now, err
+	}
+	return &out, now, nil
+}
+
+// smartAnswer is an account's smart playlists and their tag, worked out
+// from the state named by key.
+type smartAnswer struct {
+	key   string
+	lists []Smart
+	tag   string
+}
+
+// workOut is smart's heavy part: going over the whole library for every
+// smart playlist. It is done again only when the library, anyone's plays,
+// the account's smart playlists or the hour changed, not on every sync.
+func (s *Service) workOut(ctx context.Context, user int64) ([]Smart, string, error) {
+	var state string
+	if err := s.DB.QueryRowContext(ctx, `SELECT (SELECT COALESCE(MAX(seq), 0) FROM changes) || ':' ||
+		(SELECT COALESCE(MAX(id), 0) FROM plays) || ':' ||
+		(SELECT COUNT(*) || ':' || COALESCE(MAX(updated_at), 0) FROM smart_playlists WHERE owner_id = ?)`, user).Scan(&state); err != nil {
+		return nil, "", err
+	}
+	key := state + ":" + s.Playlists.Stats.Clock().Format("2006010215")
+	s.mu.Lock()
+	c, ok := s.smarts[user]
+	s.mu.Unlock()
+	if ok && c.key == key {
+		return c.lists, c.tag, nil
+	}
 	lists, err := s.Playlists.SmartLists(ctx, user)
 	if err != nil {
 		return nil, "", err
@@ -177,9 +209,12 @@ func (s *Service) smart(ctx context.Context, user int64, tag string) (*[]Smart, 
 	}
 	h := fnv.New64a()
 	h.Write(b)
-	now := strconv.FormatUint(h.Sum64(), 36)
-	if now == tag {
-		return nil, now, nil
+	tag := strconv.FormatUint(h.Sum64(), 36)
+	s.mu.Lock()
+	if s.smarts == nil {
+		s.smarts = map[int64]smartAnswer{}
 	}
-	return &out, now, nil
+	s.smarts[user] = smartAnswer{key, out, tag}
+	s.mu.Unlock()
+	return out, tag, nil
 }

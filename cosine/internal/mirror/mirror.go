@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lososdavidos/Co-sine-/cosine/internal/db"
@@ -80,6 +81,9 @@ type Service struct {
 	// Playlists works out smart playlists and who playlists are shared
 	// with; nil: no smart playlists, and no sharing shown.
 	Playlists *playlists.Service
+
+	mu     sync.Mutex
+	smarts map[int64]smartAnswer // each account's last smart playlists, and what they came from
 }
 
 // Since answers a client whose copy is current up to change after (0:

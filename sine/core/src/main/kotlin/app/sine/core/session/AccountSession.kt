@@ -529,12 +529,16 @@ class AccountSession(
     suspend fun connectListenBrainz(token: String): String = native().connectListenBrainz(token)
     suspend fun disconnectScrobbler(service: String) = native().disconnectScrobbler(service)
 
-    fun playSource(track: Track): PlaySource =
-        PlaySource.resolve(downloads[track.id], isOnline, cached(track.id)) { client.streamUrl(track.id) }
+    fun playSource(track: Track): PlaySource = playSource(track.id, null)
 
     /** A song in a jam: downloaded, from here; else through the jam, which lets you hear what you don't have (§4C). */
-    fun jamSource(track: Track, jam: Long): PlaySource =
-        PlaySource.resolve(downloads[track.id], isOnline, cached(track.id)) { client.streamUrl(track.id, jam) }
+    fun jamSource(track: Track, jam: Long): PlaySource = playSource(track.id, jam)
+
+    /** Where a song plays from, by its id alone: for one the player hands back. */
+    fun playSource(trackId: String, jam: Long?): PlaySource =
+        PlaySource.resolve(downloads[trackId], isOnline, cached(trackId)) {
+            if (jam == null) client.streamUrl(trackId) else client.streamUrl(trackId, jam)
+        }
 
     fun coverFile(coverArt: String) = File(coversDir, DownloadLayout.sanitize(coverArt) + ".img")
 

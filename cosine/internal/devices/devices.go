@@ -112,20 +112,22 @@ func (s *Service) Save(ctx context.Context, user int64, d Device, sess Session) 
 	if err != nil {
 		return err
 	}
-	var ids []int64
-	for _, t := range sess.Queue {
+	// current is an index into the queue as sent; it follows its song past
+	// entries dropped as unknown, and the queue kept is the MaxQueue around it.
+	ids, cur := []int64{}, 0
+	for i, t := range sess.Queue {
+		if i == sess.Current {
+			cur = len(ids)
+		}
 		if n, ok := trackID(t); ok {
 			ids = append(ids, n)
 		}
-		if len(ids) == MaxQueue {
-			break
-		}
 	}
-	if ids == nil {
-		ids = []int64{}
+	if len(ids) > MaxQueue {
+		start := min(max(cur-MaxQueue/2, 0), len(ids)-MaxQueue)
+		ids, cur = ids[start:start+MaxQueue], cur-start
 	}
-	cur := sess.Current
-	if cur < 0 || cur >= len(ids) {
+	if cur >= len(ids) {
 		cur = 0
 	}
 	queue, _ := json.Marshal(ids)

@@ -23,7 +23,7 @@ func TestSmartPlaylistRules(t *testing.T) {
 	ctx := context.Background()
 	key, _ := auth.LoadOrCreateKey(filepath.Join(dir, "k"))
 	as, _ := auth.New(d, key)
-	as.CreateUser(ctx, "alice", "sesame", false)
+	as.CreateUser(ctx, "alice", "open sesame", false)
 	api := &API{Auth: as, Version: "t", Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Playlists: &playlists.Service{DB: d, Stats: &stats.Service{DB: d}}}
 	mux := http.NewServeMux()

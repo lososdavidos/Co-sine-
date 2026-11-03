@@ -294,8 +294,9 @@ func (s *Server) startInbox(path string) {
 	done := make(chan struct{})
 	s.inboxCancel, s.inboxDone = cancel, done
 	w := &inbox.Watcher{
-		Dir:    path,
-		Settle: 2 * time.Second,
+		Dir: path,
+		// Long enough for a network copy that stalls a few seconds mid-file.
+		Settle: 20 * time.Second,
 		Log:    s.log.With("component", "inbox"),
 		Ingest: func(ctx context.Context, p string) error {
 			_, err := s.ingester.Ingest(ctx, ingest.Request{Path: p, Source: "inbox"})
